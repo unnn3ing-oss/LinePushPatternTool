@@ -1,5 +1,7 @@
 # 熱門話題套版產生器
 
+**線上直接使用（GitHub Pages）：** https://unnn3ing-oss.github.io/LinePushPatternTool/
+
 單一 HTML 檔案的小工具，固定「熱門話題」六宮格版型（頂部黃色標籤列＋下方 3×2 共 6 格），可分別更換每一格的照片與兩行標題文字，文字自動調整字距（字距縮到最緊仍放不下才會縮小字級），照片可拖曳調整位置、滾輪或滑桿縮放。輸出尺寸固定 1040×800。不需安裝、不需建置，開啟 `index.html` 即可使用。
 
 跟 [QuickPatterntool](https://github.com/unnn3ing-oss/QuickPatterntool) 是同一套操作邏輯（單一 HTML、Canvas 2D 即時預覽、拖曳/貼上上傳圖片），但版型固定為六宮格，並新增照片拖曳定位、縮放與自動字距／字級的功能。
