@@ -423,14 +423,9 @@ function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor) {
   let cx = centerX - total / 2;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  ctx.miterLimit = 2;
-  ctx.lineWidth = fontSize * 0.16;
-  ctx.strokeStyle = '#000000';
   ctx.fillStyle = fillColor;
   for (const ch of text) {
     const w = ctx.measureText(ch).width;
-    ctx.strokeText(ch, cx, y);
     ctx.fillText(ch, cx, y);
     cx += w + spacing;
   }
