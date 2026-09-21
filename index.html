@@ -441,15 +441,6 @@ const CELL_LABELS = ['左上', '中上', '右上', '左下', '中下', '右下']
 const FONT_STACK = `"TaipeiSansTC-Bold", "Microsoft JhengHei", "PingFang TC", sans-serif`;
 const LINE_COLORS = ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'];
 const TAG_COLORS = ['#ff0000', '#a5a5a5'];
-const DEFAULT_CARDS = [
-  { line1: '代課師開特斯拉狂飆', line2: '192km"直接把友撞死"', tag: '' },
-  { line1: '台指期夜盤跳水',     line2: '崩4萬點周一恐大跌?',   tag: '' },
-  { line1: '熊本地震後又震!',     line2: '北海道.青森爆4級震',   tag: '' },
-  { line1: '伊朗戰打不完!',       line2: '國際油價飆3月新高',   tag: '' },
-  { line1: '台中網美景點見屍',   line2: '晨運民眾目睹嚇壞',     tag: '關鍵竟是房東' },
-  { line1: '美F-35驚傳墜機!',     line2: '飛行員緊急彈射逃生',   tag: '' },
-];
-
 // Default colours alternate white/yellow by column: column 0 & 2 are
 // white-on-top, yellow-on-bottom; column 1 is the reverse.
 function defaultColorsFor(i) {
@@ -523,12 +514,11 @@ function cellRect(i, showHeader) {
 // at a time, switched via the page tabs.
 // ---------------------------------------------------------------------------
 function freshCardState(i) {
-  const d = DEFAULT_CARDS[i];
   const c = defaultColorsFor(i);
   return {
-    line1: d.line1,
-    line2: d.line2,
-    tag: d.tag || '',
+    line1: '',
+    line2: '',
+    tag: '',
     tagColor: TAG_COLORS[0],
     color1: c.color1,
     color2: c.color2,
@@ -546,7 +536,7 @@ function makePageState(pageIndex) {
   return {
     showHeader: pageIndex === 0,
     topLabel: pageIndex === 0 ? '熱門話題' : '',
-    cards: DEFAULT_CARDS.map((_, i) => freshCardState(i)),
+    cards: CELL_LABELS.map((_, i) => freshCardState(i)),
   };
 }
 
@@ -1044,7 +1034,7 @@ function buildCardUI(i) {
   row1.className = 'field-row';
   const in1 = document.createElement('input');
   in1.type = 'text';
-  in1.placeholder = '輸入標題文字';
+  in1.placeholder = '輸入內容';
   in1.value = activePage().cards[i].line1;
   row1.appendChild(in1);
   box.appendChild(row1);
@@ -1055,7 +1045,7 @@ function buildCardUI(i) {
   row2.className = 'field-row';
   const in2 = document.createElement('input');
   in2.type = 'text';
-  in2.placeholder = '輸入標題文字（強調色）';
+  in2.placeholder = '輸入內容';
   in2.value = activePage().cards[i].line2;
   row2.appendChild(in2);
   box.appendChild(row2);
@@ -1066,7 +1056,7 @@ function buildCardUI(i) {
   tagRow.className = 'field-row';
   const tagInput = document.createElement('input');
   tagInput.type = 'text';
-  tagInput.placeholder = '選填，例如：關鍵竟是房東';
+  tagInput.placeholder = '輸入內容';
   tagInput.value = activePage().cards[i].tag;
   tagRow.appendChild(tagInput);
   box.appendChild(tagRow);
