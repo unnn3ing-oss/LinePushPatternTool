@@ -8,6 +8,7 @@
   @font-face {
     font-family: "WHZ-Heavy";
     src: url("whz-heavy.ttf") format("truetype");
+    font-weight: 900;
     font-display: swap;
   }
   :root {
@@ -366,7 +367,7 @@ function defaultColorsFor(i) {
     : { color1: '#ffff00', color2: '#ffffff' };
 }
 
-const headlineFontReady = document.fonts.load(`40px "WHZ-Heavy"`).catch(() => {});
+const headlineFontReady = document.fonts.load(`900 40px "WHZ-Heavy"`).catch(() => {});
 
 // The header/gradient artwork is the actual Canva-exported template PNGs —
 // composited as-is, never redrawn from scratch. Two page variants are
@@ -439,7 +440,7 @@ let activeCard = 0;
 // Text fitting: shrink letter-spacing first, only shrink font size once
 // letter-spacing has hit its minimum and the line still overflows.
 // ---------------------------------------------------------------------------
-const BASE_FONT_SIZE = 34;
+const BASE_FONT_SIZE = 40;
 const MIN_FONT_SIZE = 14;
 const NORMAL_SPACING = 0.5;
 const MIN_SPACING = -2;
@@ -582,7 +583,7 @@ function drawHeaderLabel(ctx, label) {
 // cell's left edge, directly above the headline block. Unlike line 1/2 it
 // is never stretched to fill the width — it just shrinks to fit if needed.
 // Background is either red or gray (state.tagColor), chosen per card.
-const TAG_BASE_FONT_SIZE = 24;
+const TAG_BASE_FONT_SIZE = 28;
 const TAG_PAD_X = 10, TAG_PAD_Y = 6, TAG_GAP = 4;
 
 function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
