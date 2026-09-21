@@ -130,6 +130,18 @@
     margin-bottom: 14px;
     background: var(--bg);
   }
+  .quickfill-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .quickfill-title { font-size: 13px; font-weight: 600; }
+  .quickfill-chevron { font-size: 12px; color: var(--muted); transition: transform .15s; }
+  .quickfill-body { margin-top: 10px; }
+  .quickfill-body.collapsed { display: none; }
+  .quickfill-header.open .quickfill-chevron { transform: rotate(90deg); }
   .cell-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -257,18 +269,16 @@
   <div class="layout">
     <div class="card">
       <div class="top-label-box">
-        <div class="field" style="margin-bottom:0">
-          <label for="quickfillText">快速填入（貼上內容，依序自動填入第 1～12 格：第 1 頁 6 格接著第 2 頁 6 格，由左至右、由上至下）</label>
+        <div class="quickfill-header" id="quickfillHeader">
+          <span class="quickfill-title">快速填入</span>
+          <span class="quickfill-chevron" id="quickfillChevron">▸</span>
+        </div>
+        <div class="quickfill-body collapsed" id="quickfillBody">
           <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;（網址那一行可省略，會自動略過）"></textarea>
           <div class="btn-row">
             <button type="button" id="quickfillBtn">快速填入</button>
           </div>
         </div>
-      </div>
-
-      <div class="page-tabs">
-        <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
-        <button type="button" class="page-tab" data-page="1">第 2 頁</button>
       </div>
 
       <div class="top-label-box">
@@ -284,8 +294,6 @@
 
       <div class="btn-row">
         <button class="primary" id="downloadJpgBtn">下載本頁</button>
-      </div>
-      <div class="btn-row">
         <button id="downloadAllBtn">全部下載</button>
       </div>
 
@@ -297,6 +305,10 @@
     </div>
 
     <div class="preview-col">
+      <div class="page-tabs">
+        <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
+        <button type="button" class="page-tab" data-page="1">第 2 頁</button>
+      </div>
       <div class="canvas-wrap">
         <canvas id="canvas" width="1040" height="800"></canvas>
       </div>
@@ -601,7 +613,11 @@ function drawHeaderLabel(ctx, label) {
   const m = ctx.measureText(label);
   const asc = m.actualBoundingBoxAscent || fit.fontSize * 0.72;
   const desc = m.actualBoundingBoxDescent || fit.fontSize * 0.02;
-  const baselineY = HEADER_H / 2 + (asc - desc) / 2;
+  // Center on the visible yellow area only (below the black top line), not
+  // the full HEADER_H — otherwise the top line's own height silently eats
+  // into the bar and the text reads as drifted upward.
+  const yellowTop = HEADER_TOP_LINE_H;
+  const baselineY = yellowTop + (HEADER_H - yellowTop) / 2 + (asc - desc) / 2;
   let cx = labelStartX;
   for (const ch of label) {
     const w = ctx.measureText(ch).width;
@@ -867,12 +883,13 @@ function buildCardUI(i) {
     handleFile(e.dataTransfer.files[0]);
   });
 
-  // Color pickers for line 1 / line 2 default to collapsed (just the label
-  // + a small dot showing the current color) so the panel isn't dominated
-  // by swatches; clicking the label/dot reveals the full palette.
+  // Each field's color row sits ABOVE its text input, label (field name) on
+  // the left and the color picker on the right; the palette itself defaults
+  // to collapsed (just a small dot showing the current color) so the panel
+  // isn't dominated by swatches — clicking the label/dot reveals it.
   function buildSwatchRow(labelText, colorKey, palette, opts = {}) {
     const row = document.createElement('div');
-    row.className = 'swatch-row';
+    row.className = 'swatch-row field-header';
     if (opts.collapsible) row.classList.add('collapsed');
     const label = document.createElement('span');
     label.className = 'swatch-label';
@@ -885,11 +902,11 @@ function buildCardUI(i) {
       indicator.style.background = activePage().cards[i][colorKey];
       indicator.title = '點擊選擇顏色';
       row.appendChild(indicator);
-      const toggle = () => row.classList.toggle('collapsed');
-      label.style.cursor = 'pointer';
-      label.addEventListener('click', toggle);
-      indicator.style.cursor = 'pointer';
-      indicator.addEventListener('click', toggle);
+      // Listen on the whole row (not just the label/dot) so clicking
+      // anywhere in the header toggles it — a small hit target there is an
+      // easy miss to click past.
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', () => row.classList.toggle('collapsed'));
     }
     const els = [];
     palette.forEach(hex => {
@@ -898,7 +915,10 @@ function buildCardUI(i) {
       sw.style.background = hex;
       sw.title = hex;
       if (hex.toLowerCase() === activePage().cards[i][colorKey].toLowerCase()) sw.classList.add('selected');
-      sw.addEventListener('click', () => {
+      sw.addEventListener('click', e => {
+        // Stop the row's own toggle listener from firing too, which would
+        // immediately re-collapse the palette right after picking a color.
+        e.stopPropagation();
         setActiveCard(i);
         activePage().cards[i][colorKey] = hex;
         els.forEach(s => s.classList.remove('selected'));
@@ -909,8 +929,7 @@ function buildCardUI(i) {
       els.push(sw);
       row.appendChild(sw);
     });
-    box.appendChild(row);
-    return { els, indicator };
+    return { row, els, indicator };
   }
 
   const scaleRow = document.createElement('div');
@@ -961,35 +980,38 @@ function buildCardUI(i) {
   scaleRow.appendChild(resetBtn);
   box.appendChild(scaleRow);
 
+  const { row: header1, els: swatchEls1, indicator: indicator1 } = buildSwatchRow('第一行標題', 'color1', LINE_COLORS, { collapsible: true });
+  box.appendChild(header1);
   const row1 = document.createElement('div');
   row1.className = 'field-row';
   const in1 = document.createElement('input');
   in1.type = 'text';
-  in1.placeholder = '第一行文字';
+  in1.placeholder = '輸入標題文字';
   in1.value = activePage().cards[i].line1;
   row1.appendChild(in1);
   box.appendChild(row1);
-  const { els: swatchEls1, indicator: indicator1 } = buildSwatchRow('第一行顏色', 'color1', LINE_COLORS, { collapsible: true });
 
+  const { row: header2, els: swatchEls2, indicator: indicator2 } = buildSwatchRow('第二行標題', 'color2', LINE_COLORS, { collapsible: true });
+  box.appendChild(header2);
   const row2 = document.createElement('div');
   row2.className = 'field-row';
   const in2 = document.createElement('input');
   in2.type = 'text';
-  in2.placeholder = '第二行文字（強調色）';
+  in2.placeholder = '輸入標題文字（強調色）';
   in2.value = activePage().cards[i].line2;
   row2.appendChild(in2);
   box.appendChild(row2);
-  const { els: swatchEls2, indicator: indicator2 } = buildSwatchRow('第二行顏色', 'color2', LINE_COLORS, { collapsible: true });
 
+  const { row: headerTag, els: tagSwatchEls, indicator: indicatorTag } = buildSwatchRow('標籤文字', 'tagColor', TAG_COLORS, { collapsible: true });
+  box.appendChild(headerTag);
   const tagRow = document.createElement('div');
   tagRow.className = 'field-row';
   const tagInput = document.createElement('input');
   tagInput.type = 'text';
-  tagInput.placeholder = '標籤文字（選填，例如：關鍵竟是房東）';
+  tagInput.placeholder = '選填，例如：關鍵竟是房東';
   tagInput.value = activePage().cards[i].tag;
   tagRow.appendChild(tagInput);
   box.appendChild(tagRow);
-  const { els: tagSwatchEls } = buildSwatchRow('標籤底色', 'tagColor', TAG_COLORS);
 
   tagInput.addEventListener('focus', () => setActiveCard(i));
   in1.addEventListener('focus', () => setActiveCard(i));
@@ -1001,7 +1023,7 @@ function buildCardUI(i) {
   box.addEventListener('mousedown', () => setActiveCard(i));
 
   cellsList.appendChild(box);
-  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, indicator1, indicator2, scaleInput, scaleVal });
+  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, indicator1, indicator2, indicatorTag, scaleInput, scaleVal });
 }
 
 // Refreshes one cell's DOM controls from the active page's current state —
@@ -1026,6 +1048,7 @@ function syncCellUIFromState(i) {
   el.swatchEls2.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color2.toLowerCase()));
   el.indicator1.style.background = state.color1;
   el.indicator2.style.background = state.color2;
+  el.indicatorTag.style.background = state.tagColor || TAG_COLORS[0];
   el.scaleInput.value = String(state.scale);
   el.scaleVal.textContent = `${state.scale.toFixed(2)}x`;
 }
@@ -1339,22 +1362,33 @@ document.getElementById('downloadAllBtn').addEventListener('click', async () => 
   }
 });
 
-// Parses pasted "★line1 line2 / url" blocks into up to 12 {line1, line2}
-// entries — only lines starting with ★ carry content; URL lines and blank
-// lines in between are simply skipped. Within a ★ line, the FIRST space
-// splits line1 from line2 and is itself dropped (not part of either line).
+// Parses pasted "★line1 line2(tag) / url" blocks into up to 12
+// {line1, line2, tag, tagColor} entries — only lines starting with ★ carry
+// content; URL lines and blank lines in between are simply skipped. A
+// trailing "(tag)"/"（tag）" is pulled out as the kicker tag (tag "國際"
+// selects gray, everything else defaults to red) before the remaining
+// content is split on its FIRST space into line1 / line2, with the space
+// itself dropped.
 function parseQuickFillText(text) {
   const entries = [];
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line.startsWith('★')) continue;
-    const content = line.slice(1).trim();
-    const spaceIdx = content.indexOf(' ');
-    if (spaceIdx === -1) {
-      entries.push({ line1: toHalfWidth(content), line2: '' });
-    } else {
-      entries.push({ line1: toHalfWidth(content.slice(0, spaceIdx)), line2: toHalfWidth(content.slice(spaceIdx + 1).trim()) });
+    let content = line.slice(1).trim();
+    let tag = '', tagColor = TAG_COLORS[0];
+    const tagMatch = content.match(/[(（]([^()（）]*)[)）]\s*$/);
+    if (tagMatch) {
+      tag = toHalfWidth(tagMatch[1].trim());
+      tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
+      content = content.slice(0, tagMatch.index).trim();
     }
+    const spaceIdx = content.indexOf(' ');
+    const entry = spaceIdx === -1
+      ? { line1: toHalfWidth(content), line2: '' }
+      : { line1: toHalfWidth(content.slice(0, spaceIdx)), line2: toHalfWidth(content.slice(spaceIdx + 1).trim()) };
+    entry.tag = tag;
+    entry.tagColor = tagColor;
+    entries.push(entry);
     if (entries.length >= PAGE_COUNT * 6) break;
   }
   return entries;
@@ -1366,12 +1400,21 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
     const card = pages[Math.floor(idx / 6)].cards[idx % 6];
     card.line1 = entry.line1;
     card.line2 = entry.line2;
+    card.tag = entry.tag;
+    card.tagColor = entry.tagColor;
   });
   syncAllCellUI();
   render();
   statusEl.textContent = entries.length
     ? `快速填入完成，共套用 ${entries.length} 格`
     : '沒有找到任何「★」開頭的內容可以填入';
+});
+
+const quickfillHeader = document.getElementById('quickfillHeader');
+const quickfillBody = document.getElementById('quickfillBody');
+quickfillHeader.addEventListener('click', () => {
+  const collapsed = quickfillBody.classList.toggle('collapsed');
+  quickfillHeader.classList.toggle('open', !collapsed);
 });
 
 function askConfirm() {
