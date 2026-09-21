@@ -391,7 +391,7 @@
       <ul>
         <li>點格子上傳，或拖曳圖片、先點該格再 Ctrl+V 貼上。</li>
         <li>在預覽圖上拖曳可移動照片、滾輪可縮放，也能用「圖片縮放」滑桿。</li>
-        <li>點預覽圖上任一格，會自動捲動到該格編輯區。</li>
+        <li>單擊預覽圖上任一格會選取該格並自動捲動到編輯區；雙擊該格才會開啟選擇檔案視窗。</li>
         <li>文字自動排版：字沒塞滿維持自然字距，貼邊仍太長才壓字距，壓到底才縮小字級，不會超出格子。</li>
       </ul>
 
@@ -1147,10 +1147,7 @@ function pointerDown(evt) {
   setActiveCard(idx);
   cardEls[idx].box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const state = activePage().cards[idx];
-  if (!state.img) {
-    cardEls[idx].box.querySelector('.dropzone').click();
-    return;
-  }
+  if (!state.img) return;
   evt.preventDefault();
   drag = { idx, startX: pos.x, startY: pos.y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
   canvas.style.cursor = 'grabbing';
@@ -1179,6 +1176,13 @@ function pointerUp() {
 canvas.addEventListener('mousedown', pointerDown);
 window.addEventListener('mousemove', pointerMove);
 window.addEventListener('mouseup', pointerUp);
+canvas.addEventListener('dblclick', evt => {
+  const pos = getCanvasPos(evt);
+  const idx = cellIndexAt(pos.x, pos.y);
+  if (idx < 0) return;
+  setActiveCard(idx);
+  cardEls[idx].box.querySelector('.dropzone').click();
+});
 canvas.addEventListener('touchstart', pointerDown, { passive: false });
 window.addEventListener('touchmove', pointerMove, { passive: false });
 window.addEventListener('touchend', pointerUp);
