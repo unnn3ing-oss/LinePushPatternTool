@@ -256,10 +256,37 @@
     font-size: 13px;
     line-height: 1.6;
   }
-  .modal-body h3 { font-size: 14px; margin: 16px 0 6px; }
+  .modal-body h3 { font-size: 14px; margin: 20px 0 6px; }
   .modal-body h3:first-child { margin-top: 0; }
   .modal-body ul { margin: 0; padding-left: 20px; }
   .modal-body li { margin-bottom: 4px; }
+  .modal-body img {
+    max-width: 100%;
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 8px 0;
+  }
+  .help-compare {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 8px 0;
+  }
+  .help-compare figure { flex: 1; min-width: 0; margin: 0; }
+  .help-compare img { margin: 0; }
+  .help-compare figcaption {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 4px;
+  }
+  .help-arrow {
+    align-self: center;
+    color: var(--muted);
+    font-size: 18px;
+    padding-top: 24px;
+  }
 </style>
 </head>
 <body>
@@ -328,22 +355,49 @@
       <button type="button" id="helpCloseBtn" class="modal-close" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body">
-      <h3>基本流程</h3>
+      <h3>① 快速填入（推薦）</h3>
+      <p style="margin:0 0 6px">點開「快速填入」，貼上「★標題第一行 標題第二行」，下一行網址會自動略過。標籤文字用「標籤)」開頭，例如「★國際)⋯⋯」。</p>
+      <div class="help-compare">
+        <figure>
+          <img src="assets/help/quickfill-before.png" alt="貼上內容">
+          <figcaption>1. 貼上內容</figcaption>
+        </figure>
+        <span class="help-arrow">→</span>
+        <figure>
+          <img src="assets/help/quickfill-after.png" alt="按下快速填入後自動套入">
+          <figcaption>2. 按「快速填入」自動套入</figcaption>
+        </figure>
+      </div>
+
+      <h3>② 頁面與下載</h3>
+      <img src="assets/help/toolbar.png" alt="頁籤在預覽圖上方、下載按鈕在編輯區上方">
+      <p style="margin:0">「第 1 頁／第 2 頁」在預覽圖上方切換（兩頁完全獨立）；「下載本頁／全部下載」在編輯區上方。</p>
+
+      <h3>③ 顏色選取</h3>
+      <p style="margin:0 0 6px">每個欄位旁的色塊預設收合，點一下展開挑色。</p>
+      <div class="help-compare">
+        <figure>
+          <img src="assets/help/color-collapsed.png" alt="收合狀態只顯示色塊">
+          <figcaption>收合（預設）</figcaption>
+        </figure>
+        <span class="help-arrow">→</span>
+        <figure>
+          <img src="assets/help/color-expanded.png" alt="點擊展開完整色票">
+          <figcaption>點一下展開</figcaption>
+        </figure>
+      </div>
+
+      <h3>④ 照片與文字</h3>
       <ul>
-        <li>整組成品共「兩頁」，各自完全獨立（各自 6 格、各自的照片／文字／標籤／顯示設定），用左上角「第 1 頁」「第 2 頁」分頁籤切換編輯。預設第 1 頁含黃色標籤列、第 2 頁不含（僅頂部淡淡暗角），可各自用「這頁顯示頂部黃色標籤列」開關調整。</li>
-        <li>版型的背景／漸層是直接套用實際輸出的模板圖片（不是重繪的近似圖），確保跟原始素材完全一致。每一格可以獨立更換照片、標題文字、標籤與強調色。</li>
-        <li>點左側任一格的圖片框可選檔上傳，也可以直接把圖片拖曳到那個框上，或先點該格再用 Ctrl+V 貼上剪貼簿圖片。</li>
-        <li>右側預覽畫布上，直接對著某一格的照片拖曳即可調整照片位置；滑鼠停在該格上滾動滾輪可放大/縮小；也可以用左側該格的「縮放」滑桿。</li>
-        <li>每格可填一個選填的「標籤文字」（白字小標籤，例如「關鍵竟是房東」），底色可選紅色或灰色，會顯示在該格標題文字正上方、靠左對齊。</li>
-        <li>每格兩行標題文字，兩行都可從色票分別選顏色（白／黃／紅／藍／綠／黑），預設依欄位交錯白／黃配色。每一行的字距、字級都是獨立計算：字沒塞滿字框時維持自然字距，字太長放不下才會先壓縮字距，字距壓到最緊仍放不下才會縮小字級，確保不超出格子。</li>
+        <li>點格子上傳，或拖曳圖片、先點該格再 Ctrl+V 貼上。</li>
+        <li>在預覽圖上拖曳可移動照片、滾輪可縮放，也能用「圖片縮放」滑桿。</li>
+        <li>點預覽圖上任一格，會自動捲動到該格編輯區。</li>
+        <li>文字自動排版：字沒塞滿維持自然字距，貼邊仍太長才壓字距，壓到底才縮小字級，不會超出格子。</li>
       </ul>
-      <h3>下載</h3>
-      <ul>
-        <li>「下載本頁完成圖（JPG）」：輸出目前分頁畫面上所有照片＋文字的完成品，尺寸 1040×800。</li>
-        <li>「下載本頁空白模板（PNG）」：只輸出目前分頁選擇的版型（含或不含頂部標籤列）的深色漸層／版面結構，照片區塊透明、不含文字，方便另外用其他軟體疊圖。</li>
-        <li>「下載兩頁完成圖（2 張 JPG）」：一次把第 1、2 頁的完成品各存一張，不用分別切換分頁下載。部分瀏覽器對「一次點擊觸發多個檔案下載」有安全限制，第一次使用時可能會跳出「允許這個網站下載多個檔案」的提示，允許後就能正常一次拿到兩張；若沒跳出提示但只收到一張，改用分頁籤切換後各自按「下載本頁完成圖」最保險。</li>
-        <li>「清除本頁」只會清空目前分頁六格的文字、標籤、圖片與設定（會先跳出確認框），不影響另一頁。</li>
-      </ul>
+
+      <h3>⑤ 成品</h3>
+      <img src="assets/help/output-sample.jpg" alt="成品範例">
+      <p style="margin:0">下載會自動放大到 2 倍解析度並內嵌 300dpi，小字邊緣更乾淨、不易因壓縮糊在一起。</p>
     </div>
   </div>
 </div>
