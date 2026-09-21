@@ -32,7 +32,7 @@
 | 檔案 | 說明 |
 |---|---|
 | `index.html` | 全部功能所在，純 HTML + CSS + 原生 JavaScript（Canvas 2D 繪圖），無外部相依套件 |
-| `whz-heavy.ttf` | 標題套用的字型（WHZ-Heavy），以 `@font-face` 載入 |
+| `TaipeiSansTCBeta-Bold.ttf` | 標題套用的字型（台北黑體 Taipei Sans TC Beta Bold），以 `@font-face` 載入 |
 | `assets/template-header.png` | 含頂部黃色標籤列的模板圖層，Canva 原始匯出檔，直接套用不重繪 |
 | `assets/template-plain.png` | 不含標籤列（僅頂部淡淡暗角）的模板圖層，同樣是 Canva 原始匯出檔 |
 

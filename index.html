@@ -6,8 +6,8 @@
 <title>Line推播套版產生器</title>
 <style>
   @font-face {
-    font-family: "WHZ-Heavy";
-    src: url("whz-heavy.ttf") format("truetype");
+    font-family: "TaipeiSansTC-Bold";
+    src: url("TaipeiSansTCBeta-Bold.ttf") format("truetype");
     font-weight: 900;
     font-display: swap;
   }
@@ -346,7 +346,7 @@ const ROW_EDGES_HEADER = [HEADER_H, HEADER_H + (CANVAS_H - HEADER_H) / 2, CANVAS
 const ROW_EDGES_PLAIN = [0, CANVAS_H / 2, CANVAS_H];
 function rowEdgesFor(showHeader) { return showHeader ? ROW_EDGES_HEADER : ROW_EDGES_PLAIN; }
 const CELL_LABELS = ['左上', '中上', '右上', '左下', '中下', '右下'];
-const FONT_STACK = `"WHZ-Heavy", "Microsoft JhengHei", "PingFang TC", sans-serif`;
+const FONT_STACK = `"TaipeiSansTC-Bold", "Microsoft JhengHei", "PingFang TC", sans-serif`;
 const LINE_COLORS = ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'];
 const TAG_COLORS = ['#ff0000', '#a5a5a5'];
 const DEFAULT_CARDS = [
@@ -367,7 +367,7 @@ function defaultColorsFor(i) {
     : { color1: '#ffff00', color2: '#ffffff' };
 }
 
-const headlineFontReady = document.fonts.load(`900 40px "WHZ-Heavy"`).catch(() => {});
+const headlineFontReady = document.fonts.load(`900 40px "TaipeiSansTC-Bold"`).catch(() => {});
 
 // The header/gradient artwork is the actual Canva-exported template PNGs —
 // composited as-is, never redrawn from scratch. Two page variants are
