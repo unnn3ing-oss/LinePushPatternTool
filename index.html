@@ -299,8 +299,8 @@
         <li>版型的背景／漸層是直接套用實際輸出的模板圖片（不是重繪的近似圖），確保跟原始素材完全一致。每一格可以獨立更換照片、標題文字、標籤與強調色。</li>
         <li>點左側任一格的圖片框可選檔上傳，也可以直接把圖片拖曳到那個框上，或先點該格再用 Ctrl+V 貼上剪貼簿圖片。</li>
         <li>右側預覽畫布上，直接對著某一格的照片拖曳即可調整照片位置；滑鼠停在該格上滾動滾輪可放大/縮小；也可以用左側該格的「縮放」滑桿。</li>
-        <li>每格可填一個選填的「標籤文字」（紅底白字小標籤，例如「關鍵竟是房東」），會顯示在該格標題文字正上方、靠左對齊。</li>
-        <li>每格兩行標題文字，兩行都可從色票分別選顏色（白／黃／紅／藍／綠／黑），預設依欄位交錯白／黃配色。每一行的字距、字級都是獨立計算：先嘗試用字距把文字平均撐滿整個字框寬度，字太長撐不下時改成壓縮字距，字距壓到最緊仍放不下才會縮小字級，確保不超出格子。</li>
+        <li>每格可填一個選填的「標籤文字」（白字小標籤，例如「關鍵竟是房東」），底色可選紅色或灰色，會顯示在該格標題文字正上方、靠左對齊。</li>
+        <li>每格兩行標題文字，兩行都可從色票分別選顏色（白／黃／紅／藍／綠／黑），預設依欄位交錯白／黃配色。每一行的字距、字級都是獨立計算：字沒塞滿字框時維持自然字距，字太長放不下才會先壓縮字距，字距壓到最緊仍放不下才會縮小字級，確保不超出格子。</li>
       </ul>
       <h3>下載</h3>
       <ul>
@@ -337,10 +337,17 @@ const CANVAS_W = 1040, CANVAS_H = 800;
 const HEADER_H = 46;
 const COLS = 3, ROWS = 2;
 const COL_EDGES = [0, CANVAS_W / 3, (CANVAS_W / 3) * 2, CANVAS_W];
-const ROW_EDGES = [HEADER_H, HEADER_H + (CANVAS_H - HEADER_H) / 2, CANVAS_H];
+// Page 1 (with header) reserves the top HEADER_H for the yellow bar, so its
+// 2 rows split the remaining height. Page 2 (no header) has no such gap —
+// its rows fill the full canvas height edge-to-edge, matching the real
+// reference export where photos run flush to the very top.
+const ROW_EDGES_HEADER = [HEADER_H, HEADER_H + (CANVAS_H - HEADER_H) / 2, CANVAS_H];
+const ROW_EDGES_PLAIN = [0, CANVAS_H / 2, CANVAS_H];
+function rowEdgesFor(showHeader) { return showHeader ? ROW_EDGES_HEADER : ROW_EDGES_PLAIN; }
 const CELL_LABELS = ['左上', '中上', '右上', '左下', '中下', '右下'];
 const FONT_STACK = `"WHZ-Heavy", "Microsoft JhengHei", "PingFang TC", sans-serif`;
 const LINE_COLORS = ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'];
+const TAG_COLORS = ['#ff0000', '#a5a5a5'];
 const DEFAULT_CARDS = [
   { line1: '代課師開特斯拉狂飆', line2: '192km"直接把友撞死"', tag: '' },
   { line1: '台指期夜盤跳水',     line2: '崩4萬點周一恐大跌?',   tag: '' },
@@ -381,10 +388,11 @@ const templatesReady = Promise.all([
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-function cellRect(i) {
+function cellRect(i, showHeader) {
   const row = Math.floor(i / COLS), col = i % COLS;
   const x = COL_EDGES[col], x1 = COL_EDGES[col + 1];
-  const y = ROW_EDGES[row], y1 = ROW_EDGES[row + 1];
+  const rowEdges = rowEdgesFor(showHeader);
+  const y = rowEdges[row], y1 = rowEdges[row + 1];
   return { x, y, w: x1 - x, h: y1 - y };
 }
 
@@ -400,6 +408,7 @@ function freshCardState(i) {
     line1: d.line1,
     line2: d.line2,
     tag: d.tag || '',
+    tagColor: TAG_COLORS[0],
     color1: c.color1,
     color2: c.color2,
     img: null,
@@ -467,13 +476,13 @@ function computeFit(ctx, text, maxWidth, baseFontSize) {
   return { fontSize: MIN_FONT_SIZE, spacing: MIN_SPACING };
 }
 
-// Independent per-line fit: spread the line's characters evenly across the
-// full box width via letter-spacing (justify) when it's short, and squeeze
-// letter-spacing when it's long. Only once spacing is squeezed to its floor
-// and the line still overflows does the font size drop a step; each line
-// (line 1, line 2) runs this fully independently of the other.
+// Independent per-line fit: if the text already fits at its natural
+// letter-spacing, leave it alone (no stretching to fill the box). Only when
+// it's too long to fit does spacing get squeezed — and only once spacing is
+// squeezed to its floor and it still overflows does the font size drop a
+// step; each line (line 1, line 2) runs this fully independently.
 function computeJustifiedFit(ctx, text, maxWidth) {
-  if (!text) return { fontSize: BASE_FONT_SIZE, spacing: 0 };
+  if (!text) return { fontSize: BASE_FONT_SIZE, spacing: NORMAL_SPACING };
   const chars = [...text];
   const n = chars.length;
   let fontSize = BASE_FONT_SIZE;
@@ -484,11 +493,12 @@ function computeJustifiedFit(ctx, text, maxWidth) {
     if (n <= 1) {
       if (sumW <= maxWidth) return { fontSize, spacing: 0 };
     } else {
+      const naturalWidth = sumW + NORMAL_SPACING * (n - 1);
+      if (naturalWidth <= maxWidth) return { fontSize, spacing: NORMAL_SPACING };
       const minSpacing = -fontSize * 0.06;
-      const maxSpacing = fontSize * 0.6;
       const required = (maxWidth - sumW) / (n - 1);
       if (required >= minSpacing) {
-        return { fontSize, spacing: Math.min(required, maxSpacing) };
+        return { fontSize, spacing: required };
       }
     }
     fontSize -= 1;
@@ -556,21 +566,21 @@ function drawHeaderLabel(ctx, label) {
   }
 }
 
-// Optional small red kicker tag (e.g. "關鍵竟是房東") that sits flush to the
+// Optional small kicker tag (e.g. "關鍵竟是房東") that sits flush to the
 // cell's left edge, directly above the headline block. Unlike line 1/2 it
 // is never stretched to fill the width — it just shrinks to fit if needed.
-const TAG_BG = '#ff0000';
+// Background is either red or gray (state.tagColor), chosen per card.
 const TAG_BASE_FONT_SIZE = 24;
 const TAG_PAD_X = 10, TAG_PAD_Y = 6, TAG_GAP = 4;
 
-function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY) {
+function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
   ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
   const textWidth = measureWithSpacing(ctx, text, spacing);
   const boxH = fontSize + TAG_PAD_Y * 2;
   const boxW = Math.min(cell.w, textWidth + TAG_PAD_X * 2);
   const boxBottom = bottomLimitY - TAG_GAP;
   const boxTop = boxBottom - boxH;
-  ctx.fillStyle = TAG_BG;
+  ctx.fillStyle = bgColor;
   ctx.fillRect(cell.x, boxTop, boxW, boxH);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -614,7 +624,7 @@ function cellImageSize(cell, state) {
 function clampCardOffset(i) {
   const state = activePage().cards[i];
   if (!state.img) return;
-  const cell = cellRect(i);
+  const cell = cellRect(i, activePage().showHeader);
   const { dw, dh } = cellImageSize(cell, state);
   state.offsetX = clamp(state.offsetX, cell.w - dw, 0);
   state.offsetY = clamp(state.offsetY, cell.h - dh, 0);
@@ -626,7 +636,7 @@ function applyScale(i, newScale) {
   const state = activePage().cards[i];
   state.scale = clamp(newScale, 1, 3.5);
   if (!state.img) return;
-  const cell = cellRect(i);
+  const cell = cellRect(i, activePage().showHeader);
   const { dw, dh } = cellImageSize(cell, state);
   state.offsetX = cell.w / 2 - state.fx * dw;
   state.offsetY = cell.h / 2 - state.fy * dh;
@@ -685,7 +695,7 @@ function drawCellText(ctx, cell, state) {
     const topLineBaseline = baseY1 != null ? baseY1 : (baseY2 != null ? baseY2 : cell.y + cell.h - paddingBottom);
     const topLineFontSize = baseY1 != null ? fontSize1 : fontSize2;
     const topOfText = topLineBaseline - topLineFontSize * 0.5;
-    drawTag(ctx, cell, tag, tagFontSize, tagSpacing, topOfText);
+    drawTag(ctx, cell, tag, tagFontSize, tagSpacing, topOfText, state.tagColor || TAG_COLORS[0]);
   }
 }
 
@@ -694,16 +704,16 @@ function renderTo(ctx, mode, pageState, opts = {}) {
   if (mode === 'final') {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    for (let i = 0; i < 6; i++) drawCellImage(ctx, cellRect(i), pageState.cards[i]);
+    for (let i = 0; i < 6; i++) drawCellImage(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
   }
   drawTemplateOverlay(ctx, pageState.showHeader);
   if (mode === 'final') {
-    for (let i = 0; i < 6; i++) drawCellText(ctx, cellRect(i), pageState.cards[i]);
+    for (let i = 0; i < 6; i++) drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
 
   if (opts.showActiveBorder && activeCard != null) {
-    const cell = cellRect(activeCard);
+    const cell = cellRect(activeCard, pageState.showHeader);
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
     ctx.lineWidth = 3;
@@ -749,7 +759,7 @@ function setCardImage(i, image, fileName) {
   state.scale = 1;
   state.fx = 0.5;
   state.fy = 0.5;
-  const cell = cellRect(i);
+  const cell = cellRect(i, activePage().showHeader);
   const { dw, dh } = cellImageSize(cell, state);
   state.offsetX = (cell.w - dw) / 2;
   state.offsetY = (cell.h - dh) / 2;
@@ -809,10 +819,11 @@ function buildCardUI(i) {
   tagRow.className = 'field-row';
   const tagInput = document.createElement('input');
   tagInput.type = 'text';
-  tagInput.placeholder = '標籤文字（選填，紅底白字，例如：關鍵竟是房東）';
+  tagInput.placeholder = '標籤文字（選填，例如：關鍵竟是房東）';
   tagInput.value = activePage().cards[i].tag;
   tagRow.appendChild(tagInput);
   box.appendChild(tagRow);
+  const tagSwatchEls = buildSwatchRow('標籤底色', 'tagColor', TAG_COLORS);
 
   const row1 = document.createElement('div');
   row1.className = 'field-row';
@@ -839,7 +850,7 @@ function buildCardUI(i) {
   in1.addEventListener('input', () => { activePage().cards[i].line1 = in1.value; render(); });
   in2.addEventListener('input', () => { activePage().cards[i].line2 = in2.value; render(); });
 
-  function buildSwatchRow(labelText, colorKey) {
+  function buildSwatchRow(labelText, colorKey, palette) {
     const row = document.createElement('div');
     row.className = 'swatch-row';
     const label = document.createElement('span');
@@ -847,7 +858,7 @@ function buildCardUI(i) {
     label.textContent = labelText;
     row.appendChild(label);
     const els = [];
-    LINE_COLORS.forEach(hex => {
+    palette.forEach(hex => {
       const sw = document.createElement('div');
       sw.className = 'color-swatch';
       sw.style.background = hex;
@@ -866,8 +877,8 @@ function buildCardUI(i) {
     box.appendChild(row);
     return els;
   }
-  const swatchEls1 = buildSwatchRow('第一行顏色', 'color1');
-  const swatchEls2 = buildSwatchRow('第二行顏色', 'color2');
+  const swatchEls1 = buildSwatchRow('第一行顏色', 'color1', LINE_COLORS);
+  const swatchEls2 = buildSwatchRow('第二行顏色', 'color2', LINE_COLORS);
 
   const scaleRow = document.createElement('div');
   scaleRow.className = 'scale-row';
@@ -903,7 +914,7 @@ function buildCardUI(i) {
     scaleInput.value = '1';
     scaleVal.textContent = '1.00x';
     if (state.img) {
-      const cell = cellRect(i);
+      const cell = cellRect(i, activePage().showHeader);
       const { dw, dh } = cellImageSize(cell, state);
       state.offsetX = (cell.w - dw) / 2;
       state.offsetY = (cell.h - dh) / 2;
@@ -920,7 +931,7 @@ function buildCardUI(i) {
   box.addEventListener('mousedown', () => setActiveCard(i));
 
   cellsList.appendChild(box);
-  cardEls.push({ box, dzThumb, dzText, tagInput, in1, in2, swatchEls1, swatchEls2, scaleInput, scaleVal });
+  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, scaleInput, scaleVal });
 }
 
 // Refreshes one cell's DOM controls from the active page's current state —
@@ -940,6 +951,7 @@ function syncCellUIFromState(i) {
   el.tagInput.value = state.tag;
   el.in1.value = state.line1;
   el.in2.value = state.line2;
+  el.tagSwatchEls.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === (state.tagColor || TAG_COLORS[0]).toLowerCase()));
   el.swatchEls1.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color1.toLowerCase()));
   el.swatchEls2.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color2.toLowerCase()));
   el.scaleInput.value = String(state.scale);
@@ -973,12 +985,13 @@ function getCanvasPos(evt) {
 }
 
 function cellIndexAt(x, y) {
-  if (y < HEADER_H || x < 0 || x > CANVAS_W) return -1;
+  const rowEdges = rowEdgesFor(activePage().showHeader);
+  if (x < 0 || x > CANVAS_W || y < rowEdges[0] || y > rowEdges[2]) return -1;
   let col = COLS - 1;
   for (let c = 0; c < COLS; c++) {
     if (x >= COL_EDGES[c] && x < COL_EDGES[c + 1]) { col = c; break; }
   }
-  const row = y < ROW_EDGES[1] ? 0 : 1;
+  const row = y < rowEdges[1] ? 0 : 1;
   return row * COLS + col;
 }
 
