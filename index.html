@@ -71,7 +71,7 @@
     padding: 18px;
   }
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-  input[type="text"] {
+  input[type="text"], textarea {
     width: 100%;
     font-family: inherit;
     font-size: 14px;
@@ -81,6 +81,7 @@
     background: var(--bg);
     color: var(--text);
   }
+  textarea { resize: vertical; line-height: 1.5; }
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
@@ -173,7 +174,16 @@
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
   .swatch-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-  .swatch-row .swatch-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+  .swatch-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+  .swatch-indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+  .swatch-row.collapsed .color-swatch { display: none; }
   .color-swatch {
     width: 20px;
     height: 20px;
@@ -246,6 +256,16 @@
 
   <div class="layout">
     <div class="card">
+      <div class="top-label-box">
+        <div class="field" style="margin-bottom:0">
+          <label for="quickfillText">快速填入（貼上內容，依序自動填入第 1～12 格：第 1 頁 6 格接著第 2 頁 6 格，由左至右、由上至下）</label>
+          <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;（網址那一行可省略，會自動略過）"></textarea>
+          <div class="btn-row">
+            <button type="button" id="quickfillBtn">快速填入</button>
+          </div>
+        </div>
+      </div>
+
       <div class="page-tabs">
         <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
         <button type="button" class="page-tab" data-page="1">第 2 頁</button>
@@ -262,17 +282,15 @@
         </div>
       </div>
 
+      <div class="btn-row">
+        <button class="primary" id="downloadJpgBtn">下載本頁</button>
+      </div>
+      <div class="btn-row">
+        <button id="downloadAllBtn">全部下載</button>
+      </div>
+
       <div id="cellsList"></div>
 
-      <div class="btn-row">
-        <button class="primary" id="downloadJpgBtn">下載本頁完成圖（JPG）</button>
-      </div>
-      <div class="btn-row">
-        <button id="downloadPngBtn">下載本頁空白模板（PNG）</button>
-      </div>
-      <div class="btn-row">
-        <button id="downloadAllBtn">下載兩頁完成圖（2 張 JPG）</button>
-      </div>
       <div class="btn-row">
         <button id="resetAllBtn">清除本頁</button>
       </div>
@@ -336,6 +354,10 @@
 // ---------------------------------------------------------------------------
 const CANVAS_W = 1040, CANVAS_H = 800;
 const HEADER_H = 46;
+// Thin black cap line along the very top edge of the yellow header bar —
+// part of the reference design but not baked into the template PNG, so it
+// has to be drawn separately on top of it.
+const HEADER_TOP_LINE_H = 3;
 const COLS = 3, ROWS = 2;
 const COL_EDGES = [0, CANVAS_W / 3, (CANVAS_W / 3) * 2, CANVAS_W];
 // Page 1 (with header) reserves the top HEADER_H for the yellow bar, so its
@@ -388,6 +410,34 @@ const templatesReady = Promise.all([
 ]);
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// Converts full-width punctuation (as Chinese IMEs commonly produce for ！？
+// （）＂＇，：；etc.) to their half-width/ASCII form, plus curly quotes and
+// 。、to their straight/ASCII equivalents — every substitution is one
+// character for one character, so callers can safely restore the caret
+// position afterwards without any offset math.
+function toHalfWidth(str) {
+  if (!str) return str;
+  return str
+    .replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/。/g, '.')
+    .replace(/、/g, ',');
+}
+
+// Normalizes a text <input>'s value in place (for use in its own 'input'
+// listener) and returns the normalized string, preserving the caret
+// position since toHalfWidth never changes string length.
+function normalizeInputValue(inputEl) {
+  const normalized = toHalfWidth(inputEl.value);
+  if (normalized !== inputEl.value) {
+    const pos = inputEl.selectionStart;
+    inputEl.value = normalized;
+    inputEl.setSelectionRange(pos, pos);
+  }
+  return normalized;
+}
 
 function cellRect(i, showHeader) {
   const row = Math.floor(i / COLS), col = i % COLS;
@@ -443,8 +493,6 @@ let activeCard = 0;
 const BASE_FONT_SIZE = 40;
 const MIN_FONT_SIZE = 14;
 const NORMAL_SPACING = 0.5;
-const MIN_SPACING = -2;
-const SPACING_STEP = 0.25;
 
 function measureWithSpacing(ctx, text, spacing) {
   if (!text) return 0;
@@ -453,40 +501,18 @@ function measureWithSpacing(ctx, text, spacing) {
   return w - spacing;
 }
 
+// Shared fit algorithm for every text box (header label, tag, headline
+// lines): natural letter-spacing first: if the text already fits, leave it
+// alone (never stretched to fill the box). If it overflows, compress
+// spacing down towards 0 — but never past 0, since a negative gap starts
+// overlapping glyph strokes for this font. Only once spacing has hit that
+// floor and it still overflows does the font size drop a step, then the
+// same spacing search repeats at the smaller size.
 function computeFit(ctx, text, maxWidth, baseFontSize) {
   if (!text) return { fontSize: baseFontSize, spacing: NORMAL_SPACING };
-  let fontSize = baseFontSize;
-  while (fontSize >= MIN_FONT_SIZE) {
-    ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
-    for (let sp = NORMAL_SPACING; sp >= MIN_SPACING - 0.001; sp -= SPACING_STEP) {
-      if (measureWithSpacing(ctx, text, sp) <= maxWidth) {
-        return { fontSize, spacing: sp };
-      }
-    }
-    fontSize -= 1;
-  }
-  // Pathologically long text: even the smallest font size at the tightest
-  // letter-spacing still overflows. Scale both down further so the line
-  // never spills outside its box, however long the text is.
-  ctx.font = `900 ${MIN_FONT_SIZE}px ${FONT_STACK}`;
-  const overflowWidth = measureWithSpacing(ctx, text, MIN_SPACING);
-  if (overflowWidth > maxWidth && overflowWidth > 0) {
-    const shrink = maxWidth / overflowWidth;
-    return { fontSize: MIN_FONT_SIZE * shrink, spacing: MIN_SPACING * shrink };
-  }
-  return { fontSize: MIN_FONT_SIZE, spacing: MIN_SPACING };
-}
-
-// Independent per-line fit: if the text already fits at its natural
-// letter-spacing, leave it alone (no stretching to fill the box). Only when
-// it's too long to fit does spacing get squeezed — and only once spacing is
-// squeezed to its floor and it still overflows does the font size drop a
-// step; each line (line 1, line 2) runs this fully independently.
-function computeJustifiedFit(ctx, text, maxWidth) {
-  if (!text) return { fontSize: BASE_FONT_SIZE, spacing: NORMAL_SPACING };
   const chars = [...text];
   const n = chars.length;
-  let fontSize = BASE_FONT_SIZE;
+  let fontSize = baseFontSize;
   while (fontSize >= MIN_FONT_SIZE) {
     ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
     let sumW = 0;
@@ -496,27 +522,23 @@ function computeJustifiedFit(ctx, text, maxWidth) {
     } else {
       const naturalWidth = sumW + NORMAL_SPACING * (n - 1);
       if (naturalWidth <= maxWidth) return { fontSize, spacing: NORMAL_SPACING };
-      const minSpacing = -fontSize * 0.06;
       const required = (maxWidth - sumW) / (n - 1);
-      if (required >= minSpacing) {
+      if (required >= 0) {
         return { fontSize, spacing: required };
       }
     }
     fontSize -= 1;
   }
-  // Pathologically long text: even the smallest font size at the tightest
-  // letter-spacing still overflows. Scale both down further so the line
-  // never spills outside its box, however long the text is.
+  // Pathologically long text: even the smallest font size at spacing=0
+  // still overflows. Scale the font size down further (spacing stays 0,
+  // never negative) so the line never spills outside its box.
   ctx.font = `900 ${MIN_FONT_SIZE}px ${FONT_STACK}`;
   let sumW = 0;
   for (const ch of chars) sumW += ctx.measureText(ch).width;
-  const minSpacing = -MIN_FONT_SIZE * 0.06;
-  const overflowWidth = n > 1 ? sumW + minSpacing * (n - 1) : sumW;
-  if (overflowWidth > maxWidth && overflowWidth > 0) {
-    const shrink = maxWidth / overflowWidth;
-    return { fontSize: MIN_FONT_SIZE * shrink, spacing: minSpacing * shrink };
+  if (sumW > maxWidth && sumW > 0) {
+    return { fontSize: MIN_FONT_SIZE * (maxWidth / sumW), spacing: 0 };
   }
-  return { fontSize: MIN_FONT_SIZE, spacing: minSpacing };
+  return { fontSize: MIN_FONT_SIZE, spacing: 0 };
 }
 
 function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor) {
@@ -546,6 +568,10 @@ function drawTemplateOverlay(ctx, showHeader) {
   const img = showHeader ? templateHeaderImg : templatePlainImg;
   if (!img) return;
   ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H);
+  if (showHeader) {
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, CANVAS_W, HEADER_TOP_LINE_H);
+  }
 }
 
 // The label text ("熱門話題" by default) is not baked into the template PNG
@@ -662,16 +688,18 @@ function applyScale(i, newScale) {
 }
 
 function computeCardFit(ctx, cell, state) {
-  const paddingX = 14;
-  const maxWidth = cell.w - paddingX * 2;
+  // The text box runs flush to the cell's left/right grid lines — no side
+  // padding — so natural-spacing text can fill all the way to the edge
+  // before compression ever kicks in.
+  const maxWidth = cell.w;
   const line1 = (state.line1 || '').trim();
   const line2 = (state.line2 || '').trim();
   const tag = (state.tag || '').trim();
   const key = `${cell.w}|${line1}|${line2}|${tag}`;
   if (state._fitCache && state._fitCache.key === key) return state._fitCache;
 
-  const fit1 = line1 ? computeJustifiedFit(ctx, line1, maxWidth) : null;
-  const fit2 = line2 ? computeJustifiedFit(ctx, line2, maxWidth) : null;
+  const fit1 = line1 ? computeFit(ctx, line1, maxWidth, BASE_FONT_SIZE) : null;
+  const fit2 = line2 ? computeFit(ctx, line2, maxWidth, BASE_FONT_SIZE) : null;
   const tagMaxWidth = cell.w - 20;
   const tagFit = tag ? computeFit(ctx, tag, tagMaxWidth, TAG_BASE_FONT_SIZE) : null;
 
@@ -694,18 +722,24 @@ function drawCellText(ctx, cell, state) {
   const { line1, line2, fontSize1, sp1, fontSize2, sp2, tag, tagFontSize, tagSpacing } = computeCardFit(ctx, cell, state);
   if (!line1 && !line2 && !tag) return;
 
+  // Anchored off BASE_FONT_SIZE (not this cell's own fontSize1/2, which may
+  // have shrunk to fit long text) so line 1 and line 2 land at the exact
+  // same height in every cell of a row — a cell with a long, shrunk title
+  // still lines up with its neighbors instead of sitting lower/higher.
+  const bottomAnchor = cell.y + cell.h - paddingBottom - BASE_FONT_SIZE * 0.5;
+  const lineGap = BASE_FONT_SIZE * 1.18;
+
   let baseY1 = null, baseY2 = null;
   if (line1 && line2) {
-    baseY2 = cell.y + cell.h - paddingBottom - fontSize2 * 0.5;
-    const lineGap = (fontSize1 + fontSize2) / 2 * 1.18;
+    baseY2 = bottomAnchor;
     baseY1 = baseY2 - lineGap;
     drawSpacedText(ctx, line2, centerX, baseY2, fontSize2, sp2, state.color2);
     drawSpacedText(ctx, line1, centerX, baseY1, fontSize1, sp1, state.color1);
   } else if (line2) {
-    baseY2 = cell.y + cell.h - paddingBottom - fontSize2 * 0.5;
+    baseY2 = bottomAnchor;
     drawSpacedText(ctx, line2, centerX, baseY2, fontSize2, sp2, state.color2);
   } else if (line1) {
-    baseY1 = cell.y + cell.h - paddingBottom - fontSize1 * 0.5;
+    baseY1 = bottomAnchor;
     drawSpacedText(ctx, line1, centerX, baseY1, fontSize1, sp1, state.color1);
   }
 
@@ -833,48 +867,30 @@ function buildCardUI(i) {
     handleFile(e.dataTransfer.files[0]);
   });
 
-  const tagRow = document.createElement('div');
-  tagRow.className = 'field-row';
-  const tagInput = document.createElement('input');
-  tagInput.type = 'text';
-  tagInput.placeholder = '標籤文字（選填，例如：關鍵竟是房東）';
-  tagInput.value = activePage().cards[i].tag;
-  tagRow.appendChild(tagInput);
-  box.appendChild(tagRow);
-  const tagSwatchEls = buildSwatchRow('標籤底色', 'tagColor', TAG_COLORS);
-
-  const row1 = document.createElement('div');
-  row1.className = 'field-row';
-  const in1 = document.createElement('input');
-  in1.type = 'text';
-  in1.placeholder = '第一行文字';
-  in1.value = activePage().cards[i].line1;
-  row1.appendChild(in1);
-  box.appendChild(row1);
-
-  const row2 = document.createElement('div');
-  row2.className = 'field-row';
-  const in2 = document.createElement('input');
-  in2.type = 'text';
-  in2.placeholder = '第二行文字（強調色）';
-  in2.value = activePage().cards[i].line2;
-  row2.appendChild(in2);
-  box.appendChild(row2);
-
-  tagInput.addEventListener('focus', () => setActiveCard(i));
-  in1.addEventListener('focus', () => setActiveCard(i));
-  in2.addEventListener('focus', () => setActiveCard(i));
-  tagInput.addEventListener('input', () => { activePage().cards[i].tag = tagInput.value; render(); });
-  in1.addEventListener('input', () => { activePage().cards[i].line1 = in1.value; render(); });
-  in2.addEventListener('input', () => { activePage().cards[i].line2 = in2.value; render(); });
-
-  function buildSwatchRow(labelText, colorKey, palette) {
+  // Color pickers for line 1 / line 2 default to collapsed (just the label
+  // + a small dot showing the current color) so the panel isn't dominated
+  // by swatches; clicking the label/dot reveals the full palette.
+  function buildSwatchRow(labelText, colorKey, palette, opts = {}) {
     const row = document.createElement('div');
     row.className = 'swatch-row';
+    if (opts.collapsible) row.classList.add('collapsed');
     const label = document.createElement('span');
     label.className = 'swatch-label';
     label.textContent = labelText;
     row.appendChild(label);
+    let indicator = null;
+    if (opts.collapsible) {
+      indicator = document.createElement('span');
+      indicator.className = 'swatch-indicator';
+      indicator.style.background = activePage().cards[i][colorKey];
+      indicator.title = '點擊選擇顏色';
+      row.appendChild(indicator);
+      const toggle = () => row.classList.toggle('collapsed');
+      label.style.cursor = 'pointer';
+      label.addEventListener('click', toggle);
+      indicator.style.cursor = 'pointer';
+      indicator.addEventListener('click', toggle);
+    }
     const els = [];
     palette.forEach(hex => {
       const sw = document.createElement('div');
@@ -887,22 +903,21 @@ function buildCardUI(i) {
         activePage().cards[i][colorKey] = hex;
         els.forEach(s => s.classList.remove('selected'));
         sw.classList.add('selected');
+        if (indicator) indicator.style.background = hex;
         render();
       });
       els.push(sw);
       row.appendChild(sw);
     });
     box.appendChild(row);
-    return els;
+    return { els, indicator };
   }
-  const swatchEls1 = buildSwatchRow('第一行顏色', 'color1', LINE_COLORS);
-  const swatchEls2 = buildSwatchRow('第二行顏色', 'color2', LINE_COLORS);
 
   const scaleRow = document.createElement('div');
   scaleRow.className = 'scale-row';
   const scaleLabelWrap = document.createElement('span');
   scaleLabelWrap.className = 'swatch-label';
-  scaleLabelWrap.textContent = '縮放';
+  scaleLabelWrap.textContent = '圖片縮放';
   const scaleInput = document.createElement('input');
   scaleInput.type = 'range';
   scaleInput.min = '1';
@@ -946,10 +961,47 @@ function buildCardUI(i) {
   scaleRow.appendChild(resetBtn);
   box.appendChild(scaleRow);
 
+  const row1 = document.createElement('div');
+  row1.className = 'field-row';
+  const in1 = document.createElement('input');
+  in1.type = 'text';
+  in1.placeholder = '第一行文字';
+  in1.value = activePage().cards[i].line1;
+  row1.appendChild(in1);
+  box.appendChild(row1);
+  const { els: swatchEls1, indicator: indicator1 } = buildSwatchRow('第一行顏色', 'color1', LINE_COLORS, { collapsible: true });
+
+  const row2 = document.createElement('div');
+  row2.className = 'field-row';
+  const in2 = document.createElement('input');
+  in2.type = 'text';
+  in2.placeholder = '第二行文字（強調色）';
+  in2.value = activePage().cards[i].line2;
+  row2.appendChild(in2);
+  box.appendChild(row2);
+  const { els: swatchEls2, indicator: indicator2 } = buildSwatchRow('第二行顏色', 'color2', LINE_COLORS, { collapsible: true });
+
+  const tagRow = document.createElement('div');
+  tagRow.className = 'field-row';
+  const tagInput = document.createElement('input');
+  tagInput.type = 'text';
+  tagInput.placeholder = '標籤文字（選填，例如：關鍵竟是房東）';
+  tagInput.value = activePage().cards[i].tag;
+  tagRow.appendChild(tagInput);
+  box.appendChild(tagRow);
+  const { els: tagSwatchEls } = buildSwatchRow('標籤底色', 'tagColor', TAG_COLORS);
+
+  tagInput.addEventListener('focus', () => setActiveCard(i));
+  in1.addEventListener('focus', () => setActiveCard(i));
+  in2.addEventListener('focus', () => setActiveCard(i));
+  tagInput.addEventListener('input', () => { activePage().cards[i].tag = normalizeInputValue(tagInput); render(); });
+  in1.addEventListener('input', () => { activePage().cards[i].line1 = normalizeInputValue(in1); render(); });
+  in2.addEventListener('input', () => { activePage().cards[i].line2 = normalizeInputValue(in2); render(); });
+
   box.addEventListener('mousedown', () => setActiveCard(i));
 
   cellsList.appendChild(box);
-  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, scaleInput, scaleVal });
+  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, indicator1, indicator2, scaleInput, scaleVal });
 }
 
 // Refreshes one cell's DOM controls from the active page's current state —
@@ -972,6 +1024,8 @@ function syncCellUIFromState(i) {
   el.tagSwatchEls.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === (state.tagColor || TAG_COLORS[0]).toLowerCase()));
   el.swatchEls1.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color1.toLowerCase()));
   el.swatchEls2.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color2.toLowerCase()));
+  el.indicator1.style.background = state.color1;
+  el.indicator2.style.background = state.color2;
   el.scaleInput.value = String(state.scale);
   el.scaleVal.textContent = `${state.scale.toFixed(2)}x`;
 }
@@ -1020,6 +1074,7 @@ function pointerDown(evt) {
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
   setActiveCard(idx);
+  cardEls[idx].box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const state = activePage().cards[idx];
   if (!state.img) {
     cardEls[idx].box.querySelector('.dropzone').click();
@@ -1103,7 +1158,7 @@ document.addEventListener('paste', e => {
 const topLabelInput = document.getElementById('topLabel');
 const showHeaderToggle = document.getElementById('showHeaderToggle');
 topLabelInput.addEventListener('input', () => {
-  activePage().topLabel = topLabelInput.value;
+  activePage().topLabel = normalizeInputValue(topLabelInput);
   render();
 });
 showHeaderToggle.addEventListener('change', () => {
@@ -1273,12 +1328,6 @@ document.getElementById('downloadJpgBtn').addEventListener('click', async () => 
   exportCanvas(off, ['image/jpeg', 0.92], `熱門話題_第${activePageIndex + 1}頁.jpg`);
 });
 
-document.getElementById('downloadPngBtn').addEventListener('click', async () => {
-  await ensureAssetsReady();
-  const off = renderPageToOffscreen(activePage(), 'blank');
-  exportCanvas(off, ['image/png'], `熱門話題_第${activePageIndex + 1}頁_空白模板.png`);
-});
-
 document.getElementById('downloadAllBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   for (let p = 0; p < PAGE_COUNT; p++) {
@@ -1288,6 +1337,41 @@ document.getElementById('downloadAllBtn').addEventListener('click', async () => 
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
   }
+});
+
+// Parses pasted "★line1 line2 / url" blocks into up to 12 {line1, line2}
+// entries — only lines starting with ★ carry content; URL lines and blank
+// lines in between are simply skipped. Within a ★ line, the FIRST space
+// splits line1 from line2 and is itself dropped (not part of either line).
+function parseQuickFillText(text) {
+  const entries = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('★')) continue;
+    const content = line.slice(1).trim();
+    const spaceIdx = content.indexOf(' ');
+    if (spaceIdx === -1) {
+      entries.push({ line1: toHalfWidth(content), line2: '' });
+    } else {
+      entries.push({ line1: toHalfWidth(content.slice(0, spaceIdx)), line2: toHalfWidth(content.slice(spaceIdx + 1).trim()) });
+    }
+    if (entries.length >= PAGE_COUNT * 6) break;
+  }
+  return entries;
+}
+
+document.getElementById('quickfillBtn').addEventListener('click', () => {
+  const entries = parseQuickFillText(document.getElementById('quickfillText').value);
+  entries.forEach((entry, idx) => {
+    const card = pages[Math.floor(idx / 6)].cards[idx % 6];
+    card.line1 = entry.line1;
+    card.line2 = entry.line2;
+  });
+  syncAllCellUI();
+  render();
+  statusEl.textContent = entries.length
+    ? `快速填入完成，共套用 ${entries.length} 格`
+    : '沒有找到任何「★」開頭的內容可以填入';
 });
 
 function askConfirm() {
