@@ -552,9 +552,14 @@ function drawTemplateOverlay(ctx, showHeader) {
 // (only the icon is), so it's still drawn dynamically on top of it.
 function drawHeaderLabel(ctx, label) {
   if (!label) return;
-  const iconX = 16, iconW = HEADER_H * 0.56 * 1.65;
-  const maxLabelWidth = CANVAS_W - (iconX + iconW + 12) - 20;
-  const fit = computeFit(ctx, label, maxLabelWidth, 28);
+  // Measured directly from the template PNG's baked-in speaker icon (its
+  // right edge sits at x=68 in the 1040-wide canvas) plus the gap seen in
+  // the reference design — not a formula guess, since a formula estimate of
+  // the icon's width drifts from the real asset and misplaces the label.
+  const iconRightEdge = 68, labelGap = 33;
+  const labelStartX = iconRightEdge + labelGap;
+  const maxLabelWidth = CANVAS_W - labelStartX - 20;
+  const fit = computeFit(ctx, label, maxLabelWidth, 38);
   ctx.font = `900 ${fit.fontSize}px ${FONT_STACK}`;
   ctx.fillStyle = '#111111';
   ctx.textAlign = 'left';
@@ -571,7 +576,7 @@ function drawHeaderLabel(ctx, label) {
   const asc = m.actualBoundingBoxAscent || fit.fontSize * 0.72;
   const desc = m.actualBoundingBoxDescent || fit.fontSize * 0.02;
   const baselineY = HEADER_H / 2 + (asc - desc) / 2;
-  let cx = iconX + iconW + 12;
+  let cx = labelStartX;
   for (const ch of label) {
     const w = ctx.measureText(ch).width;
     ctx.fillText(ch, cx, baselineY);
@@ -1138,13 +1143,108 @@ function downloadDataUrl(dataUrl, filename) {
 
 const statusEl = document.getElementById('status');
 
+// ---------------------------------------------------------------------------
+// Export resolution / DPI
+// ---------------------------------------------------------------------------
+// The on-screen preview canvas stays at CANVAS_W x CANVAS_H (1040x800) for
+// snappy interactive editing, but downloads render at EXPORT_SCALE x that
+// size: more raw pixels for JPEG's lossy compression to work with (less
+// visible ringing/blur around small bold text) and enough detail to hold up
+// at print size. EXPORT_DPI is then written into the file's own metadata
+// (PNG pHYs chunk / JPEG JFIF density field) so print software reports the
+// correct physical size — the DPI tag alone doesn't add sharpness, only the
+// extra real pixels from EXPORT_SCALE do that; they're applied together.
+const EXPORT_SCALE = 2;
+const EXPORT_DPI = 300;
+
+function dataUrlToBytes(dataUrl) {
+  const binary = atob(dataUrl.split(',')[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function bytesToDataUrl(bytes, mime) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+const PNG_CRC_TABLE = (() => {
+  const table = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function pngCrc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = PNG_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// Inserts a pHYs chunk (pixel density) right after the mandatory IHDR chunk
+// — PNG's own way of carrying a DPI value — since the browser's PNG encoder
+// doesn't write one on its own.
+function pngWithDpi(dataUrl, dpi) {
+  const bytes = dataUrlToBytes(dataUrl);
+  const ppm = Math.round(dpi / 0.0254); // pixels per meter, PNG's native unit
+  const data = new Uint8Array(9);
+  const dv = new DataView(data.buffer);
+  dv.setUint32(0, ppm);
+  dv.setUint32(4, ppm);
+  data[8] = 1; // unit specifier: 1 = meters
+  const type = new TextEncoder().encode('pHYs');
+  const chunk = new Uint8Array(4 + 4 + data.length + 4);
+  const cv = new DataView(chunk.buffer);
+  cv.setUint32(0, data.length);
+  chunk.set(type, 4);
+  chunk.set(data, 8);
+  cv.setUint32(8 + data.length, pngCrc32(chunk.subarray(4, 8 + data.length)));
+  const IHDR_END = 8 + 4 + 4 + 13 + 4; // signature + IHDR(length+type+data+crc)
+  const out = new Uint8Array(bytes.length + chunk.length);
+  out.set(bytes.subarray(0, IHDR_END), 0);
+  out.set(chunk, IHDR_END);
+  out.set(bytes.subarray(IHDR_END), IHDR_END + chunk.length);
+  return bytesToDataUrl(out, 'image/png');
+}
+
+// Patches the density fields of the JFIF APP0 segment that every browser's
+// JPEG encoder writes right after the SOI marker — same byte length in, same
+// byte length out, just switching "no density info" to "N dots per inch".
+function jpegWithDpi(dataUrl, dpi) {
+  const bytes = dataUrlToBytes(dataUrl);
+  if (bytes[2] === 0xFF && bytes[3] === 0xE0) {
+    const ident = String.fromCharCode(bytes[6], bytes[7], bytes[8], bytes[9]);
+    if (ident === 'JFIF') {
+      // "JFIF\0" (offsets 6-10) is followed by a 2-byte version field
+      // (11-12) before units/density start — units at 13, not 11.
+      bytes[13] = 1; // units: 1 = dots per inch
+      bytes[14] = (dpi >> 8) & 0xFF;
+      bytes[15] = dpi & 0xFF;
+      bytes[16] = (dpi >> 8) & 0xFF;
+      bytes[17] = dpi & 0xFF;
+    }
+  }
+  return bytesToDataUrl(bytes, 'image/jpeg');
+}
+
 // Opening this file directly as file:// (instead of via a real http/https
 // server such as GitHub Pages) makes Chrome treat the local template PNGs
 // as cross-origin, which taints the canvas and blocks toDataURL(). Catch
 // that specific failure and explain it, rather than failing silently.
 function exportCanvas(off, toDataUrlArgs, filename) {
   try {
-    downloadDataUrl(off.toDataURL(...toDataUrlArgs), filename);
+    const mime = toDataUrlArgs[0];
+    let dataUrl = off.toDataURL(...toDataUrlArgs);
+    dataUrl = mime === 'image/png' ? pngWithDpi(dataUrl, EXPORT_DPI) : jpegWithDpi(dataUrl, EXPORT_DPI);
+    downloadDataUrl(dataUrl, filename);
   } catch (err) {
     statusEl.textContent = '下載失敗：請改用 http(s) 方式開啟本頁（例如部署後的網址，或本機用 http-server 開啟），直接雙擊開啟 index.html 檔案（file://）無法匯出圖片。';
     throw err;
@@ -1153,9 +1253,11 @@ function exportCanvas(off, toDataUrlArgs, filename) {
 
 function renderPageToOffscreen(pageState, mode) {
   const off = document.createElement('canvas');
-  off.width = CANVAS_W;
-  off.height = CANVAS_H;
-  renderTo(off.getContext('2d'), mode, pageState);
+  off.width = CANVAS_W * EXPORT_SCALE;
+  off.height = CANVAS_H * EXPORT_SCALE;
+  const octx = off.getContext('2d');
+  octx.scale(EXPORT_SCALE, EXPORT_SCALE);
+  renderTo(octx, mode, pageState);
   return off;
 }
 
