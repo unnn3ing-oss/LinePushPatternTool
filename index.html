@@ -118,6 +118,9 @@
     touch-action: none;
   }
   .status { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
+  .page-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+  .page-tab { flex: 1; background: transparent; border: none; border-radius: 7px; padding: 8px 10px; color: var(--muted); font-weight: 600; }
+  .page-tab.active { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
   .top-label-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -236,17 +239,22 @@
 <div class="wrap">
   <header>
     <h1>熱門話題套版產生器</h1>
-    <p class="sub">固定「熱門話題」六宮格版型，各區塊可改文字、換圖、拖曳與縮放，文字會自動調整字距（過緊才縮小字級）。輸出 1040×800。</p>
+    <p class="sub">固定「熱門話題」六宮格版型，共兩頁各自獨立（第1頁含標籤列、第2頁不含），各區塊可改文字、標籤、換圖、拖曳與縮放，文字會自動調整字距（過緊才縮小字級）。每頁輸出 1040×800。</p>
     <button type="button" id="helpBtn" class="help-btn">📖 使用說明</button>
   </header>
 
   <div class="layout">
     <div class="card">
+      <div class="page-tabs">
+        <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
+        <button type="button" class="page-tab" data-page="1">第 2 頁</button>
+      </div>
+
       <div class="top-label-box">
         <div class="field">
           <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px">
             <input type="checkbox" id="showHeaderToggle" checked style="width:auto; margin:0">
-            顯示頂部黃色標籤列
+            這頁顯示頂部黃色標籤列
           </label>
           <label for="topLabel">頂部標籤文字</label>
           <input type="text" id="topLabel" value="熱門話題">
@@ -256,13 +264,16 @@
       <div id="cellsList"></div>
 
       <div class="btn-row">
-        <button class="primary" id="downloadJpgBtn">下載完成圖（JPG）</button>
+        <button class="primary" id="downloadJpgBtn">下載本頁完成圖（JPG）</button>
       </div>
       <div class="btn-row">
-        <button id="downloadPngBtn">下載空白模板（PNG）</button>
+        <button id="downloadPngBtn">下載本頁空白模板（PNG）</button>
       </div>
       <div class="btn-row">
-        <button id="resetAllBtn">全部清除</button>
+        <button id="downloadAllBtn">下載兩頁完成圖（2 張 JPG）</button>
+      </div>
+      <div class="btn-row">
+        <button id="resetAllBtn">清除本頁</button>
       </div>
     </div>
 
@@ -284,17 +295,19 @@
     <div class="modal-body">
       <h3>基本流程</h3>
       <ul>
-        <li>版型固定為上方標籤列＋下方 3×2 共 6 格，背景／漸層是直接套用實際輸出的模板圖片（不是重繪的近似圖），確保跟原始素材完全一致。每一格可以獨立更換照片、標題文字與強調色。</li>
-        <li>「顯示頂部黃色標籤列」可關閉：關閉後改用不含黃色標籤列的版本（頂部只留淡淡的暗角），適合不想每張都重複標籤的情況；標籤文字欄位會跟著停用。</li>
+        <li>整組成品共「兩頁」，各自完全獨立（各自 6 格、各自的照片／文字／標籤／顯示設定），用左上角「第 1 頁」「第 2 頁」分頁籤切換編輯。預設第 1 頁含黃色標籤列、第 2 頁不含（僅頂部淡淡暗角），可各自用「這頁顯示頂部黃色標籤列」開關調整。</li>
+        <li>版型的背景／漸層是直接套用實際輸出的模板圖片（不是重繪的近似圖），確保跟原始素材完全一致。每一格可以獨立更換照片、標題文字、標籤與強調色。</li>
         <li>點左側任一格的圖片框可選檔上傳，也可以直接把圖片拖曳到那個框上，或先點該格再用 Ctrl+V 貼上剪貼簿圖片。</li>
         <li>右側預覽畫布上，直接對著某一格的照片拖曳即可調整照片位置；滑鼠停在該格上滾動滾輪可放大/縮小；也可以用左側該格的「縮放」滑桿。</li>
+        <li>每格可填一個選填的「標籤文字」（紅底白字小標籤，例如「關鍵竟是房東」），會顯示在該格標題文字正上方、靠左對齊。</li>
         <li>每格兩行標題文字，兩行都可從色票分別選顏色（白／黃／紅／藍／綠／黑），預設依欄位交錯白／黃配色。每一行的字距、字級都是獨立計算：先嘗試用字距把文字平均撐滿整個字框寬度，字太長撐不下時改成壓縮字距，字距壓到最緊仍放不下才會縮小字級，確保不超出格子。</li>
       </ul>
       <h3>下載</h3>
       <ul>
-        <li>「下載完成圖（JPG）」：輸出目前畫面上所有照片＋文字的完成品，尺寸 1040×800。</li>
-        <li>「下載空白模板（PNG）」：只輸出目前選擇的版型（含或不含頂部標籤列）的深色漸層／版面結構，照片區塊透明、不含文字，方便另外用其他軟體疊圖。</li>
-        <li>「全部清除」會清空六格的文字、圖片與設定（會先跳出確認框），頂部標籤文字與顯示設定不受影響。</li>
+        <li>「下載本頁完成圖（JPG）」：輸出目前分頁畫面上所有照片＋文字的完成品，尺寸 1040×800。</li>
+        <li>「下載本頁空白模板（PNG）」：只輸出目前分頁選擇的版型（含或不含頂部標籤列）的深色漸層／版面結構，照片區塊透明、不含文字，方便另外用其他軟體疊圖。</li>
+        <li>「下載兩頁完成圖（2 張 JPG）」：一次把第 1、2 頁的完成品各存一張，不用分別切換分頁下載。部分瀏覽器對「一次點擊觸發多個檔案下載」有安全限制，第一次使用時可能會跳出「允許這個網站下載多個檔案」的提示，允許後就能正常一次拿到兩張；若沒跳出提示但只收到一張，改用分頁籤切換後各自按「下載本頁完成圖」最保險。</li>
+        <li>「清除本頁」只會清空目前分頁六格的文字、標籤、圖片與設定（會先跳出確認框），不影響另一頁。</li>
       </ul>
     </div>
   </div>
@@ -303,13 +316,13 @@
 <div class="modal-overlay" id="confirmOverlay">
   <div class="modal" style="max-width:360px">
     <div class="modal-head">
-      <h2>確定要全部清除？</h2>
+      <h2>確定要清除本頁？</h2>
     </div>
     <div class="modal-body">
-      <p style="margin:0">這會清空六格目前的文字與圖片設定，且無法復原。</p>
+      <p style="margin:0">這會清空「本頁」六格目前的文字、標籤與圖片設定，且無法復原（不會影響另一頁）。</p>
       <div class="btn-row" style="justify-content:flex-end; margin-top:16px">
         <button type="button" id="confirmCancelBtn">取消</button>
-        <button type="button" id="confirmOkBtn" class="primary">全部清除</button>
+        <button type="button" id="confirmOkBtn" class="primary">清除本頁</button>
       </div>
     </div>
   </div>
@@ -329,12 +342,12 @@ const CELL_LABELS = ['左上', '中上', '右上', '左下', '中下', '右下']
 const FONT_STACK = `"WHZ-Heavy", "Microsoft JhengHei", "PingFang TC", sans-serif`;
 const LINE_COLORS = ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'];
 const DEFAULT_CARDS = [
-  { line1: '代課師開特斯拉狂飆', line2: '192km"直接把友撞死"' },
-  { line1: '台指期夜盤跳水',     line2: '崩4萬點周一恐大跌?'   },
-  { line1: '熊本地震後又震!',     line2: '北海道.青森爆4級震'   },
-  { line1: '伊朗戰打不完!',       line2: '國際油價飆3月新高'   },
-  { line1: '台中網美景點見屍',   line2: '晨運民眾目睹嚇壞'     },
-  { line1: '美F-35驚傳墜機!',     line2: '飛行員緊急彈射逃生'   },
+  { line1: '代課師開特斯拉狂飆', line2: '192km"直接把友撞死"', tag: '' },
+  { line1: '台指期夜盤跳水',     line2: '崩4萬點周一恐大跌?',   tag: '' },
+  { line1: '熊本地震後又震!',     line2: '北海道.青森爆4級震',   tag: '' },
+  { line1: '伊朗戰打不完!',       line2: '國際油價飆3月新高',   tag: '' },
+  { line1: '台中網美景點見屍',   line2: '晨運民眾目睹嚇壞',     tag: '關鍵竟是房東' },
+  { line1: '美F-35驚傳墜機!',     line2: '飛行員緊急彈射逃生',   tag: '' },
 ];
 
 // Default colours alternate white/yellow by column: column 0 & 2 are
@@ -376,7 +389,9 @@ function cellRect(i) {
 }
 
 // ---------------------------------------------------------------------------
-// State
+// State — two independent pages (page 1 = with header, page 2 = plain),
+// each holding its own 6-cell grid of cards. Only one page is edited/shown
+// at a time, switched via the page tabs.
 // ---------------------------------------------------------------------------
 function freshCardState(i) {
   const d = DEFAULT_CARDS[i];
@@ -384,6 +399,7 @@ function freshCardState(i) {
   return {
     line1: d.line1,
     line2: d.line2,
+    tag: d.tag || '',
     color1: c.color1,
     color2: c.color2,
     img: null,
@@ -396,7 +412,18 @@ function freshCardState(i) {
   };
 }
 
-let cards = DEFAULT_CARDS.map((_, i) => freshCardState(i));
+function makePageState(pageIndex) {
+  return {
+    showHeader: pageIndex === 0,
+    topLabel: pageIndex === 0 ? '熱門話題' : '',
+    cards: DEFAULT_CARDS.map((_, i) => freshCardState(i)),
+  };
+}
+
+const PAGE_COUNT = 2;
+let pages = [makePageState(0), makePageState(1)];
+let activePageIndex = 0;
+function activePage() { return pages[activePageIndex]; }
 let activeCard = 0;
 
 // ---------------------------------------------------------------------------
@@ -529,6 +556,34 @@ function drawHeaderLabel(ctx, label) {
   }
 }
 
+// Optional small red kicker tag (e.g. "關鍵竟是房東") that sits flush to the
+// cell's left edge, directly above the headline block. Unlike line 1/2 it
+// is never stretched to fill the width — it just shrinks to fit if needed.
+const TAG_BG = '#ff0000';
+const TAG_BASE_FONT_SIZE = 24;
+const TAG_PAD_X = 10, TAG_PAD_Y = 6, TAG_GAP = 4;
+
+function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY) {
+  ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
+  const textWidth = measureWithSpacing(ctx, text, spacing);
+  const boxH = fontSize + TAG_PAD_Y * 2;
+  const boxW = Math.min(cell.w, textWidth + TAG_PAD_X * 2);
+  const boxBottom = bottomLimitY - TAG_GAP;
+  const boxTop = boxBottom - boxH;
+  ctx.fillStyle = TAG_BG;
+  ctx.fillRect(cell.x, boxTop, boxW, boxH);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  let cx = cell.x + TAG_PAD_X;
+  const cy = boxTop + boxH / 2;
+  for (const ch of text) {
+    const w = ctx.measureText(ch).width;
+    ctx.fillText(ch, cx, cy);
+    cx += w + spacing;
+  }
+}
+
 function drawCellImage(ctx, cell, state) {
   if (!state.img) {
     ctx.fillStyle = '#c7cbd1';
@@ -557,7 +612,7 @@ function cellImageSize(cell, state) {
 }
 
 function clampCardOffset(i) {
-  const state = cards[i];
+  const state = activePage().cards[i];
   if (!state.img) return;
   const cell = cellRect(i);
   const { dw, dh } = cellImageSize(cell, state);
@@ -568,7 +623,7 @@ function clampCardOffset(i) {
 }
 
 function applyScale(i, newScale) {
-  const state = cards[i];
+  const state = activePage().cards[i];
   state.scale = clamp(newScale, 1, 3.5);
   if (!state.img) return;
   const cell = cellRect(i);
@@ -583,18 +638,23 @@ function computeCardFit(ctx, cell, state) {
   const maxWidth = cell.w - paddingX * 2;
   const line1 = (state.line1 || '').trim();
   const line2 = (state.line2 || '').trim();
-  const key = `${cell.w}|${line1}|${line2}`;
+  const tag = (state.tag || '').trim();
+  const key = `${cell.w}|${line1}|${line2}|${tag}`;
   if (state._fitCache && state._fitCache.key === key) return state._fitCache;
 
   const fit1 = line1 ? computeJustifiedFit(ctx, line1, maxWidth) : null;
   const fit2 = line2 ? computeJustifiedFit(ctx, line2, maxWidth) : null;
+  const tagMaxWidth = cell.w - 20;
+  const tagFit = tag ? computeFit(ctx, tag, tagMaxWidth, TAG_BASE_FONT_SIZE) : null;
 
   const result = {
-    key, line1, line2,
+    key, line1, line2, tag,
     fontSize1: fit1 ? fit1.fontSize : BASE_FONT_SIZE,
     sp1: fit1 ? fit1.spacing : 0,
     fontSize2: fit2 ? fit2.fontSize : BASE_FONT_SIZE,
     sp2: fit2 ? fit2.spacing : 0,
+    tagFontSize: tagFit ? tagFit.fontSize : TAG_BASE_FONT_SIZE,
+    tagSpacing: tagFit ? tagFit.spacing : NORMAL_SPACING,
   };
   state._fitCache = result;
   return result;
@@ -603,36 +663,43 @@ function computeCardFit(ctx, cell, state) {
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 16;
   const centerX = cell.x + cell.w / 2;
-  const { line1, line2, fontSize1, sp1, fontSize2, sp2 } = computeCardFit(ctx, cell, state);
-  if (!line1 && !line2) return;
+  const { line1, line2, fontSize1, sp1, fontSize2, sp2, tag, tagFontSize, tagSpacing } = computeCardFit(ctx, cell, state);
+  if (!line1 && !line2 && !tag) return;
 
+  let baseY1 = null, baseY2 = null;
   if (line1 && line2) {
-    const baseY2 = cell.y + cell.h - paddingBottom - fontSize2 * 0.5;
+    baseY2 = cell.y + cell.h - paddingBottom - fontSize2 * 0.5;
     const lineGap = (fontSize1 + fontSize2) / 2 * 1.18;
+    baseY1 = baseY2 - lineGap;
     drawSpacedText(ctx, line2, centerX, baseY2, fontSize2, sp2, state.color2);
-    drawSpacedText(ctx, line1, centerX, baseY2 - lineGap, fontSize1, sp1, state.color1);
+    drawSpacedText(ctx, line1, centerX, baseY1, fontSize1, sp1, state.color1);
   } else if (line2) {
-    const baseY = cell.y + cell.h - paddingBottom - fontSize2 * 0.5;
-    drawSpacedText(ctx, line2, centerX, baseY, fontSize2, sp2, state.color2);
+    baseY2 = cell.y + cell.h - paddingBottom - fontSize2 * 0.5;
+    drawSpacedText(ctx, line2, centerX, baseY2, fontSize2, sp2, state.color2);
   } else if (line1) {
-    const baseY = cell.y + cell.h - paddingBottom - fontSize1 * 0.5;
-    drawSpacedText(ctx, line1, centerX, baseY, fontSize1, sp1, state.color1);
+    baseY1 = cell.y + cell.h - paddingBottom - fontSize1 * 0.5;
+    drawSpacedText(ctx, line1, centerX, baseY1, fontSize1, sp1, state.color1);
+  }
+
+  if (tag) {
+    const topLineBaseline = baseY1 != null ? baseY1 : (baseY2 != null ? baseY2 : cell.y + cell.h - paddingBottom);
+    const topLineFontSize = baseY1 != null ? fontSize1 : fontSize2;
+    const topOfText = topLineBaseline - topLineFontSize * 0.5;
+    drawTag(ctx, cell, tag, tagFontSize, tagSpacing, topOfText);
   }
 }
 
-let showHeader = true;
-
-function renderTo(ctx, mode, opts = {}) {
+function renderTo(ctx, mode, pageState, opts = {}) {
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
   if (mode === 'final') {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    for (let i = 0; i < 6; i++) drawCellImage(ctx, cellRect(i), cards[i]);
+    for (let i = 0; i < 6; i++) drawCellImage(ctx, cellRect(i), pageState.cards[i]);
   }
-  drawTemplateOverlay(ctx, showHeader);
+  drawTemplateOverlay(ctx, pageState.showHeader);
   if (mode === 'final') {
-    for (let i = 0; i < 6; i++) drawCellText(ctx, cellRect(i), cards[i]);
-    if (showHeader) drawHeaderLabel(ctx, document.getElementById('topLabel').value || '熱門話題');
+    for (let i = 0; i < 6; i++) drawCellText(ctx, cellRect(i), pageState.cards[i]);
+    if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
 
   if (opts.showActiveBorder && activeCard != null) {
@@ -649,7 +716,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 function render() {
-  renderTo(ctx, 'final', { showActiveBorder: true });
+  renderTo(ctx, 'final', activePage(), { showActiveBorder: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -676,7 +743,7 @@ function loadImageFile(file, onLoaded, onError) {
 }
 
 function setCardImage(i, image, fileName) {
-  const state = cards[i];
+  const state = activePage().cards[i];
   state.img = image;
   state.fileName = fileName;
   state.scale = 1;
@@ -738,12 +805,21 @@ function buildCardUI(i) {
     handleFile(e.dataTransfer.files[0]);
   });
 
+  const tagRow = document.createElement('div');
+  tagRow.className = 'field-row';
+  const tagInput = document.createElement('input');
+  tagInput.type = 'text';
+  tagInput.placeholder = '標籤文字（選填，紅底白字，例如：關鍵竟是房東）';
+  tagInput.value = activePage().cards[i].tag;
+  tagRow.appendChild(tagInput);
+  box.appendChild(tagRow);
+
   const row1 = document.createElement('div');
   row1.className = 'field-row';
   const in1 = document.createElement('input');
   in1.type = 'text';
   in1.placeholder = '第一行文字';
-  in1.value = cards[i].line1;
+  in1.value = activePage().cards[i].line1;
   row1.appendChild(in1);
   box.appendChild(row1);
 
@@ -752,14 +828,16 @@ function buildCardUI(i) {
   const in2 = document.createElement('input');
   in2.type = 'text';
   in2.placeholder = '第二行文字（強調色）';
-  in2.value = cards[i].line2;
+  in2.value = activePage().cards[i].line2;
   row2.appendChild(in2);
   box.appendChild(row2);
 
+  tagInput.addEventListener('focus', () => setActiveCard(i));
   in1.addEventListener('focus', () => setActiveCard(i));
   in2.addEventListener('focus', () => setActiveCard(i));
-  in1.addEventListener('input', () => { cards[i].line1 = in1.value; render(); });
-  in2.addEventListener('input', () => { cards[i].line2 = in2.value; render(); });
+  tagInput.addEventListener('input', () => { activePage().cards[i].tag = tagInput.value; render(); });
+  in1.addEventListener('input', () => { activePage().cards[i].line1 = in1.value; render(); });
+  in2.addEventListener('input', () => { activePage().cards[i].line2 = in2.value; render(); });
 
   function buildSwatchRow(labelText, colorKey) {
     const row = document.createElement('div');
@@ -774,10 +852,10 @@ function buildCardUI(i) {
       sw.className = 'color-swatch';
       sw.style.background = hex;
       sw.title = hex;
-      if (hex.toLowerCase() === cards[i][colorKey].toLowerCase()) sw.classList.add('selected');
+      if (hex.toLowerCase() === activePage().cards[i][colorKey].toLowerCase()) sw.classList.add('selected');
       sw.addEventListener('click', () => {
         setActiveCard(i);
-        cards[i][colorKey] = hex;
+        activePage().cards[i][colorKey] = hex;
         els.forEach(s => s.classList.remove('selected'));
         sw.classList.add('selected');
         render();
@@ -818,7 +896,7 @@ function buildCardUI(i) {
   });
   resetBtn.addEventListener('click', () => {
     setActiveCard(i);
-    const state = cards[i];
+    const state = activePage().cards[i];
     state.scale = 1;
     state.fx = 0.5;
     state.fy = 0.5;
@@ -842,18 +920,36 @@ function buildCardUI(i) {
   box.addEventListener('mousedown', () => setActiveCard(i));
 
   cellsList.appendChild(box);
-  cardEls.push({ box, dzThumb, dzText, in1, in2, swatchEls1, swatchEls2, scaleInput, scaleVal });
+  cardEls.push({ box, dzThumb, dzText, tagInput, in1, in2, swatchEls1, swatchEls2, scaleInput, scaleVal });
 }
 
-function refreshCardThumb(i) {
+// Refreshes one cell's DOM controls from the active page's current state —
+// used both after an image/scale change and when switching page tabs.
+function syncCellUIFromState(i) {
   const el = cardEls[i];
-  const state = cards[i];
+  const state = activePage().cards[i];
   if (state.img) {
     el.dzThumb.src = state.img.src;
     el.dzThumb.style.display = 'block';
+    el.dzText.textContent = `已載入：${state.fileName || '圖片'}`;
+  } else {
+    el.dzThumb.src = '';
+    el.dzThumb.style.display = 'none';
+    el.dzText.textContent = '點擊、拖曳圖片，或先點此格再貼上（Ctrl+V）';
   }
+  el.tagInput.value = state.tag;
+  el.in1.value = state.line1;
+  el.in2.value = state.line2;
+  el.swatchEls1.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color1.toLowerCase()));
+  el.swatchEls2.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === state.color2.toLowerCase()));
   el.scaleInput.value = String(state.scale);
   el.scaleVal.textContent = `${state.scale.toFixed(2)}x`;
+}
+
+function refreshCardThumb(i) { syncCellUIFromState(i); }
+
+function syncAllCellUI() {
+  for (let i = 0; i < 6; i++) syncCellUIFromState(i);
 }
 
 function setActiveCard(i) {
@@ -893,7 +989,7 @@ function pointerDown(evt) {
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
   setActiveCard(idx);
-  const state = cards[idx];
+  const state = activePage().cards[idx];
   if (!state.img) {
     cardEls[idx].box.querySelector('.dropzone').click();
     return;
@@ -907,11 +1003,11 @@ function pointerMove(evt) {
   const pos = getCanvasPos(evt);
   if (!drag) {
     const idx = cellIndexAt(pos.x, pos.y);
-    canvas.style.cursor = idx >= 0 && cards[idx].img ? 'grab' : (idx >= 0 ? 'pointer' : 'default');
+    canvas.style.cursor = idx >= 0 && activePage().cards[idx].img ? 'grab' : (idx >= 0 ? 'pointer' : 'default');
     return;
   }
   evt.preventDefault();
-  const state = cards[drag.idx];
+  const state = activePage().cards[drag.idx];
   state.offsetX = drag.startOffsetX + (pos.x - drag.startX);
   state.offsetY = drag.startOffsetY + (pos.y - drag.startY);
   clampCardOffset(drag.idx);
@@ -933,11 +1029,11 @@ window.addEventListener('touchend', pointerUp);
 canvas.addEventListener('wheel', evt => {
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
-  if (idx < 0 || !cards[idx].img) return;
+  if (idx < 0 || !activePage().cards[idx].img) return;
   evt.preventDefault();
   setActiveCard(idx);
   const factor = 1 - evt.deltaY * 0.0015;
-  applyScale(idx, cards[idx].scale * factor);
+  applyScale(idx, activePage().cards[idx].scale * factor);
   refreshCardThumb(idx);
   render();
 }, { passive: false });
@@ -975,11 +1071,36 @@ document.addEventListener('paste', e => {
 // ---------------------------------------------------------------------------
 const topLabelInput = document.getElementById('topLabel');
 const showHeaderToggle = document.getElementById('showHeaderToggle');
-topLabelInput.addEventListener('input', render);
-showHeaderToggle.addEventListener('change', () => {
-  showHeader = showHeaderToggle.checked;
-  topLabelInput.disabled = !showHeader;
+topLabelInput.addEventListener('input', () => {
+  activePage().topLabel = topLabelInput.value;
   render();
+});
+showHeaderToggle.addEventListener('change', () => {
+  activePage().showHeader = showHeaderToggle.checked;
+  topLabelInput.disabled = !showHeaderToggle.checked;
+  render();
+});
+
+// Refreshes the page-level controls (label text / header toggle) from the
+// active page's state — used when switching page tabs.
+function syncTopUIFromState() {
+  const p = activePage();
+  topLabelInput.value = p.topLabel;
+  showHeaderToggle.checked = p.showHeader;
+  topLabelInput.disabled = !p.showHeader;
+}
+
+const pageTabs = Array.from(document.querySelectorAll('.page-tab'));
+pageTabs.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const idx = Number(btn.dataset.page);
+    if (idx === activePageIndex) return;
+    activePageIndex = idx;
+    pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === idx));
+    syncTopUIFromState();
+    syncAllCellUI();
+    setActiveCard(0);
+  });
 });
 
 function downloadDataUrl(dataUrl, filename) {
@@ -1004,27 +1125,41 @@ function exportCanvas(off, toDataUrlArgs, filename) {
   }
 }
 
-document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
-  await whzFontReady;
-  await document.fonts.ready;
-  await templatesReady;
+function renderPageToOffscreen(pageState, mode) {
   const off = document.createElement('canvas');
   off.width = CANVAS_W;
   off.height = CANVAS_H;
-  renderTo(off.getContext('2d'), 'final');
-  exportCanvas(off, ['image/jpeg', 0.92], '熱門話題.jpg');
+  renderTo(off.getContext('2d'), mode, pageState);
+  return off;
+}
+
+async function ensureAssetsReady() {
+  await whzFontReady;
+  await document.fonts.ready;
+  await templatesReady;
+}
+
+document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
+  await ensureAssetsReady();
+  const off = renderPageToOffscreen(activePage(), 'final');
+  exportCanvas(off, ['image/jpeg', 0.92], `熱門話題_第${activePageIndex + 1}頁.jpg`);
 });
 
 document.getElementById('downloadPngBtn').addEventListener('click', async () => {
-  await whzFontReady;
-  await document.fonts.ready;
-  await templatesReady;
-  const off = document.createElement('canvas');
-  off.width = CANVAS_W;
-  off.height = CANVAS_H;
-  const offCtx = off.getContext('2d');
-  renderTo(offCtx, 'blank');
-  exportCanvas(off, ['image/png'], '熱門話題_空白模板.png');
+  await ensureAssetsReady();
+  const off = renderPageToOffscreen(activePage(), 'blank');
+  exportCanvas(off, ['image/png'], `熱門話題_第${activePageIndex + 1}頁_空白模板.png`);
+});
+
+document.getElementById('downloadAllBtn').addEventListener('click', async () => {
+  await ensureAssetsReady();
+  for (let p = 0; p < PAGE_COUNT; p++) {
+    const off = renderPageToOffscreen(pages[p], 'final');
+    exportCanvas(off, ['image/jpeg', 0.92], `熱門話題_第${p + 1}頁.jpg`);
+    // Small gap so the browser treats these as two distinct downloads
+    // rather than racing them back-to-back.
+    if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
+  }
 });
 
 function askConfirm() {
@@ -1048,18 +1183,9 @@ function askConfirm() {
 
 document.getElementById('resetAllBtn').addEventListener('click', async () => {
   if (!(await askConfirm())) return;
-  cards = DEFAULT_CARDS.map((_, i) => freshCardState(i));
-  cardEls.forEach((el, i) => {
-    el.in1.value = cards[i].line1;
-    el.in2.value = cards[i].line2;
-    el.dzThumb.style.display = 'none';
-    el.dzThumb.src = '';
-    el.dzText.textContent = '點擊、拖曳圖片，或先點此格再貼上（Ctrl+V）';
-    el.swatchEls1.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === cards[i].color1.toLowerCase()));
-    el.swatchEls2.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === cards[i].color2.toLowerCase()));
-    el.scaleInput.value = '1';
-    el.scaleVal.textContent = '1.00x';
-  });
+  pages[activePageIndex] = makePageState(activePageIndex);
+  syncTopUIFromState();
+  syncAllCellUI();
   render();
 });
 
