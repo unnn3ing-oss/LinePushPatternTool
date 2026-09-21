@@ -1,4 +1,4 @@
-# 熱門話題套版產生器
+# Line推播套版產生器
 
 **線上直接使用（GitHub Pages）：** https://unnn3ing-oss.github.io/LinePushPatternTool/
 
