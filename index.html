@@ -366,7 +366,7 @@ function defaultColorsFor(i) {
     : { color1: '#ffff00', color2: '#ffffff' };
 }
 
-const whzFontReady = document.fonts.load(`40px "WHZ-Heavy"`).catch(() => {});
+const headlineFontReady = document.fonts.load(`40px "WHZ-Heavy"`).catch(() => {});
 
 // The header/gradient artwork is the actual Canva-exported template PNGs —
 // composited as-is, never redrawn from scratch. Two page variants are
@@ -554,14 +554,26 @@ function drawHeaderLabel(ctx, label) {
   const iconX = 16, iconW = HEADER_H * 0.56 * 1.65;
   const maxLabelWidth = CANVAS_W - (iconX + iconW + 12) - 20;
   const fit = computeFit(ctx, label, maxLabelWidth, 28);
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
   ctx.font = `900 ${fit.fontSize}px ${FONT_STACK}`;
   ctx.fillStyle = '#111111';
+  ctx.textAlign = 'left';
+  // actualBoundingBoxAscent/Descent are measured relative to whatever
+  // textBaseline is active at the time of measureText() — this must be set
+  // to 'alphabetic' *before* measuring, or a leftover 'middle' from drawing
+  // the cell headlines skews the ink bounds and the centering math below.
+  ctx.textBaseline = 'alphabetic';
+
+  // canvas 'middle' baseline centers on the font's em-box, not the glyphs'
+  // actual ink — for this font that sits visibly above the bar's true
+  // center. Measure the real ink bounds and center on those instead.
+  const m = ctx.measureText(label);
+  const asc = m.actualBoundingBoxAscent || fit.fontSize * 0.72;
+  const desc = m.actualBoundingBoxDescent || fit.fontSize * 0.02;
+  const baselineY = HEADER_H / 2 + (asc - desc) / 2;
   let cx = iconX + iconW + 12;
   for (const ch of label) {
     const w = ctx.measureText(ch).width;
-    ctx.fillText(ch, cx, HEADER_H / 2 + 1);
+    ctx.fillText(ch, cx, baselineY);
     cx += w + fit.spacing;
   }
 }
@@ -671,7 +683,7 @@ function computeCardFit(ctx, cell, state) {
 }
 
 function drawCellText(ctx, cell, state) {
-  const paddingBottom = 16;
+  const paddingBottom = 4;
   const centerX = cell.x + cell.w / 2;
   const { line1, line2, fontSize1, sp1, fontSize2, sp2, tag, tagFontSize, tagSpacing } = computeCardFit(ctx, cell, state);
   if (!line1 && !line2 && !tag) return;
@@ -1147,7 +1159,7 @@ function renderPageToOffscreen(pageState, mode) {
 }
 
 async function ensureAssetsReady() {
-  await whzFontReady;
+  await headlineFontReady;
   await document.fonts.ready;
   await templatesReady;
 }
@@ -1209,7 +1221,7 @@ document.getElementById('helpCloseBtn').addEventListener('click', () => helpOver
 helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpOverlay.classList.remove('open'); });
 
 render();
-whzFontReady.then(render);
+headlineFontReady.then(render);
 document.fonts.ready.then(render);
 templatesReady.then(render);
 </script>
