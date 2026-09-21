@@ -85,6 +85,10 @@
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  /* .btn-row only carries a top margin, and .cell-box only a bottom one —
+     with the download buttons now sitting directly above #cellsList, there
+     was no space between the two and they visually ran together. */
+  #cellsList { margin-top: 14px; }
   button {
     font-family: inherit;
     font-size: 14px;
