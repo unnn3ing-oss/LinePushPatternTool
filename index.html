@@ -1366,13 +1366,15 @@ document.getElementById('downloadAllBtn').addEventListener('click', async () => 
   }
 });
 
-// Parses pasted "★line1 line2(tag) / url" blocks into up to 12
-// {line1, line2, tag, tagColor} entries — only lines starting with ★ carry
-// content; URL lines and blank lines in between are simply skipped. A
-// trailing "(tag)"/"（tag）" is pulled out as the kicker tag (tag "國際"
-// selects gray, everything else defaults to red) before the remaining
-// content is split on its FIRST space into line1 / line2, with the space
-// itself dropped.
+// Parses pasted "★tag)line1 line2" or "★line1 line2(tag)" blocks (plus a
+// url line, skipped) into up to 12 {line1, line2, tag, tagColor} entries —
+// only lines starting with ★ carry content. The tag can appear two ways:
+// a bare "tag)"/"tag）" right after ★ with no opening paren (the format
+// actually pasted in practice), or a normal matched "(tag)"/"（tag）" at
+// the end of the line (kept working too). Either way "國際" selects gray,
+// everything else defaults to red. Whatever's left after the tag is pulled
+// out is split on its FIRST space into line1 / line2, the space itself
+// dropped.
 function parseQuickFillText(text) {
   const entries = [];
   for (const raw of text.split('\n')) {
@@ -1380,11 +1382,14 @@ function parseQuickFillText(text) {
     if (!line.startsWith('★')) continue;
     let content = line.slice(1).trim();
     let tag = '', tagColor = TAG_COLORS[0];
-    const tagMatch = content.match(/[(（]([^()（）]*)[)）]\s*$/);
+    const frontTagMatch = content.match(/^([^()（）]+)[)）]/);
+    const tagMatch = frontTagMatch || content.match(/[(（]([^()（）]*)[)）]\s*$/);
     if (tagMatch) {
       tag = toHalfWidth(tagMatch[1].trim());
       tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
-      content = content.slice(0, tagMatch.index).trim();
+      content = frontTagMatch
+        ? content.slice(frontTagMatch[0].length).trim()
+        : content.slice(0, tagMatch.index).trim();
     }
     const spaceIdx = content.indexOf(' ');
     const entry = spaceIdx === -1
