@@ -84,6 +84,7 @@
   textarea { resize: vertical; line-height: 1.5; }
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .preview-box { margin-top: 14px; margin-bottom: 0; background: var(--card-bg); }
   .sticker-palette { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .sticker-btn {
     width: 48px; height: 48px; padding: 4px;
@@ -332,14 +333,6 @@
         </div>
       </div>
 
-      <div class="top-label-box">
-        <div class="field" style="margin-bottom:0">
-          <label>遮擋貼圖</label>
-          <div class="hint" style="margin-top:0; margin-bottom:8px">先在預覽圖點選要編輯的格子，再點下方貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。</div>
-          <div class="sticker-palette" id="stickerPalette"></div>
-        </div>
-      </div>
-
       <div class="btn-row">
         <button class="primary" id="downloadJpgBtn">下載本頁</button>
         <button id="downloadAllBtn">全部下載</button>
@@ -361,6 +354,14 @@
         <canvas id="canvas" width="1040" height="800"></canvas>
       </div>
       <div class="status" id="status">在照片上拖曳可調整位置，滑鼠滾輪可縮放</div>
+
+      <div class="top-label-box preview-box">
+        <div class="field" style="margin-bottom:0">
+          <label>遮擋貼圖</label>
+          <div class="hint" style="margin-top:0; margin-bottom:8px">先在上方預覽圖點選要編輯的格子，再點下方貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。</div>
+          <div class="sticker-palette" id="stickerPalette"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -755,7 +756,11 @@ function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
 // canvas-space center coordinates so drag/scale math stays a simple delta.
 const STICKER_BASE_SIZE = 110;
 const STICKER_MIN_SCALE = 0.3, STICKER_MAX_SCALE = 3;
-const STICKER_DELETE_R = 11;
+const STICKER_DELETE_R = 14;
+// The actual click/tap target is bigger than the visible circle — a small
+// dot at the sticker's corner is hard to land on precisely, especially on
+// touch, so the invisible hit area extends past what's drawn.
+const STICKER_DELETE_HIT_R = 22;
 
 // The source PNGs aren't perfectly square (e.g. 221×192), so `scale` sizes a
 // bounding box and the sticker is fit inside it at its own aspect ratio —
@@ -785,8 +790,8 @@ function drawCellStickers(ctx, state, interactive) {
       ctx.fillStyle = 'rgba(20,20,20,0.65)';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      const r = 4;
+      ctx.lineWidth = 2.5;
+      const r = 5;
       ctx.beginPath();
       ctx.moveTo(bx - r, by - r); ctx.lineTo(bx + r, by + r);
       ctx.moveTo(bx + r, by - r); ctx.lineTo(bx - r, by + r);
@@ -822,7 +827,7 @@ function stickerDeleteHit(state, x, y) {
     const bx = st.x + w / 2 - STICKER_DELETE_R;
     const by = st.y - h / 2 + STICKER_DELETE_R;
     const dx = x - bx, dy = y - by;
-    if (dx * dx + dy * dy <= STICKER_DELETE_R * STICKER_DELETE_R) return i;
+    if (dx * dx + dy * dy <= STICKER_DELETE_HIT_R * STICKER_DELETE_HIT_R) return i;
   }
   return -1;
 }
