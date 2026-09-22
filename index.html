@@ -554,10 +554,25 @@ const BASE_FONT_SIZE = 40;
 const MIN_FONT_SIZE = 14;
 const NORMAL_SPACING = 0.5;
 
-function measureWithSpacing(ctx, text, spacing) {
+// The bold weight of this font draws the straight double-quote glyph as two
+// thick, tall bars that read as visually much bigger than its actual advance
+// width (narrower than a Han character) would suggest — it dominates next to
+// dense Chinese glyphs. Render (and count the width of) that one glyph at a
+// reduced scale so it looks proportionate instead of shrinking unrelated text.
+const GLYPH_SCALE = { '"': 0.7 };
+function scaledFontSize(fontSize, ch) {
+  const s = GLYPH_SCALE[ch];
+  return s ? fontSize * s : fontSize;
+}
+function measureChar(ctx, ch, fontSize) {
+  ctx.font = `900 ${scaledFontSize(fontSize, ch)}px ${FONT_STACK}`;
+  return ctx.measureText(ch).width;
+}
+
+function measureWithSpacing(ctx, text, spacing, fontSize) {
   if (!text) return 0;
   let w = 0;
-  for (const ch of text) w += ctx.measureText(ch).width + spacing;
+  for (const ch of text) w += measureChar(ctx, ch, fontSize) + spacing;
   return w - spacing;
 }
 
@@ -574,9 +589,8 @@ function computeFit(ctx, text, maxWidth, baseFontSize) {
   const n = chars.length;
   let fontSize = baseFontSize;
   while (fontSize >= MIN_FONT_SIZE) {
-    ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
     let sumW = 0;
-    for (const ch of chars) sumW += ctx.measureText(ch).width;
+    for (const ch of chars) sumW += measureChar(ctx, ch, fontSize);
     if (n <= 1) {
       if (sumW <= maxWidth) return { fontSize, spacing: 0 };
     } else {
@@ -592,9 +606,8 @@ function computeFit(ctx, text, maxWidth, baseFontSize) {
   // Pathologically long text: even the smallest font size at spacing=0
   // still overflows. Scale the font size down further (spacing stays 0,
   // never negative) so the line never spills outside its box.
-  ctx.font = `900 ${MIN_FONT_SIZE}px ${FONT_STACK}`;
   let sumW = 0;
-  for (const ch of chars) sumW += ctx.measureText(ch).width;
+  for (const ch of chars) sumW += measureChar(ctx, ch, MIN_FONT_SIZE);
   if (sumW > maxWidth && sumW > 0) {
     return { fontSize: MIN_FONT_SIZE * (maxWidth / sumW), spacing: 0 };
   }
@@ -603,14 +616,13 @@ function computeFit(ctx, text, maxWidth, baseFontSize) {
 
 function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor) {
   if (!text) return;
-  ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
-  const total = measureWithSpacing(ctx, text, spacing);
+  const total = measureWithSpacing(ctx, text, spacing, fontSize);
   let cx = centerX - total / 2;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = fillColor;
   for (const ch of text) {
-    const w = ctx.measureText(ch).width;
+    const w = measureChar(ctx, ch, fontSize);
     ctx.fillText(ch, cx, y);
     cx += w + spacing;
   }
@@ -668,7 +680,7 @@ function drawHeaderLabel(ctx, label) {
   const baselineY = yellowTop + (HEADER_H - yellowTop) / 2 + (asc - desc) / 2 + 3;
   let cx = labelStartX;
   for (const ch of label) {
-    const w = ctx.measureText(ch).width;
+    const w = measureChar(ctx, ch, fit.fontSize);
     ctx.fillText(ch, cx, baselineY);
     cx += w + fit.spacing;
   }
@@ -682,8 +694,7 @@ const TAG_BASE_FONT_SIZE = 28;
 const TAG_PAD_X = 10, TAG_PAD_Y = 6, TAG_GAP = 4;
 
 function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
-  ctx.font = `900 ${fontSize}px ${FONT_STACK}`;
-  const textWidth = measureWithSpacing(ctx, text, spacing);
+  const textWidth = measureWithSpacing(ctx, text, spacing, fontSize);
   const boxH = fontSize + TAG_PAD_Y * 2;
   const boxW = Math.min(cell.w, textWidth + TAG_PAD_X * 2);
   const boxBottom = bottomLimitY - TAG_GAP;
@@ -696,7 +707,7 @@ function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
   let cx = cell.x + TAG_PAD_X;
   const cy = boxTop + boxH / 2;
   for (const ch of text) {
-    const w = ctx.measureText(ch).width;
+    const w = measureChar(ctx, ch, fontSize);
     ctx.fillText(ch, cx, cy);
     cx += w + spacing;
   }
