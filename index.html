@@ -1441,14 +1441,15 @@ function parseQuickFillText(text) {
     if (!line.startsWith('★')) continue;
     let content = line.slice(1).trim();
     let tag = '', tagColor = TAG_COLORS[0];
-    const frontTagMatch = content.match(/^([^()（）]+)[)）]/);
-    const tagMatch = frontTagMatch || content.match(/[(（]([^()（）]*)[)）]\s*$/);
+    // Two coexisting tag syntaxes, always right after ★: bare text + bare
+    // ")" ("日本)...") or a matched "(文字)"/"（文字）" pair ("(獨家)...").
+    const frontBareMatch = content.match(/^([^()（）]+)[)）]/);
+    const frontPairMatch = !frontBareMatch && content.match(/^[(（]([^()（）]+)[)）]/);
+    const tagMatch = frontBareMatch || frontPairMatch;
     if (tagMatch) {
       tag = toHalfWidth(tagMatch[1].trim());
       tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
-      content = frontTagMatch
-        ? content.slice(frontTagMatch[0].length).trim()
-        : content.slice(0, tagMatch.index).trim();
+      content = content.slice(tagMatch[0].length).trim();
     }
     const spaceIdx = content.indexOf(' ');
     const entry = spaceIdx === -1
