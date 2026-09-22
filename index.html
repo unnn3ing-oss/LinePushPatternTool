@@ -84,6 +84,15 @@
   textarea { resize: vertical; line-height: 1.5; }
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .sticker-palette { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .sticker-btn {
+    width: 48px; height: 48px; padding: 4px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sticker-btn:hover { border-color: var(--accent); }
+  .sticker-btn img { width: 100%; height: 100%; object-fit: contain; }
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   /* .btn-row only carries a top margin, and .cell-box only a bottom one —
      with the download buttons now sitting directly above #cellsList, there
@@ -323,6 +332,14 @@
         </div>
       </div>
 
+      <div class="top-label-box">
+        <div class="field" style="margin-bottom:0">
+          <label>遮擋貼圖</label>
+          <div class="hint" style="margin-top:0; margin-bottom:8px">先在預覽圖點選要編輯的格子，再點下方貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。</div>
+          <div class="sticker-palette" id="stickerPalette"></div>
+        </div>
+      </div>
+
       <div class="btn-row">
         <button class="primary" id="downloadJpgBtn">下載本頁</button>
         <button id="downloadAllBtn">全部下載</button>
@@ -395,7 +412,14 @@
         <li>文字自動排版：字沒塞滿維持自然字距，貼邊仍太長才壓字距，壓到底才縮小字級，不會超出格子。</li>
       </ul>
 
-      <h3>⑤ 成品</h3>
+      <h3>⑤ 遮擋貼圖</h3>
+      <ul>
+        <li>先在預覽圖點選要編輯的格子，再點編輯區「遮擋貼圖」裡的表情貼圖，會加到該格正中央。</li>
+        <li>在預覽圖上拖曳貼圖可移動、滑鼠滾輪可縮放，用來蓋住照片中不想露出的人物。</li>
+        <li>點貼圖右上角的「✕」即可移除；貼圖不會出現在下載檔案裡的「✕」按鈕，只是編輯時的輔助標示。</li>
+      </ul>
+
+      <h3>⑥ 成品</h3>
       <img src="assets/help/output-sample.jpg" alt="成品範例">
       <p style="margin:0">下載會自動放大到 2 倍解析度並內嵌 300dpi，小字邊緣更乾淨、不易因壓縮糊在一起。</p>
     </div>
@@ -470,6 +494,19 @@ const templatesReady = Promise.all([
   loadImage('assets/template-plain.png').then(img => { templatePlainImg = img; }),
 ]);
 
+// Small face-covering stickers the user can drop onto a cell's photo to hide
+// a bystander. Loaded once up front the same way as the template artwork.
+const STICKER_DEFS = [
+  { key: 'cry', src: 'assets/stickers/sticker-cry.png', label: '哭哭' },
+  { key: 'smile', src: 'assets/stickers/sticker-smile.png', label: '微笑' },
+  { key: 'shock', src: 'assets/stickers/sticker-shock.png', label: '驚訝' },
+  { key: 'squint', src: 'assets/stickers/sticker-squint.png', label: '瞇眼' },
+];
+const stickerImages = {};
+const stickersReady = Promise.all(
+  STICKER_DEFS.map(def => loadImage(def.src).then(img => { stickerImages[def.key] = img; }))
+);
+
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 // Converts full-width punctuation (as Chinese IMEs commonly produce for ！？
@@ -529,6 +566,7 @@ function freshCardState(i) {
     offsetY: 0,
     fx: 0.5,
     fy: 0.5,
+    stickers: [],
   };
 }
 
@@ -713,6 +751,87 @@ function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
   }
 }
 
+// Face-covering stickers: freely draggable/scalable per instance, stored as
+// canvas-space center coordinates so drag/scale math stays a simple delta.
+const STICKER_BASE_SIZE = 110;
+const STICKER_MIN_SCALE = 0.3, STICKER_MAX_SCALE = 3;
+const STICKER_DELETE_R = 11;
+
+// The source PNGs aren't perfectly square (e.g. 221×192), so `scale` sizes a
+// bounding box and the sticker is fit inside it at its own aspect ratio —
+// never stretched to fill a square, on drag, scale, or hit-testing alike.
+function stickerDrawSize(st, img) {
+  const box = STICKER_BASE_SIZE * st.scale;
+  const iw = img.naturalWidth || img.width || 1;
+  const ih = img.naturalHeight || img.height || 1;
+  const fit = box / Math.max(iw, ih);
+  return { w: iw * fit, h: ih * fit };
+}
+
+function drawCellStickers(ctx, state, interactive) {
+  const list = state.stickers;
+  if (!list || !list.length) return;
+  for (const st of list) {
+    const img = stickerImages[st.key];
+    if (!img) continue;
+    const { w, h } = stickerDrawSize(st, img);
+    ctx.drawImage(img, st.x - w / 2, st.y - h / 2, w, h);
+    if (interactive) {
+      const bx = st.x + w / 2 - STICKER_DELETE_R;
+      const by = st.y - h / 2 + STICKER_DELETE_R;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(bx, by, STICKER_DELETE_R, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(20,20,20,0.65)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      const r = 4;
+      ctx.beginPath();
+      ctx.moveTo(bx - r, by - r); ctx.lineTo(bx + r, by + r);
+      ctx.moveTo(bx + r, by - r); ctx.lineTo(bx - r, by + r);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+// Hit-tests topmost-first (last added draws on top) so overlapping stickers
+// resolve to whichever one is visually in front.
+function stickerHit(state, x, y) {
+  const list = state.stickers;
+  if (!list) return -1;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const st = list[i];
+    const img = stickerImages[st.key];
+    if (!img) continue;
+    const { w, h } = stickerDrawSize(st, img);
+    if (Math.abs(x - st.x) <= w / 2 && Math.abs(y - st.y) <= h / 2) return i;
+  }
+  return -1;
+}
+
+function stickerDeleteHit(state, x, y) {
+  const list = state.stickers;
+  if (!list) return -1;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const st = list[i];
+    const img = stickerImages[st.key];
+    if (!img) continue;
+    const { w, h } = stickerDrawSize(st, img);
+    const bx = st.x + w / 2 - STICKER_DELETE_R;
+    const by = st.y - h / 2 + STICKER_DELETE_R;
+    const dx = x - bx, dy = y - by;
+    if (dx * dx + dy * dy <= STICKER_DELETE_R * STICKER_DELETE_R) return i;
+  }
+  return -1;
+}
+
+function clampStickerPos(cell, st) {
+  st.x = clamp(st.x, cell.x, cell.x + cell.w);
+  st.y = clamp(st.y, cell.y, cell.y + cell.h);
+}
+
 function drawCellImage(ctx, cell, state) {
   if (!state.img) {
     ctx.fillStyle = '#c7cbd1';
@@ -835,6 +954,7 @@ function renderTo(ctx, mode, pageState, opts = {}) {
   }
   drawTemplateOverlay(ctx, pageState.showHeader);
   if (mode === 'final') {
+    for (let i = 0; i < 6; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive);
     for (let i = 0; i < 6; i++) drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
@@ -853,7 +973,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 function render() {
-  renderTo(ctx, 'final', activePage(), { showActiveBorder: true });
+  renderTo(ctx, 'final', activePage(), { showActiveBorder: true, interactive: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -1150,14 +1270,35 @@ function cellIndexAt(x, y) {
 }
 
 let drag = null;
+let stickerDrag = null;
 
 function pointerDown(evt) {
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
+  const state = activePage().cards[idx];
+
+  const delIdx = stickerDeleteHit(state, pos.x, pos.y);
+  if (delIdx >= 0) {
+    evt.preventDefault();
+    setActiveCard(idx);
+    state.stickers.splice(delIdx, 1);
+    render();
+    return;
+  }
+
+  const stIdx = stickerHit(state, pos.x, pos.y);
+  if (stIdx >= 0) {
+    evt.preventDefault();
+    setActiveCard(idx);
+    const st = state.stickers[stIdx];
+    stickerDrag = { idx, stickerIdx: stIdx, startX: pos.x, startY: pos.y, startStX: st.x, startStY: st.y };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
   setActiveCard(idx);
   cardEls[idx].box.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  const state = activePage().cards[idx];
   if (!state.img) return;
   evt.preventDefault();
   drag = { idx, startX: pos.x, startY: pos.y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
@@ -1166,9 +1307,24 @@ function pointerDown(evt) {
 
 function pointerMove(evt) {
   const pos = getCanvasPos(evt);
+  if (stickerDrag) {
+    evt.preventDefault();
+    const state = activePage().cards[stickerDrag.idx];
+    const st = state.stickers[stickerDrag.stickerIdx];
+    if (st) {
+      st.x = stickerDrag.startStX + (pos.x - stickerDrag.startX);
+      st.y = stickerDrag.startStY + (pos.y - stickerDrag.startY);
+      clampStickerPos(cellRect(stickerDrag.idx, activePage().showHeader), st);
+      render();
+    }
+    return;
+  }
   if (!drag) {
     const idx = cellIndexAt(pos.x, pos.y);
-    canvas.style.cursor = idx >= 0 && activePage().cards[idx].img ? 'grab' : (idx >= 0 ? 'pointer' : 'default');
+    if (idx < 0) { canvas.style.cursor = 'default'; return; }
+    const state = activePage().cards[idx];
+    const overSticker = stickerHit(state, pos.x, pos.y) >= 0 || stickerDeleteHit(state, pos.x, pos.y) >= 0;
+    canvas.style.cursor = overSticker || state.img ? 'grab' : 'pointer';
     return;
   }
   evt.preventDefault();
@@ -1181,6 +1337,7 @@ function pointerMove(evt) {
 
 function pointerUp() {
   drag = null;
+  stickerDrag = null;
   canvas.style.cursor = 'default';
 }
 
@@ -1191,6 +1348,8 @@ canvas.addEventListener('dblclick', evt => {
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
+  const state = activePage().cards[idx];
+  if (stickerHit(state, pos.x, pos.y) >= 0 || stickerDeleteHit(state, pos.x, pos.y) >= 0) return;
   setActiveCard(idx);
   cardEls[idx].box.querySelector('.dropzone').click();
 });
@@ -1201,11 +1360,26 @@ window.addEventListener('touchend', pointerUp);
 canvas.addEventListener('wheel', evt => {
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
-  if (idx < 0 || !activePage().cards[idx].img) return;
+  if (idx < 0) return;
+  const state = activePage().cards[idx];
+
+  const stIdx = stickerHit(state, pos.x, pos.y);
+  if (stIdx >= 0) {
+    evt.preventDefault();
+    setActiveCard(idx);
+    const st = state.stickers[stIdx];
+    const factor = 1 - evt.deltaY * 0.0015;
+    st.scale = clamp(st.scale * factor, STICKER_MIN_SCALE, STICKER_MAX_SCALE);
+    clampStickerPos(cellRect(idx, activePage().showHeader), st);
+    render();
+    return;
+  }
+
+  if (!state.img) return;
   evt.preventDefault();
   setActiveCard(idx);
   const factor = 1 - evt.deltaY * 0.0015;
-  applyScale(idx, activePage().cards[idx].scale * factor);
+  applyScale(idx, state.scale * factor);
   refreshCardThumb(idx);
   render();
 }, { passive: false });
@@ -1406,6 +1580,7 @@ async function ensureAssetsReady() {
   await headlineFontReady;
   await document.fonts.ready;
   await templatesReady;
+  await stickersReady;
 }
 
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
@@ -1519,10 +1694,31 @@ helpBtn.addEventListener('click', () => helpOverlay.classList.add('open'));
 document.getElementById('helpCloseBtn').addEventListener('click', () => helpOverlay.classList.remove('open'));
 helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpOverlay.classList.remove('open'); });
 
+const stickerPalette = document.getElementById('stickerPalette');
+STICKER_DEFS.forEach(def => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'sticker-btn';
+  btn.title = `加入「${def.label}」貼圖到目前選取的格子`;
+  const img = document.createElement('img');
+  img.src = def.src;
+  img.alt = def.label;
+  btn.appendChild(img);
+  btn.addEventListener('click', () => {
+    const idx = activeCard;
+    const state = activePage().cards[idx];
+    const cell = cellRect(idx, activePage().showHeader);
+    state.stickers.push({ key: def.key, x: cell.x + cell.w / 2, y: cell.y + cell.h / 2, scale: 1 });
+    render();
+  });
+  stickerPalette.appendChild(btn);
+});
+
 render();
 headlineFontReady.then(render);
 document.fonts.ready.then(render);
 templatesReady.then(render);
+stickersReady.then(render);
 </script>
 </body>
 </html>
