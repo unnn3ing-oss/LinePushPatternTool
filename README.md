@@ -39,6 +39,7 @@
 | `assets/template-header.png` | 含頂部黃色標籤列的模板圖層，Canva 原始匯出檔，直接套用不重繪 |
 | `assets/template-plain.png` | 不含標籤列（僅頂部淡淡暗角）的模板圖層，同樣是 Canva 原始匯出檔 |
 | `assets/stickers/*.png` | 可疊加在照片上、用來遮擋人物的四款表情貼圖（透明背景 PNG） |
+| `assets/icons/*` | 網頁分頁圖示（favicon），喇叭圖案，呼應版型本身的黃色標籤列圖示 |
 
 ## 技術說明
 
