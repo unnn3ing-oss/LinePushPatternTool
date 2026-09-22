@@ -665,7 +665,7 @@ function drawHeaderLabel(ctx, label) {
   // the full HEADER_H — otherwise the top line's own height silently eats
   // into the bar and the text reads as drifted upward.
   const yellowTop = HEADER_TOP_LINE_H;
-  const baselineY = yellowTop + (HEADER_H - yellowTop) / 2 + (asc - desc) / 2;
+  const baselineY = yellowTop + (HEADER_H - yellowTop) / 2 + (asc - desc) / 2 + 3;
   let cx = labelStartX;
   for (const ch of label) {
     const w = ctx.measureText(ch).width;
