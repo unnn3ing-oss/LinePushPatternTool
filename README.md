@@ -35,7 +35,8 @@
 | 檔案 | 說明 |
 |---|---|
 | `index.html` | 全部功能所在，純 HTML + CSS + 原生 JavaScript（Canvas 2D 繪圖），無外部相依套件 |
-| `TaipeiSansTCBeta-Bold.ttf` | 標題套用的字型（台北黑體 Taipei Sans TC Beta Bold），以 `@font-face` 載入 |
+| `TaipeiSansTCBeta-Bold.woff2` | 標題套用的字型（台北黑體 Taipei Sans TC Beta Bold）的 WOFF2 壓縮版，瀏覽器優先載入這個（比 .ttf 小約 65%，字元涵蓋範圍完全相同） |
+| `TaipeiSansTCBeta-Bold.ttf` | 同一套字型的原始 TTF，僅作為不支援 WOFF2 的舊瀏覽器備援，一般瀏覽器不會下載到這個檔案 |
 | `assets/template-header.png` | 含頂部黃色標籤列的模板圖層，Canva 原始匯出檔，直接套用不重繪 |
 | `assets/template-plain.png` | 不含標籤列（僅頂部淡淡暗角）的模板圖層，同樣是 Canva 原始匯出檔 |
 | `assets/stickers/*.png` | 可疊加在照片上、用來遮擋人物的四款表情貼圖（透明背景 PNG） |
