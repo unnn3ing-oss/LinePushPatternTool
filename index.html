@@ -496,17 +496,27 @@ const FONT_STACK = `"TaipeiSansTC-Bold", "Microsoft JhengHei", "PingFang TC", sa
 // kicker tag just above the note.
 // ---------------------------------------------------------------------------
 const ENT_W = 1200, ENT_H = 1200;
+// Frames in the same row share one y for line 1, line 2 and the tag (the
+// row's average of the measured positions), so left/right text lines up
+// instead of sitting a few px apart like the hand-placed sample.
+const ENT_ROW_Y = [
+  { y1: 467.3, y2: 535.7, tagBottom: 421 },
+  { y1: 1055.8, y2: 1123.9, tagBottom: 1015.5 },
+];
 const ENT_CELLS = [
-  { photo: { x: 44, y: 23, w: 535, h: 409 }, cx: 301.7, y1: 466.7, y2: 533.7, hw: 285.6, tagX: 18, tagBottom: 425 },
-  { photo: { x: 632, y: 13, w: 546, h: 416 }, cx: 907.5, y1: 467.9, y2: 537.7, hw: 283.3, tagX: 625, tagBottom: 417 },
-  { photo: { x: 36, y: 628, w: 531, h: 389 }, cx: 294.2, y1: 1055.2, y2: 1123.3, hw: 282.7, tagX: 9, tagBottom: 1015 },
-  { photo: { x: 632, y: 615, w: 542, h: 406 }, cx: 894.6, y1: 1056.3, y2: 1124.4, hw: 283.0, tagX: 613, tagBottom: 1016 },
+  { photo: { x: 44, y: 23, w: 535, h: 409 }, cx: 301.7, hw: 285.6, tagX: 18, ...ENT_ROW_Y[0] },
+  { photo: { x: 632, y: 13, w: 546, h: 416 }, cx: 907.5, hw: 283.3, tagX: 625, ...ENT_ROW_Y[0] },
+  { photo: { x: 36, y: 628, w: 531, h: 389 }, cx: 294.2, hw: 282.7, tagX: 9, ...ENT_ROW_Y[1] },
+  { photo: { x: 632, y: 615, w: 542, h: 406 }, cx: 894.6, hw: 283.0, tagX: 613, ...ENT_ROW_Y[1] },
 ];
 // Sample text is TaipeiSans Bold at 53px on the 1040 artboard → 61px here.
 const ENT_BASE_FONT_SIZE = 61;
 const ENT_TAG_BASE_FONT_SIZE = 54;
+// The tape is sized from ENT_TAG_BASE_FONT_SIZE; the text inside is drawn
+// this much larger without growing the tape.
+const ENT_TAG_TEXT_BOOST = 4;
 const ENT_TAG_PAD_X = 32, ENT_TAG_PAD_Y = 19;
-const ENT_TAG_ROTATE = -2.5 * Math.PI / 180;
+const ENT_TAG_ROTATE = -3 * Math.PI / 180;
 // A light same-colour outline to thicken TaipeiSans Bold toward the sample's
 // weight; kept at 1px since heavier strokes plus the tight negative spacing
 // make neighbouring glyphs run together.
@@ -1105,8 +1115,22 @@ function drawEntCellText(ctx, i, state) {
 // this font's ink center on the sample text's ink center.
 const ENT_INK_DY = 0;
 
-// Blue tape-style kicker tag, slightly tilted like the reference, sitting on
-// the top edge of the frame's sticky note.
+// Torn-tape outline from the reference tag artwork: straight top/bottom,
+// wavy left/right ends whose curves scale with the tape's height only, so
+// the tape stretches horizontally to fit any text without distorting them.
+function traceTapePath(ctx, w, h) {
+  const x0 = -w / 2, x1 = w / 2, y0 = -h / 2, y1 = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y0);
+  ctx.bezierCurveTo(x1 - 0.16 * h, y0 + 0.3 * h, x1 + 0.06 * h, y0 + 0.62 * h, x1 - 0.04 * h, y1);
+  ctx.lineTo(x0 - 0.05 * h, y1);
+  ctx.bezierCurveTo(x0 + 0.14 * h, y1 - 0.3 * h, x0 - 0.04 * h, y1 - 0.66 * h, x0, y0);
+  ctx.closePath();
+}
+
+// Blue torn-tape kicker tag, tilted like the reference, sitting on the top
+// edge of the frame's sticky note. The text is tilted along with the tape.
 function drawEntTag(ctx, c, text, fontSize, spacing, bgColor) {
   const textW = measureWithSpacing(ctx, text, spacing, fontSize);
   const boxW = textW + ENT_TAG_PAD_X * 2;
@@ -1116,14 +1140,15 @@ function drawEntTag(ctx, c, text, fontSize, spacing, bgColor) {
   ctx.save();
   ctx.translate(cxBox, cyBox);
   ctx.rotate(ENT_TAG_ROTATE);
-  ctx.shadowColor = 'rgba(0,0,0,0.28)';
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetX = 2;
-  ctx.shadowOffsetY = 3;
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 4;
   ctx.fillStyle = bgColor;
-  ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+  traceTapePath(ctx, boxW, boxH);
+  ctx.fill();
   ctx.shadowColor = 'transparent';
-  drawSpacedText(ctx, text, 0, ENT_INK_DY, fontSize, spacing, '#ffffff');
+  drawSpacedText(ctx, text, 0, ENT_INK_DY, fontSize + ENT_TAG_TEXT_BOOST, spacing, '#ffffff');
   ctx.restore();
 }
 
