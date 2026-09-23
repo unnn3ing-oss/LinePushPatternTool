@@ -441,7 +441,7 @@
 
       <h3>⑥ 成品</h3>
       <img src="assets/help/output-sample.jpg" alt="成品範例">
-      <p style="margin:0">下載會自動放大到 2 倍解析度並內嵌 300dpi，小字邊緣更乾淨、不易因壓縮糊在一起。</p>
+      <p style="margin:0">下載檔案為版型原尺寸（新聞 1040×800、娛樂 1200×1200）的高品質 JPG，並內嵌 300dpi。</p>
     </div>
   </div>
 </div>
@@ -1682,15 +1682,13 @@ const statusEl = document.getElementById('status');
 // ---------------------------------------------------------------------------
 // Export resolution / DPI
 // ---------------------------------------------------------------------------
-// The on-screen preview canvas stays at CANVAS_W x CANVAS_H (1040x800) for
-// snappy interactive editing, but downloads render at EXPORT_SCALE x that
-// size: more raw pixels for JPEG's lossy compression to work with (less
-// visible ringing/blur around small bold text) and enough detail to hold up
-// at print size. EXPORT_DPI is then written into the file's own metadata
-// (PNG pHYs chunk / JPEG JFIF density field) so print software reports the
-// correct physical size — the DPI tag alone doesn't add sharpness, only the
-// extra real pixels from EXPORT_SCALE do that; they're applied together.
-const EXPORT_SCALE = 2;
+// Downloads must come out at exactly the layout's own size (新聞 1040×800,
+// 娛樂 1200×1200), so export renders 1:1. EXPORT_JPEG_QUALITY is kept high
+// because at native size JPEG ringing is what blurs small bold text.
+// EXPORT_DPI is written into the file's own metadata (PNG pHYs chunk / JPEG
+// JFIF density field).
+const EXPORT_SCALE = 1;
+const EXPORT_JPEG_QUALITY = 0.95;
 const EXPORT_DPI = 300;
 
 function dataUrlToBytes(dataUrl) {
@@ -1807,14 +1805,14 @@ async function ensureAssetsReady() {
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   const off = renderPageToOffscreen(activePage(), 'final');
-  exportCanvas(off, ['image/jpeg', 0.92], `${L().filePrefix}_第${activePageIndex + 1}頁.jpg`);
+  exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], `${L().filePrefix}_第${activePageIndex + 1}頁.jpg`);
 });
 
 document.getElementById('downloadAllBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   for (let p = 0; p < PAGE_COUNT; p++) {
     const off = renderPageToOffscreen(pages[p], 'final');
-    exportCanvas(off, ['image/jpeg', 0.92], `${L().filePrefix}_第${p + 1}頁.jpg`);
+    exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], `${L().filePrefix}_第${p + 1}頁.jpg`);
     // Small gap so the browser treats these as two distinct downloads
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
