@@ -1954,10 +1954,23 @@ function applyModeChrome() {
   pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
 }
 
+// The quick-fill box is per mode too: its pasted text and open/closed state
+// are stashed on switch and restored when coming back.
+const quickfillText = document.getElementById('quickfillText');
+const quickfillByMode = {
+  news: { text: '', open: false },
+  ent: { text: '', open: false },
+};
+
 function setMode(newMode) {
   if (newMode === mode) return;
   pagesByMode[mode] = pages;
   pageIndexByMode[mode] = activePageIndex;
+  quickfillByMode[mode] = { text: quickfillText.value, open: !quickfillBody.classList.contains('collapsed') };
+  quickfillText.value = quickfillByMode[newMode].text;
+  quickfillBody.classList.toggle('collapsed', !quickfillByMode[newMode].open);
+  quickfillHeader.classList.toggle('open', quickfillByMode[newMode].open);
+  statusEl.textContent = '在照片上拖曳可調整位置，滑鼠滾輪可縮放';
   drag = null;
   stickerDrag = null;
   mode = newMode;
