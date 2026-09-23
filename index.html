@@ -441,7 +441,7 @@
 
       <h3>⑥ 成品</h3>
       <img src="assets/help/output-sample.jpg" alt="成品範例">
-      <p style="margin:0">下載檔案為版型原尺寸（新聞 1040×800、娛樂 1200×1200）的高品質 JPG，並內嵌 300dpi。</p>
+      <p style="margin:0">下載檔案為高品質 JPG 並內嵌 300dpi：新聞 1040×800、娛樂 1040×1040（先以 2 倍算圖再縮小，維持清晰）。</p>
     </div>
   </div>
 </div>
@@ -527,7 +527,7 @@ const ENT_MIN_SPACING_EM = -0.07;
 
 const LAYOUTS = {
   news: {
-    name: '新聞', W: NEWS_W, H: NEWS_H, cellCount: 6,
+    name: '新聞', W: NEWS_W, H: NEWS_H, exportW: NEWS_W, exportH: NEWS_H, cellCount: 6,
     cellLabels: ['左上', '中上', '右上', '左下', '中下', '右下'],
     lineColors: ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'],
     tagColors: ['#ff0000', '#a5a5a5'],
@@ -535,12 +535,12 @@ const LAYOUTS = {
     sub: '「新聞」：熱門話題六宮格，兩頁各自獨立（第1頁含標籤列、第2頁不含），每頁 1040×800。',
   },
   ent: {
-    name: '娛樂', W: ENT_W, H: ENT_H, cellCount: 4,
+    name: '娛樂', W: ENT_W, H: ENT_H, exportW: 1040, exportH: 1040, cellCount: 4,
     cellLabels: ['左上', '右上', '左下', '右下'],
     lineColors: ['#0075d6', '#000000', '#ffffff', '#ff2b2b', '#37c871', '#ffff00'],
     tagColors: ['#00bbf0', '#a5a5a5'],
     stickerBase: 127, previewMaxWidth: 620, filePrefix: '娛樂',
-    sub: '「娛樂」：拍立得四格，兩頁各自獨立，每頁 1200×1200。',
+    sub: '「娛樂」：拍立得四格，兩頁各自獨立，每頁輸出 1040×1040。',
   },
 };
 let mode = 'news';
@@ -1682,8 +1682,8 @@ const statusEl = document.getElementById('status');
 // ---------------------------------------------------------------------------
 // Export resolution / DPI
 // ---------------------------------------------------------------------------
-// Downloads must come out at exactly the layout's own size (新聞 1040×800,
-// 娛樂 1200×1200), so export renders 1:1. EXPORT_JPEG_QUALITY is kept high
+// Downloads must come out at each layout's exportW/H (新聞 1040×800,
+// 娛樂 1040×1040); 新聞 renders 1:1. EXPORT_JPEG_QUALITY is kept high
 // because at native size JPEG ringing is what blurs small bold text.
 // EXPORT_DPI is written into the file's own metadata (PNG pHYs chunk / JPEG
 // JFIF density field).
@@ -1785,13 +1785,35 @@ function exportCanvas(off, toDataUrlArgs, filename) {
   }
 }
 
+// When a layout's file size differs from its design size (娛樂: designed at
+// 1200, delivered at 1040), render at 2× the target and halve it with
+// high-quality smoothing — sharper text/photo edges than drawing straight at
+// the smaller size.
 function renderPageToOffscreen(pageState, renderMode) {
+  const { exportW, exportH } = L();
+  if (exportW === CANVAS_W && exportH === CANVAS_H) {
+    const off = document.createElement('canvas');
+    off.width = CANVAS_W * EXPORT_SCALE;
+    off.height = CANVAS_H * EXPORT_SCALE;
+    const octx = off.getContext('2d');
+    octx.scale(EXPORT_SCALE, EXPORT_SCALE);
+    renderTo(octx, renderMode, pageState);
+    return off;
+  }
+  const big = document.createElement('canvas');
+  big.width = exportW * 2;
+  big.height = exportH * 2;
+  const bctx = big.getContext('2d');
+  bctx.imageSmoothingQuality = 'high';
+  bctx.scale(big.width / CANVAS_W, big.height / CANVAS_H);
+  renderTo(bctx, renderMode, pageState);
   const off = document.createElement('canvas');
-  off.width = CANVAS_W * EXPORT_SCALE;
-  off.height = CANVAS_H * EXPORT_SCALE;
+  off.width = exportW;
+  off.height = exportH;
   const octx = off.getContext('2d');
-  octx.scale(EXPORT_SCALE, EXPORT_SCALE);
-  renderTo(octx, renderMode, pageState);
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+  octx.drawImage(big, 0, 0, exportW, exportH);
   return off;
 }
 
