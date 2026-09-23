@@ -131,6 +131,10 @@
     display: flex;
     justify-content: center;
   }
+  .left-col { display: flex; flex-direction: column; gap: 14px; }
+  .mode-tabs { display: flex; gap: 6px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 5px; }
+  .mode-tab { flex: 1; background: transparent; border: none; border-radius: 8px; padding: 10px; color: var(--muted); font-weight: 700; font-size: 15px; }
+  .mode-tab.active { background: var(--accent); color: #fff; }
   canvas {
     width: 100%;
     max-width: 720px;
@@ -309,11 +313,16 @@
 <div class="wrap">
   <header>
     <h1>Line推播套版產生器</h1>
-    <p class="sub">固定「熱門話題」六宮格版型，共兩頁各自獨立（第1頁含標籤列、第2頁不含），各區塊可改文字、標籤、換圖、拖曳與縮放，文字會自動調整字距（過緊才縮小字級）。每頁輸出 1040×800。</p>
+    <p class="sub" id="modeSub"></p>
     <button type="button" id="helpBtn" class="help-btn">📖 使用說明</button>
   </header>
 
   <div class="layout">
+    <div class="left-col">
+    <div class="mode-tabs">
+      <button type="button" class="mode-tab active" data-mode="news">新聞</button>
+      <button type="button" class="mode-tab" data-mode="ent">娛樂</button>
+    </div>
     <div class="card">
       <div class="top-label-box">
         <div class="quickfill-header" id="quickfillHeader">
@@ -328,7 +337,7 @@
         </div>
       </div>
 
-      <div class="top-label-box">
+      <div class="top-label-box" id="newsHeaderBox">
         <div class="field">
           <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px">
             <input type="checkbox" id="showHeaderToggle" checked style="width:auto; margin:0">
@@ -349,6 +358,7 @@
       <div class="btn-row">
         <button id="resetAllBtn">清除本頁</button>
       </div>
+    </div>
     </div>
 
     <div class="preview-col">
@@ -379,6 +389,9 @@
       <button type="button" id="helpCloseBtn" class="modal-close" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body">
+      <h3>新聞／娛樂 切換</h3>
+      <p style="margin:0">編輯區最上方切換版型：「新聞」為熱門話題六宮格（1040×800）、「娛樂」為拍立得四格（1200×1200）。兩種版型的資料各自保留，切換不會遺失；編輯、貼圖、快速填入與字級縮放規則都相同。</p>
+
       <h3>① 快速填入（推薦）</h3>
       <p style="margin:0 0 6px">點開「快速填入」，貼上「★標題第一行 標題第二行」，下一行網址會自動略過。標籤文字用「標籤)」開頭，例如「★國際)⋯⋯」。</p>
       <div class="help-compare">
@@ -439,7 +452,7 @@
       <h2>確定要清除本頁？</h2>
     </div>
     <div class="modal-body">
-      <p style="margin:0">這會清空「本頁」六格目前的文字、標籤與圖片設定，且無法復原（不會影響另一頁）。</p>
+      <p style="margin:0">這會清空「本頁」所有格子目前的文字、標籤與圖片設定，且無法復原（不會影響另一頁）。</p>
       <div class="btn-row" style="justify-content:flex-end; margin-top:16px">
         <button type="button" id="confirmCancelBtn">取消</button>
         <button type="button" id="confirmOkBtn" class="primary">清除本頁</button>
@@ -453,28 +466,93 @@
 // Layout constants (must match the fixed 熱門話題 template: 1040x800, yellow
 // header bar, 3 columns x 2 rows of image cells).
 // ---------------------------------------------------------------------------
-const CANVAS_W = 1040, CANVAS_H = 800;
+// CANVAS_W/H follow the active mode (新聞 1040×800 / 娛樂 1200×1200); the
+// 新聞 grid geometry below stays pinned to its own fixed 1040×800 size.
+let CANVAS_W = 1040, CANVAS_H = 800;
+const NEWS_W = 1040, NEWS_H = 800;
 const HEADER_H = 46;
 // Thin black cap line along the very top edge of the yellow header bar —
 // part of the reference design but not baked into the template PNG, so it
 // has to be drawn separately on top of it.
 const HEADER_TOP_LINE_H = 3;
 const COLS = 3, ROWS = 2;
-const COL_EDGES = [0, CANVAS_W / 3, (CANVAS_W / 3) * 2, CANVAS_W];
+const COL_EDGES = [0, NEWS_W / 3, (NEWS_W / 3) * 2, NEWS_W];
 // Page 1 (with header) reserves the top HEADER_H for the yellow bar, so its
 // 2 rows split the remaining height. Page 2 (no header) has no such gap —
 // its rows fill the full canvas height edge-to-edge, matching the real
 // reference export where photos run flush to the very top.
-const ROW_EDGES_HEADER = [HEADER_H, HEADER_H + (CANVAS_H - HEADER_H) / 2, CANVAS_H];
-const ROW_EDGES_PLAIN = [0, CANVAS_H / 2, CANVAS_H];
+const ROW_EDGES_HEADER = [HEADER_H, HEADER_H + (NEWS_H - HEADER_H) / 2, NEWS_H];
+const ROW_EDGES_PLAIN = [0, NEWS_H / 2, NEWS_H];
 function rowEdgesFor(showHeader) { return showHeader ? ROW_EDGES_HEADER : ROW_EDGES_PLAIN; }
-const CELL_LABELS = ['左上', '中上', '右上', '左下', '中下', '右下'];
 const FONT_STACK = `"TaipeiSansTC-Bold", "Microsoft JhengHei", "PingFang TC", sans-serif`;
-const LINE_COLORS = ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'];
-const TAG_COLORS = ['#ff0000', '#a5a5a5'];
-// Default colours alternate white/yellow by column: column 0 & 2 are
-// white-on-top, yellow-on-bottom; column 1 is the reverse.
+
+// ---------------------------------------------------------------------------
+// 娛樂 layout: 4 polaroid frames on a 1200×1200 page. Every number below was
+// measured off the designer's reference template/sample (drawn at 1040 and
+// scaled ×1200/1040): `photo` is the bbox of each frame's see-through window
+// (+3px so no gap shows at its tilted edges — the frame covers the excess),
+// cx/y1/y2 are the sample text's ink centers on the yellow sticky note, hw
+// the half-width the headline may fill, and tagX/tagBottom anchor the blue
+// kicker tag just above the note.
+// ---------------------------------------------------------------------------
+const ENT_W = 1200, ENT_H = 1200;
+const ENT_CELLS = [
+  { photo: { x: 44, y: 23, w: 535, h: 409 }, cx: 301.7, y1: 466.7, y2: 533.7, hw: 285.6, tagX: 18, tagBottom: 425 },
+  { photo: { x: 632, y: 13, w: 546, h: 416 }, cx: 907.5, y1: 467.9, y2: 537.7, hw: 283.3, tagX: 625, tagBottom: 417 },
+  { photo: { x: 36, y: 628, w: 531, h: 389 }, cx: 294.2, y1: 1055.2, y2: 1123.3, hw: 282.7, tagX: 9, tagBottom: 1015 },
+  { photo: { x: 632, y: 615, w: 542, h: 406 }, cx: 894.6, y1: 1056.3, y2: 1124.4, hw: 283.0, tagX: 613, tagBottom: 1016 },
+];
+// Sample text is TaipeiSans Bold at 53px on the 1040 artboard → 61px here.
+const ENT_BASE_FONT_SIZE = 61;
+const ENT_TAG_BASE_FONT_SIZE = 54;
+const ENT_TAG_PAD_X = 32, ENT_TAG_PAD_Y = 19;
+const ENT_TAG_ROTATE = -2.5 * Math.PI / 180;
+// A light same-colour outline to thicken TaipeiSans Bold toward the sample's
+// weight; kept at 1px since heavier strokes plus the tight negative spacing
+// make neighbouring glyphs run together.
+const ENT_TEXT_STROKE = 1;
+// Measured on the sample's long lines (≈ -0.056em); a little headroom past
+// that before the font size starts dropping.
+const ENT_MIN_SPACING_EM = -0.07;
+
+const LAYOUTS = {
+  news: {
+    name: '新聞', W: NEWS_W, H: NEWS_H, cellCount: 6,
+    cellLabels: ['左上', '中上', '右上', '左下', '中下', '右下'],
+    lineColors: ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'],
+    tagColors: ['#ff0000', '#a5a5a5'],
+    stickerBase: 110, previewMaxWidth: 720, filePrefix: '熱門話題',
+    sub: '「新聞」：熱門話題六宮格，兩頁各自獨立（第1頁含標籤列、第2頁不含），每頁 1040×800。',
+  },
+  ent: {
+    name: '娛樂', W: ENT_W, H: ENT_H, cellCount: 4,
+    cellLabels: ['左上', '右上', '左下', '右下'],
+    lineColors: ['#0075d6', '#000000', '#ffffff', '#ff2b2b', '#37c871', '#ffff00'],
+    tagColors: ['#00bbf0', '#a5a5a5'],
+    stickerBase: 127, previewMaxWidth: 620, filePrefix: '娛樂',
+    sub: '「娛樂」：拍立得四格，兩頁各自獨立，每頁 1200×1200。',
+  },
+};
+let mode = 'news';
+function L() { return LAYOUTS[mode]; }
+// Mode-dependent values the rest of the code reads as plain globals.
+let CELL_COUNT, CELL_LABELS, LINE_COLORS, TAG_COLORS, STICKER_BASE_SIZE;
+function applyModeGlobals() {
+  const l = L();
+  CANVAS_W = l.W; CANVAS_H = l.H;
+  CELL_COUNT = l.cellCount;
+  CELL_LABELS = l.cellLabels;
+  LINE_COLORS = l.lineColors;
+  TAG_COLORS = l.tagColors;
+  STICKER_BASE_SIZE = l.stickerBase;
+}
+applyModeGlobals();
+
+// 新聞 default colours alternate white/yellow by column: column 0 & 2 are
+// white-on-top, yellow-on-bottom; column 1 is the reverse. 娛樂 matches its
+// sample: blue first line, black second.
 function defaultColorsFor(i) {
+  if (mode === 'ent') return { color1: '#0075d6', color2: '#000000' };
   const col = i % COLS;
   return col % 2 === 0
     ? { color1: '#ffffff', color2: '#ffff00' }
@@ -495,10 +573,11 @@ function loadImage(src) {
     img.src = src;
   });
 }
-let templateHeaderImg = null, templatePlainImg = null;
+let templateHeaderImg = null, templatePlainImg = null, templateEntImg = null;
 const templatesReady = Promise.all([
   loadImage('assets/template-header.png').then(img => { templateHeaderImg = img; }),
   loadImage('assets/template-plain.png').then(img => { templatePlainImg = img; }),
+  loadImage('assets/template-ent.png').then(img => { templateEntImg = img; }),
 ]);
 
 // Small face-covering stickers the user can drop onto a cell's photo to hide
@@ -544,7 +623,10 @@ function normalizeInputValue(inputEl) {
   return normalized;
 }
 
+// In 娛樂 mode this is each frame's photo window; showHeader only matters
+// for 新聞, where page 1's header bar pushes the grid down.
 function cellRect(i, showHeader) {
+  if (mode === 'ent') return ENT_CELLS[i].photo;
   const row = Math.floor(i / COLS), col = i % COLS;
   const x = COL_EDGES[col], x1 = COL_EDGES[col + 1];
   const rowEdges = rowEdgesFor(showHeader);
@@ -578,9 +660,10 @@ function freshCardState(i) {
 }
 
 function makePageState(pageIndex) {
+  const withHeader = mode === 'news' && pageIndex === 0;
   return {
-    showHeader: pageIndex === 0,
-    topLabel: pageIndex === 0 ? '熱門話題' : '',
+    showHeader: withHeader,
+    topLabel: withHeader ? '熱門話題' : '',
     cards: CELL_LABELS.map((_, i) => freshCardState(i)),
   };
 }
@@ -588,6 +671,9 @@ function makePageState(pageIndex) {
 const PAGE_COUNT = 2;
 let pages = [makePageState(0), makePageState(1)];
 let activePageIndex = 0;
+// Each mode keeps its own pages, so switching 新聞/娛樂 never loses work.
+const pagesByMode = { news: null, ent: null };
+const pageIndexByMode = { news: 0, ent: 0 };
 function activePage() { return pages[activePageIndex]; }
 let activeCard = 0;
 
@@ -628,7 +714,10 @@ function measureWithSpacing(ctx, text, spacing, fontSize) {
 // overlapping glyph strokes for this font. Only once spacing has hit that
 // floor and it still overflows does the font size drop a step, then the
 // same spacing search repeats at the smaller size.
-function computeFit(ctx, text, maxWidth, baseFontSize) {
+// minSpacingEm sets how far spacing may be squeezed before the font shrinks:
+// 0 for 新聞 (never tighter than touching), negative for 娛樂, whose sample
+// keeps near-full size on long lines by tucking glyphs together instead.
+function computeFit(ctx, text, maxWidth, baseFontSize, minSpacingEm = 0) {
   if (!text) return { fontSize: baseFontSize, spacing: NORMAL_SPACING };
   const chars = [...text];
   const n = chars.length;
@@ -642,7 +731,7 @@ function computeFit(ctx, text, maxWidth, baseFontSize) {
       const naturalWidth = sumW + NORMAL_SPACING * (n - 1);
       if (naturalWidth <= maxWidth) return { fontSize, spacing: NORMAL_SPACING };
       const required = (maxWidth - sumW) / (n - 1);
-      if (required >= 0) {
+      if (required >= minSpacingEm * fontSize) {
         return { fontSize, spacing: required };
       }
     }
@@ -659,15 +748,23 @@ function computeFit(ctx, text, maxWidth, baseFontSize) {
   return { fontSize: MIN_FONT_SIZE, spacing: 0 };
 }
 
-function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor) {
+// strokeW > 0 thickens the glyphs with a same-colour round-joined outline
+// (the font has no heavier weight to switch to).
+function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor, strokeW = 0) {
   if (!text) return;
   const total = measureWithSpacing(ctx, text, spacing, fontSize);
   let cx = centerX - total / 2;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = fillColor;
+  if (strokeW > 0) {
+    ctx.strokeStyle = fillColor;
+    ctx.lineWidth = strokeW;
+    ctx.lineJoin = 'round';
+  }
   for (const ch of text) {
     const w = measureChar(ctx, ch, fontSize);
+    if (strokeW > 0) ctx.strokeText(ch, cx, y);
     ctx.fillText(ch, cx, y);
     cx += w + spacing;
   }
@@ -682,6 +779,10 @@ function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor) {
 // "熱門話題" bar and icon baked in, or the plain page (top vignette, no bar)
 // for slides that don't repeat the header.
 function drawTemplateOverlay(ctx, showHeader) {
+  if (mode === 'ent') {
+    if (templateEntImg) ctx.drawImage(templateEntImg, 0, 0, CANVAS_W, CANVAS_H);
+    return;
+  }
   const img = showHeader ? templateHeaderImg : templatePlainImg;
   if (!img) return;
   ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H);
@@ -760,7 +861,6 @@ function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
 
 // Face-covering stickers: freely draggable/scalable per instance, stored as
 // canvas-space center coordinates so drag/scale math stays a simple delta.
-const STICKER_BASE_SIZE = 110;
 const STICKER_MIN_SCALE = 0.3, STICKER_MAX_SCALE = 3;
 const STICKER_DELETE_R = 14;
 // The actual click/tap target is bigger than the visible circle — a small
@@ -956,17 +1056,91 @@ function drawCellText(ctx, cell, state) {
   }
 }
 
-function renderTo(ctx, mode, pageState, opts = {}) {
+// 娛樂 uses the exact same fit rules as 新聞 (computeFit: natural spacing →
+// squeeze spacing to 0 → drop font size), just with its own text boxes.
+function computeEntFit(ctx, i, state) {
+  const c = ENT_CELLS[i];
+  const line1 = (state.line1 || '').trim();
+  const line2 = (state.line2 || '').trim();
+  const tag = (state.tag || '').trim();
+  const key = `ent|${i}|${line1}|${line2}|${tag}`;
+  if (state._fitCache && state._fitCache.key === key) return state._fitCache;
+  const maxWidth = c.hw * 2 - ENT_TEXT_STROKE;
+  const fit1 = line1 ? computeFit(ctx, line1, maxWidth, ENT_BASE_FONT_SIZE, ENT_MIN_SPACING_EM) : null;
+  const fit2 = line2 ? computeFit(ctx, line2, maxWidth, ENT_BASE_FONT_SIZE, ENT_MIN_SPACING_EM) : null;
+  const tagFit = tag ? computeFit(ctx, tag, maxWidth * 0.8 - ENT_TAG_PAD_X * 2, ENT_TAG_BASE_FONT_SIZE) : null;
+  const result = {
+    key, line1, line2, tag,
+    fontSize1: fit1 ? fit1.fontSize : ENT_BASE_FONT_SIZE,
+    sp1: fit1 ? fit1.spacing : 0,
+    fontSize2: fit2 ? fit2.fontSize : ENT_BASE_FONT_SIZE,
+    sp2: fit2 ? fit2.spacing : 0,
+    tagFontSize: tagFit ? tagFit.fontSize : ENT_TAG_BASE_FONT_SIZE,
+    tagSpacing: tagFit ? tagFit.spacing : NORMAL_SPACING,
+  };
+  state._fitCache = result;
+  return result;
+}
+
+// Line y positions are fixed per frame (not derived from the fitted font
+// size), so a shrunk long headline still sits on the same lines as the
+// sample. A lone line is centered on the sticky note instead of hugging one
+// of the two slots.
+function drawEntCellText(ctx, i, state) {
+  const c = ENT_CELLS[i];
+  const f = computeEntFit(ctx, i, state);
+  const sw = ENT_TEXT_STROKE;
+  if (f.line1 && f.line2) {
+    drawSpacedText(ctx, f.line1, c.cx, c.y1 + ENT_INK_DY, f.fontSize1, f.sp1, state.color1, sw);
+    drawSpacedText(ctx, f.line2, c.cx, c.y2 + ENT_INK_DY, f.fontSize2, f.sp2, state.color2, sw);
+  } else if (f.line1 || f.line2) {
+    const midY = (c.y1 + c.y2) / 2 + ENT_INK_DY;
+    if (f.line1) drawSpacedText(ctx, f.line1, c.cx, midY, f.fontSize1, f.sp1, state.color1, sw);
+    else drawSpacedText(ctx, f.line2, c.cx, midY, f.fontSize2, f.sp2, state.color2, sw);
+  }
+  if (f.tag) drawEntTag(ctx, c, f.tag, f.tagFontSize, f.tagSpacing, state.tagColor || TAG_COLORS[0]);
+}
+
+// Canvas 'middle' centers the em box, not the ink; measured offset that puts
+// this font's ink center on the sample text's ink center.
+const ENT_INK_DY = 0;
+
+// Blue tape-style kicker tag, slightly tilted like the reference, sitting on
+// the top edge of the frame's sticky note.
+function drawEntTag(ctx, c, text, fontSize, spacing, bgColor) {
+  const textW = measureWithSpacing(ctx, text, spacing, fontSize);
+  const boxW = textW + ENT_TAG_PAD_X * 2;
+  const boxH = fontSize + ENT_TAG_PAD_Y * 2;
+  const cxBox = c.tagX + boxW / 2;
+  const cyBox = c.tagBottom - boxH / 2;
+  ctx.save();
+  ctx.translate(cxBox, cyBox);
+  ctx.rotate(ENT_TAG_ROTATE);
+  ctx.shadowColor = 'rgba(0,0,0,0.28)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 3;
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+  ctx.shadowColor = 'transparent';
+  drawSpacedText(ctx, text, 0, ENT_INK_DY, fontSize, spacing, '#ffffff');
+  ctx.restore();
+}
+
+function renderTo(ctx, renderMode, pageState, opts = {}) {
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-  if (mode === 'final') {
+  if (renderMode === 'final') {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    for (let i = 0; i < 6; i++) drawCellImage(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
+    for (let i = 0; i < CELL_COUNT; i++) drawCellImage(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
   }
   drawTemplateOverlay(ctx, pageState.showHeader);
-  if (mode === 'final') {
-    for (let i = 0; i < 6; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive);
-    for (let i = 0; i < 6; i++) drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
+  if (renderMode === 'final') {
+    for (let i = 0; i < CELL_COUNT; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive);
+    for (let i = 0; i < CELL_COUNT; i++) {
+      if (mode === 'ent') drawEntCellText(ctx, i, pageState.cards[i]);
+      else drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
+    }
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
 
@@ -1246,7 +1420,7 @@ function syncCellUIFromState(i) {
 function refreshCardThumb(i) { syncCellUIFromState(i); }
 
 function syncAllCellUI() {
-  for (let i = 0; i < 6; i++) syncCellUIFromState(i);
+  for (let i = 0; i < CELL_COUNT; i++) syncCellUIFromState(i);
 }
 
 function setActiveCard(i) {
@@ -1255,7 +1429,14 @@ function setActiveCard(i) {
   render();
 }
 
-for (let i = 0; i < 6; i++) buildCardUI(i);
+// The per-cell editors depend on the mode (cell count, colour palettes), so
+// they're rebuilt from scratch whenever the mode changes.
+function buildAllCardUI() {
+  cellsList.innerHTML = '';
+  cardEls.length = 0;
+  for (let i = 0; i < CELL_COUNT; i++) buildCardUI(i);
+}
+buildAllCardUI();
 setActiveCard(0);
 
 // ---------------------------------------------------------------------------
@@ -1270,8 +1451,12 @@ function getCanvasPos(evt) {
 }
 
 function cellIndexAt(x, y) {
+  if (mode === 'ent') {
+    if (x < 0 || x > CANVAS_W || y < 0 || y > CANVAS_H) return -1;
+    return (y < CANVAS_H / 2 ? 0 : 2) + (x < CANVAS_W / 2 ? 0 : 1);
+  }
   const rowEdges = rowEdgesFor(activePage().showHeader);
-  if (x < 0 || x > CANVAS_W || y < rowEdges[0] || y > rowEdges[2]) return -1;
+  if (x < 0 || x > NEWS_W || y < rowEdges[0] || y > rowEdges[2]) return -1;
   let col = COLS - 1;
   for (let c = 0; c < COLS; c++) {
     if (x >= COL_EDGES[c] && x < COL_EDGES[c + 1]) { col = c; break; }
@@ -1577,13 +1762,13 @@ function exportCanvas(off, toDataUrlArgs, filename) {
   }
 }
 
-function renderPageToOffscreen(pageState, mode) {
+function renderPageToOffscreen(pageState, renderMode) {
   const off = document.createElement('canvas');
   off.width = CANVAS_W * EXPORT_SCALE;
   off.height = CANVAS_H * EXPORT_SCALE;
   const octx = off.getContext('2d');
   octx.scale(EXPORT_SCALE, EXPORT_SCALE);
-  renderTo(octx, mode, pageState);
+  renderTo(octx, renderMode, pageState);
   return off;
 }
 
@@ -1597,14 +1782,14 @@ async function ensureAssetsReady() {
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   const off = renderPageToOffscreen(activePage(), 'final');
-  exportCanvas(off, ['image/jpeg', 0.92], `熱門話題_第${activePageIndex + 1}頁.jpg`);
+  exportCanvas(off, ['image/jpeg', 0.92], `${L().filePrefix}_第${activePageIndex + 1}頁.jpg`);
 });
 
 document.getElementById('downloadAllBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   for (let p = 0; p < PAGE_COUNT; p++) {
     const off = renderPageToOffscreen(pages[p], 'final');
-    exportCanvas(off, ['image/jpeg', 0.92], `熱門話題_第${p + 1}頁.jpg`);
+    exportCanvas(off, ['image/jpeg', 0.92], `${L().filePrefix}_第${p + 1}頁.jpg`);
     // Small gap so the browser treats these as two distinct downloads
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
@@ -1644,7 +1829,7 @@ function parseQuickFillText(text) {
     entry.tag = tag;
     entry.tagColor = tagColor;
     entries.push(entry);
-    if (entries.length >= PAGE_COUNT * 6) break;
+    if (entries.length >= PAGE_COUNT * CELL_COUNT) break;
   }
   return entries;
 }
@@ -1652,7 +1837,7 @@ function parseQuickFillText(text) {
 document.getElementById('quickfillBtn').addEventListener('click', () => {
   const entries = parseQuickFillText(document.getElementById('quickfillText').value);
   entries.forEach((entry, idx) => {
-    const card = pages[Math.floor(idx / 6)].cards[idx % 6];
+    const card = pages[Math.floor(idx / CELL_COUNT)].cards[idx % CELL_COUNT];
     card.line1 = entry.line1;
     card.line2 = entry.line2;
     card.tag = entry.tag;
@@ -1724,6 +1909,45 @@ STICKER_DEFS.forEach(def => {
   });
   stickerPalette.appendChild(btn);
 });
+
+// ---------------------------------------------------------------------------
+// 新聞 / 娛樂 mode switch
+// ---------------------------------------------------------------------------
+const modeTabs = Array.from(document.querySelectorAll('.mode-tab'));
+const newsHeaderBox = document.getElementById('newsHeaderBox');
+const modeSubEl = document.getElementById('modeSub');
+
+function applyModeChrome() {
+  const l = L();
+  canvas.width = l.W;
+  canvas.height = l.H;
+  canvas.style.aspectRatio = `${l.W} / ${l.H}`;
+  canvas.style.maxWidth = `${l.previewMaxWidth}px`;
+  newsHeaderBox.style.display = mode === 'news' ? '' : 'none';
+  modeSubEl.textContent = l.sub;
+  modeTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+}
+
+function setMode(newMode) {
+  if (newMode === mode) return;
+  pagesByMode[mode] = pages;
+  pageIndexByMode[mode] = activePageIndex;
+  drag = null;
+  stickerDrag = null;
+  mode = newMode;
+  applyModeGlobals();
+  pages = pagesByMode[mode] || [makePageState(0), makePageState(1)];
+  activePageIndex = pageIndexByMode[mode];
+  applyModeChrome();
+  buildAllCardUI();
+  syncTopUIFromState();
+  syncAllCellUI();
+  setActiveCard(0);
+}
+
+modeTabs.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+applyModeChrome();
 
 render();
 headlineFontReady.then(render);
