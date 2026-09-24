@@ -301,6 +301,13 @@
     text-align: center;
     margin-top: 4px;
   }
+  .help-steps { margin: 0; padding-left: 20px; }
+  .help-steps li { margin-bottom: 8px; }
+  .help-note { color: var(--muted); font-size: 12px; }
+  .help-code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; margin: 4px 0; font-size: 12px; }
+  .help-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: 12px; }
+  .help-table th, .help-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+  .help-table th { background: var(--bg); }
   .help-arrow {
     align-self: center;
     color: var(--muted);
@@ -389,11 +396,21 @@
       <button type="button" id="helpCloseBtn" class="modal-close" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body">
-      <h3>新聞／娛樂 切換</h3>
-      <p style="margin:0">編輯區最上方切換版型：「新聞」為熱門話題六宮格（1040×800）、「娛樂」為拍立得四格（1200×1200）。兩種版型的資料各自保留，切換不會遺失；編輯、貼圖、快速填入與字級縮放規則都相同。</p>
+      <h3>操作流程</h3>
+      <ol class="help-steps">
+        <li><b>選版型</b>：編輯區最上方點「新聞」或「娛樂」。兩種版型的內容各自保留，切換不會不見。</li>
+        <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
+          <br><span class="help-note">新聞第 1 頁可在「頂部標籤文字」改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
+        <li><b>填標題</b>：展開「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以在下方每一格手動輸入。
+          <div class="help-code">★直擊)第一行標題 第二行標題</div>
+          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；第一個空白之後是第二行；網址行會自動略過。</span></li>
+        <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
+          <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
+        <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「遮擋貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
+        <li><b>下載</b>：按「下載本頁」存目前這頁，或「全部下載」一次存兩頁。</li>
+      </ol>
 
-      <h3>① 快速填入（推薦）</h3>
-      <p style="margin:0 0 6px">點開「快速填入」，貼上「★標題第一行 標題第二行」，下一行網址會自動略過。標籤文字用「標籤)」開頭，例如「★國際)⋯⋯」。</p>
+      <h3>快速填入示範</h3>
       <div class="help-compare">
         <figure>
           <img src="assets/help/quickfill-before.png" alt="貼上內容">
@@ -406,42 +423,35 @@
         </figure>
       </div>
 
-      <h3>② 頁面與下載</h3>
-      <img src="assets/help/toolbar.png" alt="頁籤在預覽圖上方、下載按鈕在編輯區上方">
-      <p style="margin:0">「第 1 頁／第 2 頁」在預覽圖上方切換（兩頁完全獨立）；「下載本頁／全部下載」在編輯區上方。</p>
-
-      <h3>③ 顏色選取</h3>
-      <p style="margin:0 0 6px">每個欄位旁的色塊預設收合，點一下展開挑色。</p>
+      <h3>輸出格式</h3>
+      <table class="help-table">
+        <tr><th></th><th>新聞</th><th>娛樂</th></tr>
+        <tr><td>版型</td><td>熱門話題六宮格</td><td>拍立得四格</td></tr>
+        <tr><td>尺寸</td><td>1040 × 800</td><td>1040 × 1040</td></tr>
+        <tr><td>格式</td><td colspan="2">JPG（高品質）、300dpi</td></tr>
+        <tr><td>檔名</td><td>20260925新聞Line推播圖_第1頁.jpg</td><td>20260925娛樂Line推播圖_第1頁.jpg</td></tr>
+        <tr><td></td><td colspan="2"><span class="help-note">檔名開頭為下載當天日期（年月日）</span></td></tr>
+        <tr><td>快速填入</td><td>最多 12 格（每頁 6 格）</td><td>最多 8 格（每頁 4 格）</td></tr>
+      </table>
       <div class="help-compare">
         <figure>
-          <img src="assets/help/color-collapsed.png" alt="收合狀態只顯示色塊">
-          <figcaption>收合（預設）</figcaption>
+          <img src="assets/help/output-sample.jpg" alt="新聞成品範例">
+          <figcaption>新聞成品</figcaption>
         </figure>
-        <span class="help-arrow">→</span>
         <figure>
-          <img src="assets/help/color-expanded.png" alt="點擊展開完整色票">
-          <figcaption>點一下展開</figcaption>
+          <img src="assets/help/output-sample-ent.jpg" alt="娛樂成品範例">
+          <figcaption>娛樂成品</figcaption>
         </figure>
       </div>
 
-      <h3>④ 照片與文字</h3>
+      <h3>小提醒</h3>
       <ul>
-        <li>點格子上傳，或拖曳圖片、先點該格再 Ctrl+V 貼上。</li>
-        <li>在預覽圖上拖曳可移動照片、滾輪可縮放，也能用「圖片縮放」滑桿。</li>
-        <li>單擊預覽圖上任一格會選取該格並自動捲動到編輯區；雙擊該格才會開啟選擇檔案視窗。</li>
-        <li>文字自動排版：字沒塞滿維持自然字距，貼邊仍太長才壓字距，壓到底才縮小字級，不會超出格子。</li>
+        <li>標題太長會自動壓字距、再縮字級，不會超出格子。</li>
+        <li>全形標點會自動轉成半形。</li>
+        <li>標籤欄位留空就不顯示；快速填入時標籤是「國際」會自動變灰底。</li>
+        <li>每行文字與標籤旁的色塊點一下可展開換色。</li>
+        <li>「清除本頁」只會清空目前這一頁。</li>
       </ul>
-
-      <h3>⑤ 遮擋貼圖</h3>
-      <ul>
-        <li>先在預覽圖點選要編輯的格子，再點編輯區「遮擋貼圖」裡的表情貼圖，會加到該格正中央。</li>
-        <li>在預覽圖上拖曳貼圖可移動、滑鼠滾輪可縮放，用來蓋住照片中不想露出的人物。</li>
-        <li>點貼圖右上角的「✕」即可移除；貼圖不會出現在下載檔案裡的「✕」按鈕，只是編輯時的輔助標示。</li>
-      </ul>
-
-      <h3>⑥ 成品</h3>
-      <img src="assets/help/output-sample.jpg" alt="成品範例">
-      <p style="margin:0">下載檔案為高品質 JPG 並內嵌 300dpi：新聞 1040×800、娛樂 1040×1040（先以 2 倍算圖再縮小，維持清晰）。</p>
     </div>
   </div>
 </div>
@@ -531,7 +541,7 @@ const LAYOUTS = {
     cellLabels: ['左上', '中上', '右上', '左下', '中下', '右下'],
     lineColors: ['#ffffff', '#ffff00', '#ff2b2b', '#3aa0ff', '#37c871', '#000000'],
     tagColors: ['#ff0000', '#a5a5a5'],
-    stickerBase: 110, previewMaxWidth: 720, filePrefix: '熱門話題',
+    stickerBase: 110, previewMaxWidth: 720,
     sub: '「新聞」：熱門話題六宮格，兩頁各自獨立（第1頁含標籤列、第2頁不含），每頁 1040×800。',
   },
   ent: {
@@ -539,7 +549,7 @@ const LAYOUTS = {
     cellLabels: ['左上', '右上', '左下', '右下'],
     lineColors: ['#0075d6', '#000000', '#ffffff', '#ff2b2b', '#37c871', '#ffff00'],
     tagColors: ['#00bbf0', '#a5a5a5'],
-    stickerBase: 127, previewMaxWidth: 620, filePrefix: '娛樂',
+    stickerBase: 127, previewMaxWidth: 620,
     sub: '「娛樂」：拍立得四格，兩頁各自獨立，每頁輸出 1040×1040。',
   },
 };
@@ -1824,17 +1834,24 @@ async function ensureAssetsReady() {
   await stickersReady;
 }
 
+// e.g. 20260925新聞Line推播圖_第1頁.jpg — date is the local date at download.
+function exportFileName(pageIndex) {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `${ymd}${L().name}Line推播圖_第${pageIndex + 1}頁.jpg`;
+}
+
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   const off = renderPageToOffscreen(activePage(), 'final');
-  exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], `${L().filePrefix}_第${activePageIndex + 1}頁.jpg`);
+  exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], exportFileName(activePageIndex));
 });
 
 document.getElementById('downloadAllBtn').addEventListener('click', async () => {
   await ensureAssetsReady();
   for (let p = 0; p < PAGE_COUNT; p++) {
     const off = renderPageToOffscreen(pages[p], 'final');
-    exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], `${L().filePrefix}_第${p + 1}頁.jpg`);
+    exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], exportFileName(p));
     // Small gap so the browser treats these as two distinct downloads
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
