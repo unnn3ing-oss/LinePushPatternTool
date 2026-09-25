@@ -135,6 +135,14 @@
   .mode-tabs { display: flex; gap: 6px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 5px; }
   .mode-tab { flex: 1; background: transparent; border: none; border-radius: 8px; padding: 10px; color: var(--muted); font-weight: 700; font-size: 17px; }
   .mode-tab.active { background: var(--accent); color: #fff; }
+  .seg { display: flex; gap: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+  .seg button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 6px 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .seg-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .seg-row .swatch-label { width: 78px; flex-shrink: 0; }
+  .seg-row .seg { flex: 1; }
+  #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
+  #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
   canvas {
     width: 100%;
     max-width: 720px;
@@ -331,9 +339,38 @@
     <div class="mode-tabs">
       <button type="button" class="mode-tab active" data-mode="news">新聞</button>
       <button type="button" class="mode-tab" data-mode="ent">娛樂</button>
+      <button type="button" class="mode-tab" data-mode="collage">拼圖</button>
     </div>
     <div class="card">
-      <div class="top-label-box">
+      <div class="top-label-box" id="collageBox" style="display:none">
+        <label>版面方式</label>
+        <div class="seg" id="collageLayoutSeg">
+          <button type="button" data-layout="grid" class="active">等分</button>
+          <button type="button" data-layout="free">自由框</button>
+        </div>
+        <div id="collageGridCtrl">
+          <div class="seg-row"><span class="swatch-label">直向等分</span><div class="seg" id="collageColsSeg"></div></div>
+          <div class="seg-row"><span class="swatch-label">橫向等分</span><div class="seg" id="collageRowsSeg"></div></div>
+          <div class="btn-row"><button type="button" id="collageEvenBtn">平均分配</button></div>
+          <div class="hint">在預覽圖上拖曳格子之間的分隔線，可調整每格比例。</div>
+        </div>
+        <div id="collageFreeCtrl" style="display:none">
+          <div class="seg-row"><span class="swatch-label">操作對象</span>
+            <div class="seg" id="collageEditSeg">
+              <button type="button" data-edit="frame" class="active">調整框</button>
+              <button type="button" data-edit="photo">調整照片</button>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="collageFrontBtn">移到最上層</button>
+            <button type="button" id="collageBackBtn">移到最下層</button>
+            <button type="button" id="collageDeleteBtn">刪除此框</button>
+          </div>
+          <div class="hint">「調整框」時：在空白處拖曳拉出新框、拖曳框內可移動、拉邊角可改大小，靠近邊緣會自動貼齊；按 Delete 也能刪除選取的框。切到「調整照片」再移動、縮放框內照片。</div>
+        </div>
+      </div>
+
+      <div class="top-label-box" id="quickfillBox">
         <div class="quickfill-header" id="quickfillHeader">
           <span class="quickfill-title">快速填入</span>
           <span class="quickfill-chevron" id="quickfillChevron">▸</span>
@@ -360,6 +397,7 @@
       <div class="btn-row">
         <button class="primary" id="downloadJpgBtn">下載本頁</button>
         <button id="downloadAllBtn">全部下載</button>
+        <button id="copyCollageBtn" style="display:none">複製（貼到新聞／娛樂）</button>
       </div>
 
       <div id="cellsList"></div>
@@ -400,7 +438,7 @@
     <div class="modal-body">
       <h3>操作流程</h3>
       <ol class="help-steps">
-        <li><b>選版型</b>：編輯區最上方點「新聞」或「娛樂」。兩種版型的內容各自保留，切換不會不見。</li>
+        <li><b>選版型</b>：編輯區最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
         <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
           <br><span class="help-note">新聞第 1 頁可在「頂部標籤文字」改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
         <li><b>填標題</b>：展開「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以在下方每一格手動輸入。
@@ -410,6 +448,14 @@
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
         <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「遮擋貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
         <li><b>下載</b>：按「下載本頁」存目前這頁，或「全部下載」一次存兩頁。</li>
+      </ol>
+
+      <h3>拼圖</h3>
+      <ol class="help-steps">
+        <li><b>等分</b>：選「直向等分」「橫向等分」（不切～4），在預覽圖上拖曳分隔線可調整每格比例，「平均分配」回到等分。</li>
+        <li><b>自由框</b>：切到「自由框」後選「調整框」，在空白處拖曳拉出新框、拖曳框內移動、拉邊角改大小，靠近邊緣或其他框會自動貼齊；可「移到最上層／最下層」「刪除此框」（或按 Delete）。</li>
+        <li><b>放照片</b>：（自由框請先切到「調整照片」）單擊選框、雙擊選檔，拖曳移動、滾輪縮放，和其他版型一樣。</li>
+        <li><b>輸出</b>：「下載」存成 1080×1080 JPG；「複製」後切到新聞或娛樂，點選格子按 Ctrl+V 就會貼成那格的照片。</li>
       </ol>
 
       <h3>快速填入示範</h3>
@@ -427,13 +473,13 @@
 
       <h3>輸出格式</h3>
       <table class="help-table">
-        <tr><th></th><th>新聞</th><th>娛樂</th></tr>
-        <tr><td>版型</td><td>熱門話題六宮格</td><td>拍立得四格</td></tr>
-        <tr><td>尺寸</td><td>1040 × 800</td><td>1040 × 1040</td></tr>
-        <tr><td>格式</td><td colspan="2">JPG（高品質）、300dpi</td></tr>
-        <tr><td>檔名</td><td>20260925新聞Line推播圖_第1頁.jpg</td><td>20260925娛樂Line推播圖_第1頁.jpg</td></tr>
-        <tr><td></td><td colspan="2"><span class="help-note">檔名開頭為下載當天日期（年月日）</span></td></tr>
-        <tr><td>快速填入</td><td>最多 12 格（每頁 6 格）</td><td>最多 8 格（每頁 4 格）</td></tr>
+        <tr><th></th><th>新聞</th><th>娛樂</th><th>拼圖</th></tr>
+        <tr><td>版型</td><td>熱門話題六宮格</td><td>拍立得四格</td><td>1:1 自由拼接</td></tr>
+        <tr><td>尺寸</td><td>1040 × 800</td><td>1040 × 1040</td><td>1080 × 1080</td></tr>
+        <tr><td>格式</td><td colspan="3">JPG（高品質）、300dpi</td></tr>
+        <tr><td>檔名</td><td>20260925新聞Line推播圖_第1頁.jpg</td><td>20260925娛樂Line推播圖_第1頁.jpg</td><td>20260925拼圖.jpg</td></tr>
+        <tr><td></td><td colspan="3"><span class="help-note">檔名開頭為下載當天日期（年月日）</span></td></tr>
+        <tr><td>快速填入</td><td>最多 12 格（每頁 6 格）</td><td>最多 8 格（每頁 4 格）</td><td>—（一張畫布）</td></tr>
       </table>
       <div class="help-compare">
         <figure>
@@ -554,6 +600,14 @@ const LAYOUTS = {
     stickerBase: 127, previewMaxWidth: 620,
     sub: '「娛樂」：拍立得四格，兩頁各自獨立，每頁輸出 1040×1040。',
   },
+  collage: {
+    name: '拼圖', W: 1080, H: 1080, exportW: 1080, exportH: 1080, cellCount: 2,
+    cellLabels: [], cellNoun: '框',
+    lineColors: ['#ffffff'],
+    tagColors: ['#ff0000'],
+    stickerBase: 115, previewMaxWidth: 620,
+    sub: '「拼圖」：1:1 無縫拼接照片，可等分或自由拉框，輸出 1080×1080，也可複製後貼到新聞／娛樂的格子。',
+  },
 };
 let mode = 'news';
 function L() { return LAYOUTS[mode]; }
@@ -569,6 +623,46 @@ function applyModeGlobals() {
   STICKER_BASE_SIZE = l.stickerBase;
 }
 applyModeGlobals();
+
+// ---------------------------------------------------------------------------
+// 拼圖 layout: a 1080² board split either as an even-ish grid (column/row cut
+// positions in whole pixels, so neighbours share exact edges — no seams) or
+// as free rectangles the user draws. Photo state lives in the page's cards[]
+// like the other modes; frame i's geometry comes from collageRect(i).
+// ---------------------------------------------------------------------------
+const COLLAGE_S = 1080;
+const COLLAGE_MIN = 60;          // smallest grid cell / free frame side
+const COLLAGE_MAX_FRAMES = 12;
+const COLLAGE_SNAP = 14;         // magnetic snap distance for free frames
+const COLLAGE_DIV_HIT = 12;      // grab distance for grid dividers
+const COLLAGE_HANDLE = 22;       // free-frame resize handle size
+
+function evenCuts(n) {
+  return Array.from({ length: n + 1 }, (_, k) => Math.round(COLLAGE_S * k / n));
+}
+function makeCollageState() {
+  return { layout: 'grid', cols: 2, rows: 1, xs: evenCuts(2), ys: evenCuts(1), freeRects: [], editFrames: true };
+}
+function collageCount(cg) {
+  return cg.layout === 'free' ? cg.freeRects.length : cg.cols * cg.rows;
+}
+function collageGridRect(cg, i) {
+  const c = i % cg.cols, r = Math.floor(i / cg.cols);
+  return { x: cg.xs[c], y: cg.ys[r], w: cg.xs[c + 1] - cg.xs[c], h: cg.ys[r + 1] - cg.ys[r] };
+}
+function collageRect(i) {
+  const cg = activePage().collage;
+  return cg.layout === 'free' ? cg.freeRects[i] : collageGridRect(cg, i);
+}
+// Keeps CELL_COUNT/labels and the cards array in step with the current
+// collage layout (cards may be longer in grid mode, holding photos of cells
+// temporarily hidden by picking fewer rows/cols).
+function syncCollageCount() {
+  const pg = activePage();
+  CELL_COUNT = collageCount(pg.collage);
+  CELL_LABELS = Array(CELL_COUNT).fill('');
+  while (pg.cards.length < CELL_COUNT) pg.cards.push(freshCardState(pg.cards.length));
+}
 
 // 新聞 default colours alternate white/yellow by column: column 0 & 2 are
 // white-on-top, yellow-on-bottom; column 1 is the reverse. 娛樂 matches its
@@ -649,6 +743,7 @@ function normalizeInputValue(inputEl) {
 // for 新聞, where page 1's header bar pushes the grid down.
 function cellRect(i, showHeader) {
   if (mode === 'ent') return ENT_CELLS[i].photo;
+  if (mode === 'collage') return collageRect(i);
   const row = Math.floor(i / COLS), col = i % COLS;
   const x = COL_EDGES[col], x1 = COL_EDGES[col + 1];
   const rowEdges = rowEdgesFor(showHeader);
@@ -682,6 +777,11 @@ function freshCardState(i) {
 }
 
 function makePageState(pageIndex) {
+  if (mode === 'collage') {
+    const collage = makeCollageState();
+    return { showHeader: false, topLabel: '', collage,
+      cards: Array.from({ length: collageCount(collage) }, (_, i) => freshCardState(i)) };
+  }
   const withHeader = mode === 'news' && pageIndex === 0;
   return {
     showHeader: withHeader,
@@ -801,6 +901,7 @@ function drawSpacedText(ctx, text, centerX, y, fontSize, spacing, fillColor, str
 // "熱門話題" bar and icon baked in, or the plain page (top vignette, no bar)
 // for slides that don't repeat the header.
 function drawTemplateOverlay(ctx, showHeader) {
+  if (mode === 'collage') return;
   if (mode === 'ent') {
     if (templateEntImg) ctx.drawImage(templateEntImg, 0, 0, CANVAS_W, CANVAS_H);
     return;
@@ -1176,12 +1277,13 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     for (let i = 0; i < CELL_COUNT; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive);
     for (let i = 0; i < CELL_COUNT; i++) {
       if (mode === 'ent') drawEntCellText(ctx, i, pageState.cards[i]);
-      else drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
+      else if (mode === 'news') drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
     }
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
+  if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
 
-  if (opts.showActiveBorder && activeCard != null) {
+  if (opts.showActiveBorder && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
@@ -1189,6 +1291,55 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     ctx.strokeRect(cell.x + 1.5, cell.y + 1.5, cell.w - 3, cell.h - 3);
     ctx.restore();
   }
+}
+
+// Editing aids for 拼圖, drawn only on the on-screen canvas (never exported):
+// dashed divider lines for the grid; outlines, resize handles and the
+// rectangle being drawn for free frames.
+function drawCollageGuides(ctx) {
+  const cg = activePage().collage;
+  ctx.save();
+  ctx.setLineDash([10, 8]);
+  ctx.lineWidth = 2;
+  if (cg.layout === 'grid') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 3;
+    ctx.beginPath();
+    for (let c = 1; c < cg.cols; c++) { ctx.moveTo(cg.xs[c], 0); ctx.lineTo(cg.xs[c], COLLAGE_S); }
+    for (let r = 1; r < cg.rows; r++) { ctx.moveTo(0, cg.ys[r]); ctx.lineTo(COLLAGE_S, cg.ys[r]); }
+    ctx.stroke();
+  } else if (cg.editFrames) {
+    ctx.strokeStyle = 'rgba(0,74,173,0.55)';
+    cg.freeRects.forEach(r => ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2));
+    if (collageDrag && collageDrag.type === 'draw' && collageDrag.rect) {
+      const r = collageDrag.rect;
+      ctx.strokeStyle = 'rgba(0,74,173,0.95)';
+      ctx.fillStyle = 'rgba(0,74,173,0.12)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+    ctx.setLineDash([]);
+    const a = cg.freeRects[activeCard];
+    if (a) {
+      for (const h of collageHandles(a)) {
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(0,74,173,0.95)';
+        ctx.fillRect(h.x - COLLAGE_HANDLE / 2, h.y - COLLAGE_HANDLE / 2, COLLAGE_HANDLE, COLLAGE_HANDLE);
+        ctx.strokeRect(h.x - COLLAGE_HANDLE / 2, h.y - COLLAGE_HANDLE / 2, COLLAGE_HANDLE, COLLAGE_HANDLE);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function collageHandles(r) {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, x1 = r.x + r.w, y1 = r.y + r.h;
+  return [
+    { k: 'nw', x: r.x, y: r.y }, { k: 'n', x: cx, y: r.y }, { k: 'ne', x: x1, y: r.y },
+    { k: 'e', x: x1, y: cy }, { k: 'se', x: x1, y: y1 }, { k: 's', x: cx, y: y1 },
+    { k: 'sw', x: r.x, y: y1 }, { k: 'w', x: r.x, y: cy },
+  ];
 }
 
 const canvas = document.getElementById('canvas');
@@ -1246,7 +1397,7 @@ function buildCardUI(i) {
 
   const head = document.createElement('div');
   head.className = 'cell-head';
-  head.innerHTML = `<span class="cell-name">第 ${i + 1} 格</span><span class="cell-tag">${CELL_LABELS[i]}</span>`;
+  head.innerHTML = `<span class="cell-name">第 ${i + 1} ${L().cellNoun || '格'}</span><span class="cell-tag">${CELL_LABELS[i] || ''}</span>`;
   box.appendChild(head);
 
   const dz = document.createElement('div');
@@ -1488,6 +1639,13 @@ function getCanvasPos(evt) {
 }
 
 function cellIndexAt(x, y) {
+  if (mode === 'collage') {
+    for (let i = CELL_COUNT - 1; i >= 0; i--) {
+      const r = collageRect(i);
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i;
+    }
+    return -1;
+  }
   if (mode === 'ent') {
     if (x < 0 || x > CANVAS_W || y < 0 || y > CANVAS_H) return -1;
     return (y < CANVAS_H / 2 ? 0 : 2) + (x < CANVAS_W / 2 ? 0 : 1);
@@ -1504,9 +1662,145 @@ function cellIndexAt(x, y) {
 
 let drag = null;
 let stickerDrag = null;
+let collageDrag = null;
+
+// Re-fits every frame's photo (and keeps its stickers inside) after the
+// frame geometry changes, reusing the same fx/fy anchor as zooming does.
+function refitCollagePhotos() {
+  const pg = activePage();
+  for (let i = 0; i < CELL_COUNT; i++) {
+    const st = pg.cards[i];
+    if (st.img) applyScale(i, st.scale);
+    const r = collageRect(i);
+    (st.stickers || []).forEach(sk => clampStickerPos(r, sk));
+  }
+}
+
+function collageDividerAt(pos) {
+  const cg = activePage().collage;
+  if (cg.layout !== 'grid') return null;
+  for (let c = 1; c < cg.cols; c++) if (Math.abs(pos.x - cg.xs[c]) <= COLLAGE_DIV_HIT) return { axis: 'x', idx: c };
+  for (let r = 1; r < cg.rows; r++) if (Math.abs(pos.y - cg.ys[r]) <= COLLAGE_DIV_HIT) return { axis: 'y', idx: r };
+  return null;
+}
+
+function collageHandleAt(r, pos) {
+  if (!r) return null;
+  const h = collageHandles(r).find(h => Math.abs(pos.x - h.x) <= COLLAGE_HANDLE * 0.75 && Math.abs(pos.y - h.y) <= COLLAGE_HANDLE * 0.75);
+  return h ? h.k : null;
+}
+
+// Magnetic snapping: pulls the given edges (values along one axis) onto the
+// board edges or another frame's edges when within COLLAGE_SNAP, so free
+// frames butt up seamlessly. Returns the shift to apply.
+function collageSnapShift(edges, axis, skipIdx) {
+  const cg = activePage().collage;
+  const targets = [0, COLLAGE_S];
+  cg.freeRects.forEach((r, i) => {
+    if (i === skipIdx) return;
+    if (axis === 'x') targets.push(r.x, r.x + r.w); else targets.push(r.y, r.y + r.h);
+  });
+  let best = null;
+  for (const e of edges) for (const t of targets) {
+    const d = t - e;
+    if (Math.abs(d) <= COLLAGE_SNAP && (best === null || Math.abs(d) < Math.abs(best))) best = d;
+  }
+  return best || 0;
+}
+function snapValue(v, axis, skipIdx) { return v + collageSnapShift([v], axis, skipIdx); }
+
+// Handles pointer-down for 拼圖-only interactions (grid dividers; drawing,
+// moving and resizing free frames). Returns true if it consumed the event.
+function collagePointerDown(evt, pos) {
+  const cg = activePage().collage;
+  const div = collageDividerAt(pos);
+  if (div) { evt.preventDefault(); collageDrag = { type: 'divider', ...div }; return true; }
+  if (cg.layout !== 'free' || !cg.editFrames) return false;
+  evt.preventDefault();
+  const handle = collageHandleAt(cg.freeRects[activeCard], pos);
+  if (handle) {
+    collageDrag = { type: 'resize', idx: activeCard, handle, start: { ...cg.freeRects[activeCard] }, px: pos.x, py: pos.y };
+    return true;
+  }
+  const hit = cellIndexAt(pos.x, pos.y);
+  if (hit >= 0) {
+    setActiveCard(hit);
+    collageDrag = { type: 'move', idx: hit, start: { ...cg.freeRects[hit] }, px: pos.x, py: pos.y };
+    return true;
+  }
+  if (cg.freeRects.length >= COLLAGE_MAX_FRAMES) {
+    statusEl.textContent = `最多 ${COLLAGE_MAX_FRAMES} 個框`;
+    return true;
+  }
+  collageDrag = { type: 'draw', x0: snapValue(pos.x, 'x', -1), y0: snapValue(pos.y, 'y', -1), rect: null };
+  return true;
+}
+
+function collagePointerMove(evt, pos) {
+  const cg = activePage().collage;
+  const S = COLLAGE_S, M = COLLAGE_MIN;
+  const d = collageDrag;
+  evt.preventDefault();
+  if (d.type === 'divider') {
+    const arr = d.axis === 'x' ? cg.xs : cg.ys;
+    const v = Math.round(d.axis === 'x' ? pos.x : pos.y);
+    arr[d.idx] = clamp(v, arr[d.idx - 1] + M, arr[d.idx + 1] - M);
+    refitCollagePhotos();
+  } else if (d.type === 'move') {
+    const r = { ...d.start };
+    r.x = clamp(Math.round(d.start.x + pos.x - d.px), 0, S - r.w);
+    r.y = clamp(Math.round(d.start.y + pos.y - d.py), 0, S - r.h);
+    r.x = clamp(r.x + collageSnapShift([r.x, r.x + r.w], 'x', d.idx), 0, S - r.w);
+    r.y = clamp(r.y + collageSnapShift([r.y, r.y + r.h], 'y', d.idx), 0, S - r.h);
+    cg.freeRects[d.idx] = r;
+    refitCollagePhotos();
+  } else if (d.type === 'resize') {
+    const s = d.start;
+    let x0 = s.x, y0 = s.y, x1 = s.x + s.w, y1 = s.y + s.h;
+    const dx = pos.x - d.px, dy = pos.y - d.py;
+    if (d.handle.includes('w')) x0 = clamp(Math.round(snapValue(s.x + dx, 'x', d.idx)), 0, x1 - M);
+    if (d.handle.includes('e')) x1 = clamp(Math.round(snapValue(s.x + s.w + dx, 'x', d.idx)), x0 + M, S);
+    if (d.handle.includes('n')) y0 = clamp(Math.round(snapValue(s.y + dy, 'y', d.idx)), 0, y1 - M);
+    if (d.handle.includes('s')) y1 = clamp(Math.round(snapValue(s.y + s.h + dy, 'y', d.idx)), y0 + M, S);
+    cg.freeRects[d.idx] = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    refitCollagePhotos();
+  } else if (d.type === 'draw') {
+    const px = Math.round(clamp(snapValue(pos.x, 'x', -1), 0, S));
+    const py = Math.round(clamp(snapValue(pos.y, 'y', -1), 0, S));
+    const x0 = Math.round(clamp(d.x0, 0, S)), y0 = Math.round(clamp(d.y0, 0, S));
+    d.rect = { x: Math.min(x0, px), y: Math.min(y0, py), w: Math.abs(px - x0), h: Math.abs(py - y0) };
+  }
+  render();
+}
+
+function collagePointerUp() {
+  const d = collageDrag;
+  collageDrag = null;
+  if (d && d.type === 'draw' && d.rect && d.rect.w >= COLLAGE_MIN && d.rect.h >= COLLAGE_MIN) {
+    const pg = activePage();
+    pg.collage.freeRects.push(d.rect);
+    pg.cards.push(freshCardState(pg.cards.length));
+    syncCollageCount();
+    buildAllCardUI();
+    setActiveCard(CELL_COUNT - 1);
+  } else {
+    render();
+  }
+}
+
+function collageHoverCursor(pos) {
+  const cg = activePage().collage;
+  const div = collageDividerAt(pos);
+  if (div) return div.axis === 'x' ? 'col-resize' : 'row-resize';
+  if (cg.layout !== 'free' || !cg.editFrames) return null;
+  const h = collageHandleAt(cg.freeRects[activeCard], pos);
+  if (h) return { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' }[h];
+  return cellIndexAt(pos.x, pos.y) >= 0 ? 'move' : 'crosshair';
+}
 
 function pointerDown(evt) {
   const pos = getCanvasPos(evt);
+  if (mode === 'collage' && collagePointerDown(evt, pos)) return;
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
   const state = activePage().cards[idx];
@@ -1540,6 +1834,7 @@ function pointerDown(evt) {
 
 function pointerMove(evt) {
   const pos = getCanvasPos(evt);
+  if (collageDrag) { collagePointerMove(evt, pos); return; }
   if (stickerDrag) {
     evt.preventDefault();
     const state = activePage().cards[stickerDrag.idx];
@@ -1553,6 +1848,10 @@ function pointerMove(evt) {
     return;
   }
   if (!drag) {
+    if (mode === 'collage') {
+      const c = collageHoverCursor(pos);
+      if (c) { canvas.style.cursor = c; return; }
+    }
     const idx = cellIndexAt(pos.x, pos.y);
     if (idx < 0) { canvas.style.cursor = 'default'; return; }
     const state = activePage().cards[idx];
@@ -1569,6 +1868,7 @@ function pointerMove(evt) {
 }
 
 function pointerUp() {
+  if (collageDrag) collagePointerUp();
   drag = null;
   stickerDrag = null;
   canvas.style.cursor = 'default';
@@ -1578,6 +1878,7 @@ canvas.addEventListener('mousedown', pointerDown);
 window.addEventListener('mousemove', pointerMove);
 window.addEventListener('mouseup', pointerUp);
 canvas.addEventListener('dblclick', evt => {
+  if (mode === 'collage' && activePage().collage.layout === 'free' && activePage().collage.editFrames) return;
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
@@ -1636,6 +1937,7 @@ document.addEventListener('paste', e => {
   for (const item of items) {
     if (item.type && item.type.startsWith('image/')) {
       const file = item.getAsFile();
+      if (activeCard < 0 || activeCard >= CELL_COUNT) break;
       loadImageFile(file, (image, name) => {
         setCardImage(activeCard, image, name);
         refreshCardThumb(activeCard);
@@ -1840,6 +2142,7 @@ async function ensureAssetsReady() {
 function exportFileName(pageIndex) {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  if (mode === 'collage') return `${ymd}拼圖.jpg`;
   return `${ymd}${L().name}Line推播圖_第${pageIndex + 1}頁.jpg`;
 }
 
@@ -1956,6 +2259,12 @@ function askConfirm() {
 document.getElementById('resetAllBtn').addEventListener('click', async () => {
   if (!(await askConfirm())) return;
   pages[activePageIndex] = makePageState(activePageIndex);
+  if (mode === 'collage') {
+    syncCollageCount();
+    buildAllCardUI();
+    syncCollageUI();
+    setActiveCard(0);
+  }
   syncTopUIFromState();
   syncAllCellUI();
   render();
@@ -1979,6 +2288,7 @@ STICKER_DEFS.forEach(def => {
   btn.appendChild(img);
   btn.addEventListener('click', () => {
     const idx = activeCard;
+    if (idx < 0 || idx >= CELL_COUNT) return;
     const state = activePage().cards[idx];
     const cell = cellRect(idx, activePage().showHeader);
     state.stickers.push({ key: def.key, x: cell.x + cell.w / 2, y: cell.y + cell.h / 2, scale: 1 });
@@ -2001,6 +2311,15 @@ function applyModeChrome() {
   canvas.style.aspectRatio = `${l.W} / ${l.H}`;
   canvas.style.maxWidth = `${l.previewMaxWidth}px`;
   newsHeaderBox.style.display = mode === 'news' ? '' : 'none';
+  const isCollage = mode === 'collage';
+  document.getElementById('quickfillBox').style.display = isCollage ? 'none' : '';
+  document.getElementById('collageBox').style.display = isCollage ? '' : 'none';
+  document.querySelector('.page-tabs').style.display = isCollage ? 'none' : '';
+  document.getElementById('downloadAllBtn').style.display = isCollage ? 'none' : '';
+  document.getElementById('copyCollageBtn').style.display = isCollage ? '' : 'none';
+  document.getElementById('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
+  document.getElementById('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
+  cellsList.classList.toggle('collage', isCollage);
   modeSubEl.textContent = l.sub;
   modeTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
@@ -2012,6 +2331,7 @@ const quickfillText = document.getElementById('quickfillText');
 const quickfillByMode = {
   news: { text: '', open: false },
   ent: { text: '', open: false },
+  collage: { text: '', open: false },
 };
 
 function setMode(newMode) {
@@ -2025,10 +2345,12 @@ function setMode(newMode) {
   statusEl.textContent = '在照片上拖曳可調整位置，滑鼠滾輪可縮放';
   drag = null;
   stickerDrag = null;
+  collageDrag = null;
   mode = newMode;
   applyModeGlobals();
-  pages = pagesByMode[mode] || [makePageState(0), makePageState(1)];
-  activePageIndex = pageIndexByMode[mode];
+  pages = pagesByMode[mode] || (mode === 'collage' ? [makePageState(0)] : [makePageState(0), makePageState(1)]);
+  activePageIndex = mode === 'collage' ? 0 : pageIndexByMode[mode];
+  if (mode === 'collage') { syncCollageCount(); syncCollageUI(); }
   applyModeChrome();
   buildAllCardUI();
   syncTopUIFromState();
@@ -2037,6 +2359,124 @@ function setMode(newMode) {
 }
 
 modeTabs.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+
+// ---------------------------------------------------------------------------
+// 拼圖 controls
+// ---------------------------------------------------------------------------
+const collageColsSeg = document.getElementById('collageColsSeg');
+const collageRowsSeg = document.getElementById('collageRowsSeg');
+[collageColsSeg, collageRowsSeg].forEach(seg => {
+  for (let n = 1; n <= 4; n++) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.n = n;
+    b.textContent = n === 1 ? '不切' : String(n);
+    seg.appendChild(b);
+  }
+});
+
+function syncCollageUI() {
+  if (mode !== 'collage') return;
+  const cg = activePage().collage;
+  document.querySelectorAll('#collageLayoutSeg button').forEach(b => b.classList.toggle('active', b.dataset.layout === cg.layout));
+  document.getElementById('collageGridCtrl').style.display = cg.layout === 'grid' ? '' : 'none';
+  document.getElementById('collageFreeCtrl').style.display = cg.layout === 'free' ? '' : 'none';
+  collageColsSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', Number(b.dataset.n) === cg.cols));
+  collageRowsSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', Number(b.dataset.n) === cg.rows));
+  document.querySelectorAll('#collageEditSeg button').forEach(b => b.classList.toggle('active', (b.dataset.edit === 'frame') === cg.editFrames));
+}
+
+// After any change to the number/order of frames: rebuild the per-frame
+// editors, re-fit photos to their new boxes and redraw.
+function collageLayoutChanged(nextActive) {
+  syncCollageCount();
+  buildAllCardUI();
+  syncAllCellUI();
+  refitCollagePhotos();
+  syncCollageUI();
+  setActiveCard(clamp(nextActive, 0, Math.max(0, CELL_COUNT - 1)));
+}
+
+function setCollageGrid(cols, rows) {
+  const cg = activePage().collage;
+  cg.cols = cols; cg.rows = rows;
+  cg.xs = evenCuts(cols); cg.ys = evenCuts(rows);
+  collageLayoutChanged(activeCard);
+}
+collageColsSeg.addEventListener('click', e => { const n = Number(e.target.dataset.n); if (n) setCollageGrid(n, activePage().collage.rows); });
+collageRowsSeg.addEventListener('click', e => { const n = Number(e.target.dataset.n); if (n) setCollageGrid(activePage().collage.cols, n); });
+document.getElementById('collageEvenBtn').addEventListener('click', () => {
+  const cg = activePage().collage;
+  setCollageGrid(cg.cols, cg.rows);
+});
+
+document.getElementById('collageLayoutSeg').addEventListener('click', e => {
+  const target = e.target.dataset.layout;
+  const pg = activePage(), cg = pg.collage;
+  if (!target || target === cg.layout) return;
+  if (target === 'free') {
+    // Start the free layout from the current grid so the user only tweaks.
+    const n = cg.cols * cg.rows;
+    cg.freeRects = Array.from({ length: n }, (_, i) => collageGridRect(cg, i));
+    pg.cards.length = n;
+    cg.editFrames = true;
+  }
+  cg.layout = target;
+  collageLayoutChanged(activeCard);
+});
+
+document.getElementById('collageEditSeg').addEventListener('click', e => {
+  const v = e.target.dataset.edit;
+  if (!v) return;
+  activePage().collage.editFrames = v === 'frame';
+  syncCollageUI();
+  render();
+});
+
+function moveCollageFrame(from, to) {
+  const pg = activePage(), cg = pg.collage;
+  const [r] = cg.freeRects.splice(from, 1);
+  const [c] = pg.cards.splice(from, 1);
+  cg.freeRects.splice(to, 0, r);
+  pg.cards.splice(to, 0, c);
+  collageLayoutChanged(to);
+}
+document.getElementById('collageFrontBtn').addEventListener('click', () => {
+  if (activeCard >= 0 && activeCard < CELL_COUNT) moveCollageFrame(activeCard, CELL_COUNT - 1);
+});
+document.getElementById('collageBackBtn').addEventListener('click', () => {
+  if (activeCard >= 0 && activeCard < CELL_COUNT) moveCollageFrame(activeCard, 0);
+});
+function deleteCollageFrame() {
+  const pg = activePage(), cg = pg.collage;
+  if (cg.layout !== 'free' || activeCard < 0 || activeCard >= CELL_COUNT) return;
+  if (CELL_COUNT <= 1) { statusEl.textContent = '至少要保留一個框'; return; }
+  cg.freeRects.splice(activeCard, 1);
+  pg.cards.splice(activeCard, 1);
+  collageLayoutChanged(activeCard - 1);
+}
+document.getElementById('collageDeleteBtn').addEventListener('click', deleteCollageFrame);
+document.addEventListener('keydown', e => {
+  if (mode !== 'collage' || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const cg = activePage().collage;
+  if (cg.layout === 'free' && cg.editFrames) { e.preventDefault(); deleteCollageFrame(); }
+});
+
+// Copies the finished 1080² collage to the system clipboard as PNG, so it
+// can be pasted (Ctrl+V) straight into a selected 新聞/娛樂 cell.
+document.getElementById('copyCollageBtn').addEventListener('click', async () => {
+  await ensureAssetsReady();
+  const off = renderPageToOffscreen(activePage(), 'final');
+  try {
+    const blob = await new Promise(res => off.toBlob(res, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    statusEl.textContent = '已複製拼圖！切到「新聞」或「娛樂」，點選要放的格子後按 Ctrl+V 貼上。';
+  } catch (err) {
+    statusEl.textContent = '這個瀏覽器無法直接複製圖片，請改用「下載」後再上傳到格子。';
+  }
+});
 applyModeChrome();
 
 render();
