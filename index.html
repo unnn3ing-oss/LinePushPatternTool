@@ -339,7 +339,7 @@
           <span class="quickfill-chevron" id="quickfillChevron">▸</span>
         </div>
         <div class="quickfill-body collapsed" id="quickfillBody">
-          <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;（網址那一行可省略，會自動略過）"></textarea>
+          <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;整段過審推播新聞貼入即可&#10;標題含有空格或驚嘆號、問號，就會自動換行&#10;（網址會自動略過，可直接貼上）"></textarea>
           <div class="btn-row">
             <button type="button" id="quickfillBtn">快速填入</button>
           </div>
@@ -405,7 +405,7 @@
           <br><span class="help-note">新聞第 1 頁可在「頂部標籤文字」改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
         <li><b>填標題</b>：展開「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以在下方每一格手動輸入。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
-          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；第一個空白之後是第二行；網址行會自動略過。</span></li>
+          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span></li>
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
         <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「遮擋貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
@@ -1869,6 +1869,22 @@ document.getElementById('downloadAllBtn').addEventListener('click', async () => 
 // everything else defaults to red. Whatever's left after the tag is pulled
 // out is split on its FIRST space into line1 / line2, the space itself
 // dropped.
+// Breaks a headline into line 1 / line 2 at the first space (half- or
+// full-width) or "!"/"?" (full-width ones arrive already half-width). The
+// punctuation stays at the end of line 1 (a run like "!?" stays together);
+// the space itself is dropped. Everything after the break is line 2.
+function splitHeadline(content) {
+  const m = content.match(/[ !?]/);
+  if (!m) return { line1: content.trim(), line2: '' };
+  let end = m.index;
+  let rest = end + 1;
+  if (m[0] !== ' ') {
+    while (end < content.length && (content[end] === '!' || content[end] === '?')) end++;
+    rest = end;
+  }
+  return { line1: content.slice(0, end).trim(), line2: content.slice(rest).trim() };
+}
+
 function parseQuickFillText(text) {
   const entries = [];
   for (const raw of text.split('\n')) {
@@ -1886,10 +1902,7 @@ function parseQuickFillText(text) {
       tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
       content = content.slice(tagMatch[0].length).trim();
     }
-    const spaceIdx = content.indexOf(' ');
-    const entry = spaceIdx === -1
-      ? { line1: toHalfWidth(content), line2: '' }
-      : { line1: toHalfWidth(content.slice(0, spaceIdx)), line2: toHalfWidth(content.slice(spaceIdx + 1).trim()) };
+    const entry = splitHeadline(toHalfWidth(content).replace(/\u3000/g, ' '));
     entry.tag = tag;
     entry.tagColor = tagColor;
     entries.push(entry);
