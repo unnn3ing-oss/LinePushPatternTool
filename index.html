@@ -50,7 +50,7 @@
   }
   .wrap { max-width: 1200px; margin: 0 auto; }
   header { margin-bottom: 20px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
   p.sub { margin: 0; color: var(--muted); font-size: 13px; }
   .help-btn { margin-top: 10px; padding: 6px 12px; font-size: 12px; }
   .layout {
@@ -76,7 +76,7 @@
     border-radius: 12px;
     padding: 18px;
   }
-  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  label { display: block; font-size: 15px; font-weight: 600; margin-bottom: 6px; }
   input[type="text"], textarea {
     width: 100%;
     font-family: inherit;
@@ -91,9 +91,9 @@
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .preview-box { margin-top: 14px; margin-bottom: 0; background: var(--card-bg); }
-  .sticker-palette { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .sticker-palette { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
   .sticker-btn {
-    width: 48px; height: 48px; padding: 4px;
+    width: 82px; height: 82px; padding: 5px;
     border: 1px solid var(--border); border-radius: 8px;
     background: var(--bg); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
@@ -133,7 +133,7 @@
   }
   .left-col { display: flex; flex-direction: column; gap: 14px; }
   .mode-tabs { display: flex; gap: 6px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 5px; }
-  .mode-tab { flex: 1; background: transparent; border: none; border-radius: 8px; padding: 10px; color: var(--muted); font-weight: 700; font-size: 15px; }
+  .mode-tab { flex: 1; background: transparent; border: none; border-radius: 8px; padding: 10px; color: var(--muted); font-weight: 700; font-size: 17px; }
   .mode-tab.active { background: var(--accent); color: #fff; }
   canvas {
     width: 100%;
@@ -145,7 +145,7 @@
   }
   .status { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
   .page-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
-  .page-tab { flex: 1; background: transparent; border: none; border-radius: 7px; padding: 8px 10px; color: var(--muted); font-weight: 600; }
+  .page-tab { flex: 1; background: transparent; border: none; border-radius: 7px; padding: 8px 10px; color: var(--muted); font-weight: 600; font-size: 16px; }
   .page-tab.active { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
   .top-label-box {
     border: 1px solid var(--border);
@@ -161,7 +161,7 @@
     cursor: pointer;
     user-select: none;
   }
-  .quickfill-title { font-size: 13px; font-weight: 600; }
+  .quickfill-title { font-size: 15px; font-weight: 600; }
   .quickfill-chevron { font-size: 12px; color: var(--muted); transition: transform .15s; }
   .quickfill-body { margin-top: 10px; }
   .quickfill-body.collapsed { display: none; }
@@ -179,7 +179,7 @@
     justify-content: space-between;
     margin-bottom: 8px;
   }
-  .cell-head .cell-name { font-size: 13px; font-weight: 700; }
+  .cell-head .cell-name { font-size: 15px; font-weight: 700; }
   .cell-head .cell-tag { font-size: 11px; color: var(--muted); }
   .dropzone {
     border: 2px dashed var(--border);
@@ -210,7 +210,7 @@
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
   .swatch-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-  .swatch-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+  .swatch-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
   .swatch-indicator {
     width: 16px;
     height: 16px;
@@ -231,7 +231,9 @@
   }
   .color-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 3px var(--accent); }
   .scale-row { display: flex; align-items: center; gap: 8px; }
-  .scale-row input[type="range"] { flex: 1; }
+  .scale-row input[type="range"] { flex: 1; min-width: 0; }
+  .scale-row { margin-bottom: 10px; }
+  .scale-row .swatch-label { white-space: nowrap; flex-shrink: 0; }
   .scale-row .scale-val { font-size: 11px; color: var(--muted); width: 38px; text-align: right; flex-shrink: 0; }
   .reset-pos-btn { padding: 4px 10px; font-size: 12px; flex-shrink: 0; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
