@@ -497,6 +497,7 @@
         <li>標題太長會自動壓字距、再縮字級，不會超出格子。</li>
         <li>全形標點會自動轉成半形。</li>
         <li>標籤欄位留空就不顯示；快速填入時標籤是「國際」會自動變灰底。</li>
+        <li>新聞版每格有兩段標籤：第一段預設在標題上方左側，第二段（「標籤文字 2」）預設在格子右上角。兩段都能在預覽圖上直接拖曳，只能停在漸層／黑帶下方、標題上方，靠近格子邊緣會自動貼齊；「標籤位置還原」可一次放回預設位置。</li>
         <li>每行文字與標籤旁的色塊點一下可展開換色。</li>
         <li>「清除本頁」只會清空目前這一頁。</li>
       </ul>
@@ -763,6 +764,12 @@ function freshCardState(i) {
     line2: '',
     tag: '',
     tagColor: TAG_COLORS[0],
+    // 新聞 only: a second tag, plus each tag's drag offset from its default
+    // spot (null = default).
+    tag2: '',
+    tag2Color: TAG_COLORS[0],
+    tagPos: null,
+    tag2Pos: null,
     color1: c.color1,
     color2: c.color2,
     img: null,
@@ -962,19 +969,15 @@ function drawHeaderLabel(ctx, label) {
 const TAG_BASE_FONT_SIZE = 28;
 const TAG_PAD_X = 10, TAG_PAD_Y = 6, TAG_GAP = 4;
 
-function drawTag(ctx, cell, text, fontSize, spacing, bottomLimitY, bgColor) {
-  const textWidth = measureWithSpacing(ctx, text, spacing, fontSize);
-  const boxH = fontSize + TAG_PAD_Y * 2;
-  const boxW = Math.min(cell.w, textWidth + TAG_PAD_X * 2);
-  const boxBottom = bottomLimitY - TAG_GAP;
-  const boxTop = boxBottom - boxH;
+function drawTag(ctx, t, bgColor) {
+  const { text, fontSize, spacing, left, top, boxW, boxH } = t;
   ctx.fillStyle = bgColor;
-  ctx.fillRect(cell.x, boxTop, boxW, boxH);
+  ctx.fillRect(left, top, boxW, boxH);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffffff';
-  let cx = cell.x + TAG_PAD_X;
-  const cy = boxTop + boxH / 2;
+  let cx = left + TAG_PAD_X;
+  const cy = top + boxH / 2;
   for (const ch of text) {
     const w = measureChar(ctx, ch, fontSize);
     ctx.fillText(ch, cx, cy);
@@ -1123,16 +1126,20 @@ function computeCardFit(ctx, cell, state) {
   const line1 = (state.line1 || '').trim();
   const line2 = (state.line2 || '').trim();
   const tag = (state.tag || '').trim();
-  const key = `${cell.w}|${line1}|${line2}|${tag}`;
+  const tag2 = (state.tag2 || '').trim();
+  const key = `${cell.w}|${line1}|${line2}|${tag}|${tag2}`;
   if (state._fitCache && state._fitCache.key === key) return state._fitCache;
 
   const fit1 = line1 ? computeFit(ctx, line1, maxWidth, BASE_FONT_SIZE) : null;
   const fit2 = line2 ? computeFit(ctx, line2, maxWidth, BASE_FONT_SIZE) : null;
   const tagMaxWidth = cell.w - 20;
   const tagFit = tag ? computeFit(ctx, tag, tagMaxWidth, TAG_BASE_FONT_SIZE) : null;
+  const tag2Fit = tag2 ? computeFit(ctx, tag2, tagMaxWidth, TAG_BASE_FONT_SIZE) : null;
 
   const result = {
-    key, line1, line2, tag,
+    key, line1, line2, tag, tag2,
+    tag2FontSize: tag2Fit ? tag2Fit.fontSize : TAG_BASE_FONT_SIZE,
+    tag2Spacing: tag2Fit ? tag2Fit.spacing : NORMAL_SPACING,
     fontSize1: fit1 ? fit1.fontSize : BASE_FONT_SIZE,
     sp1: fit1 ? fit1.spacing : 0,
     fontSize2: fit2 ? fit2.fontSize : BASE_FONT_SIZE,
@@ -1147,8 +1154,7 @@ function computeCardFit(ctx, cell, state) {
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 4;
   const centerX = cell.x + cell.w / 2;
-  const { line1, line2, fontSize1, sp1, fontSize2, sp2, tag, tagFontSize, tagSpacing } = computeCardFit(ctx, cell, state);
-  if (!line1 && !line2 && !tag) return;
+  const { line1, line2, fontSize1, sp1, fontSize2, sp2 } = computeCardFit(ctx, cell, state);
 
   // Anchored off BASE_FONT_SIZE (not this cell's own fontSize1/2, which may
   // have shrunk to fit long text) so line 1 and line 2 land at the exact
@@ -1171,12 +1177,88 @@ function drawCellText(ctx, cell, state) {
     drawSpacedText(ctx, line1, centerX, baseY1, fontSize1, sp1, state.color1);
   }
 
-  if (tag) {
-    const topLineBaseline = baseY1 != null ? baseY1 : (baseY2 != null ? baseY2 : cell.y + cell.h - paddingBottom);
-    const topLineFontSize = baseY1 != null ? fontSize1 : fontSize2;
-    const topOfText = topLineBaseline - topLineFontSize * 0.5;
-    drawTag(ctx, cell, tag, tagFontSize, tagSpacing, topOfText, state.tagColor || TAG_COLORS[0]);
+  const t1 = newsTagLayout(ctx, cell, state, 1);
+  if (t1) drawTag(ctx, t1, state.tagColor || TAG_COLORS[0]);
+  const t2 = newsTagLayout(ctx, cell, state, 2);
+  if (t2) drawTag(ctx, t2, state.tag2Color || TAG_COLORS[0]);
+}
+
+// Where tag n (1 or 2) of a 新聞 cell sits. Tag 1 defaults to the cell's
+// bottom-left, right above the headline; tag 2 to the cell's top-right. Each
+// can be dragged: `tagPos`/`tag2Pos` hold the offset from that default.
+const TAG_SNAP = 14;
+// The template's photo windows start below a dark band (the shadow under the
+// yellow header bar, the black strip between the two rows, the faint top
+// vignette on the plain page). Tags stay below it. Keyed by a cell's top y;
+// numbers measured off the template PNGs' transparent windows plus a few px.
+const TAG_TOP_LIMITS = {
+  [ROW_EDGES_HEADER[0]]: 60, [ROW_EDGES_HEADER[1]]: 434,
+  [ROW_EDGES_PLAIN[0]]: 26, [ROW_EDGES_PLAIN[1]]: 416,
+};
+function newsTagLimitTop(cell) { return TAG_TOP_LIMITS[cell.y] ?? cell.y; }
+function newsTagLayout(ctx, cell, state, n) {
+  const f = computeCardFit(ctx, cell, state);
+  const text = n === 1 ? f.tag : f.tag2;
+  if (!text) return null;
+  const fontSize = n === 1 ? f.tagFontSize : f.tag2FontSize;
+  const spacing = n === 1 ? f.tagSpacing : f.tag2Spacing;
+  const boxH = fontSize + TAG_PAD_Y * 2;
+  const boxW = Math.min(cell.w, measureWithSpacing(ctx, text, spacing, fontSize) + TAG_PAD_X * 2);
+  const limit = newsTagLimitBottom(cell, f);
+  let defLeft, defTop;
+  if (n === 1) {
+    defLeft = cell.x;
+    defTop = limit - boxH;
+  } else {
+    defLeft = cell.x + cell.w - boxW;
+    defTop = newsTagLimitTop(cell);
   }
+  const pos = n === 1 ? state.tagPos : state.tag2Pos;
+  // Re-clamped every time (not just while dragging), so a tag dragged earlier
+  // never ends up over the headline after the headline grows to two lines.
+  return { n, text, fontSize, spacing, boxW, boxH, defLeft, defTop, limit,
+    left: clamp(defLeft + (pos ? pos.dx : 0), cell.x, cell.x + cell.w - boxW),
+    top: clamp(defTop + (pos ? pos.dy : 0), newsTagLimitTop(cell), Math.max(newsTagLimitTop(cell), limit - boxH)) };
+}
+
+// Tags live between the header bar's shadow (see newsTagLimitTop) and the headline:
+// this is the y just above the headline block, where tag 1 sits by default
+// and the lowest a tag may reach.
+function newsTagLimitBottom(cell, f) {
+  const topLineBaseline = f.line1 ? cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5 - (f.line2 ? BASE_FONT_SIZE * 1.18 : 0)
+    : f.line2 ? cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5
+    : cell.y + cell.h - 4;
+  const topLineFontSize = f.line1 ? f.fontSize1 : f.fontSize2;
+  return topLineBaseline - topLineFontSize * 0.5 - TAG_GAP;
+}
+
+// Topmost tag under the point (tag 2 is drawn last, so it wins).
+function newsTagHit(ctx, cell, state, x, y) {
+  for (const n of [2, 1]) {
+    const t = newsTagLayout(ctx, cell, state, n);
+    if (t && x >= t.left && x <= t.left + t.boxW && y >= t.top && y <= t.top + t.boxH) return n;
+  }
+  return 0;
+}
+
+// New offset for a tag dragged by (dx,dy) from `startPos`: its edges snap
+// flush to the cell's edges when within TAG_SNAP (no guide lines are drawn),
+// and it always stays inside its own cell, above the headline.
+function newsTagDragTo(ctx, cell, state, n, startPos, dx, dy) {
+  const t = newsTagLayout(ctx, cell, state, n);
+  let left = t.defLeft + (startPos ? startPos.dx : 0) + dx;
+  let top = t.defTop + (startPos ? startPos.dy : 0) + dy;
+  const snap = (lo, hi, a, b) => {
+    const cands = [a - lo, b - hi];
+    const best = cands.reduce((m, d) => Math.abs(d) < Math.abs(m) ? d : m, cands[0]);
+    return Math.abs(best) <= TAG_SNAP ? best : 0;
+  };
+  left += snap(left, left + t.boxW, cell.x, cell.x + cell.w);
+  const minTop = newsTagLimitTop(cell);
+  top += snap(top, top + t.boxH, minTop, t.limit);
+  left = clamp(left, cell.x, cell.x + cell.w - t.boxW);
+  top = clamp(top, minTop, Math.max(minTop, t.limit - t.boxH));
+  return { dx: left - t.defLeft, dy: top - t.defTop };
 }
 
 // 娛樂 uses the exact same fit rules as 新聞 (computeFit: natural spacing →
@@ -1565,6 +1647,37 @@ function buildCardUI(i) {
   tagRow.appendChild(tagInput);
   box.appendChild(tagRow);
 
+  // 新聞 only: second tag (default top-right of the cell) + reset for both
+  // tags' dragged positions.
+  let tag2Input = null, tag2SwatchEls = null, indicatorTag2 = null;
+  if (mode === 'news') {
+    const h2 = buildSwatchRow('標籤文字 2', 'tag2Color', TAG_COLORS, { collapsible: true });
+    tag2SwatchEls = h2.els; indicatorTag2 = h2.indicator;
+    box.appendChild(h2.row);
+    const tag2Row = document.createElement('div');
+    tag2Row.className = 'field-row';
+    tag2Input = document.createElement('input');
+    tag2Input.type = 'text';
+    tag2Input.placeholder = '選填：預設在格子右上角，可在預覽圖拖曳';
+    tag2Input.value = activePage().cards[i].tag2;
+    tag2Row.appendChild(tag2Input);
+    box.appendChild(tag2Row);
+    tag2Input.addEventListener('focus', () => setActiveCard(i));
+    tag2Input.addEventListener('input', () => { activePage().cards[i].tag2 = normalizeInputValue(tag2Input); render(); });
+    const tagResetBtn = document.createElement('button');
+    tagResetBtn.type = 'button';
+    tagResetBtn.className = 'reset-pos-btn';
+    tagResetBtn.textContent = '標籤位置還原';
+    tagResetBtn.style.marginBottom = '10px';
+    tagResetBtn.addEventListener('click', () => {
+      setActiveCard(i);
+      const st = activePage().cards[i];
+      st.tagPos = null; st.tag2Pos = null;
+      render();
+    });
+    box.appendChild(tagResetBtn);
+  }
+
   tagInput.addEventListener('focus', () => setActiveCard(i));
   in1.addEventListener('focus', () => setActiveCard(i));
   in2.addEventListener('focus', () => setActiveCard(i));
@@ -1575,7 +1688,7 @@ function buildCardUI(i) {
   box.addEventListener('mousedown', () => setActiveCard(i));
 
   cellsList.appendChild(box);
-  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, indicator1, indicator2, indicatorTag, scaleInput, scaleVal });
+  cardEls.push({ box, dzThumb, dzText, tagInput, tagSwatchEls, in1, in2, swatchEls1, swatchEls2, indicator1, indicator2, indicatorTag, scaleInput, scaleVal, tag2Input, tag2SwatchEls, indicatorTag2 });
 }
 
 // Refreshes one cell's DOM controls from the active page's current state —
@@ -1601,6 +1714,11 @@ function syncCellUIFromState(i) {
   el.indicator1.style.background = state.color1;
   el.indicator2.style.background = state.color2;
   el.indicatorTag.style.background = state.tagColor || TAG_COLORS[0];
+  if (el.tag2Input) {
+    el.tag2Input.value = state.tag2;
+    el.tag2SwatchEls.forEach(s => s.classList.toggle('selected', s.title.toLowerCase() === (state.tag2Color || TAG_COLORS[0]).toLowerCase()));
+    el.indicatorTag2.style.background = state.tag2Color || TAG_COLORS[0];
+  }
   el.scaleInput.value = String(state.scale);
   el.scaleVal.textContent = `${state.scale.toFixed(2)}x`;
 }
@@ -1662,6 +1780,7 @@ function cellIndexAt(x, y) {
 
 let drag = null;
 let stickerDrag = null;
+let tagDrag = null;
 let collageDrag = null;
 
 // Re-fits every frame's photo (and keeps its stickers inside) after the
@@ -1805,6 +1924,18 @@ function pointerDown(evt) {
   if (idx < 0) return;
   const state = activePage().cards[idx];
 
+  if (mode === 'news') {
+    const cell = cellRect(idx, activePage().showHeader);
+    const n = newsTagHit(ctx, cell, state, pos.x, pos.y);
+    if (n) {
+      evt.preventDefault();
+      setActiveCard(idx);
+      tagDrag = { idx, n, startX: pos.x, startY: pos.y, startPos: n === 1 ? state.tagPos : state.tag2Pos };
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+  }
+
   const delIdx = stickerDeleteHit(state, pos.x, pos.y);
   if (delIdx >= 0) {
     evt.preventDefault();
@@ -1835,6 +1966,15 @@ function pointerDown(evt) {
 function pointerMove(evt) {
   const pos = getCanvasPos(evt);
   if (collageDrag) { collagePointerMove(evt, pos); return; }
+  if (tagDrag) {
+    evt.preventDefault();
+    const state = activePage().cards[tagDrag.idx];
+    const cell = cellRect(tagDrag.idx, activePage().showHeader);
+    const off = newsTagDragTo(ctx, cell, state, tagDrag.n, tagDrag.startPos, pos.x - tagDrag.startX, pos.y - tagDrag.startY);
+    if (tagDrag.n === 1) state.tagPos = off; else state.tag2Pos = off;
+    render();
+    return;
+  }
   if (stickerDrag) {
     evt.preventDefault();
     const state = activePage().cards[stickerDrag.idx];
@@ -1855,6 +1995,10 @@ function pointerMove(evt) {
     const idx = cellIndexAt(pos.x, pos.y);
     if (idx < 0) { canvas.style.cursor = 'default'; return; }
     const state = activePage().cards[idx];
+    if (mode === 'news' && newsTagHit(ctx, cellRect(idx, activePage().showHeader), state, pos.x, pos.y)) {
+      canvas.style.cursor = 'grab';
+      return;
+    }
     const overSticker = stickerHit(state, pos.x, pos.y) >= 0 || stickerDeleteHit(state, pos.x, pos.y) >= 0;
     canvas.style.cursor = overSticker || state.img ? 'grab' : 'pointer';
     return;
@@ -1871,6 +2015,7 @@ function pointerUp() {
   if (collageDrag) collagePointerUp();
   drag = null;
   stickerDrag = null;
+  tagDrag = null;
   canvas.style.cursor = 'default';
 }
 
@@ -1884,6 +2029,7 @@ canvas.addEventListener('dblclick', evt => {
   if (idx < 0) return;
   const state = activePage().cards[idx];
   if (stickerHit(state, pos.x, pos.y) >= 0 || stickerDeleteHit(state, pos.x, pos.y) >= 0) return;
+  if (mode === 'news' && newsTagHit(ctx, cellRect(idx, activePage().showHeader), state, pos.x, pos.y)) return;
   setActiveCard(idx);
   cardEls[idx].box.querySelector('.dropzone').click();
 });
