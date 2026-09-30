@@ -185,11 +185,13 @@
   .cell-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    position: relative;
     margin-bottom: 8px;
   }
   .cell-head .cell-name { font-size: 15px; font-weight: 700; }
-  .cell-head .cell-tag { font-size: 11px; color: var(--muted); }
+  /* The position hint (左上 etc.) stays at the right edge; the title is centered. */
+  .cell-head .cell-tag { position: absolute; right: 0; font-size: 11px; color: var(--accent); }
   .dropzone {
     border: 2px dashed var(--border);
     border-radius: 8px;
