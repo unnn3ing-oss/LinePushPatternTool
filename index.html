@@ -420,7 +420,7 @@
 
       <div class="top-label-box preview-box">
         <div class="field" style="margin-bottom:0">
-          <label>遮擋貼圖</label>
+          <label>T寶貼圖</label>
           <div class="hint" style="margin-top:0; margin-bottom:8px">先在上方預覽圖點選要編輯的格子，再點下方貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。</div>
           <div class="sticker-palette" id="stickerPalette"></div>
         </div>
@@ -446,7 +446,7 @@
           <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span></li>
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
-        <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「遮擋貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
+        <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
         <li><b>下載</b>：按「下載本頁」存目前這頁，或「全部下載」一次存兩頁。</li>
       </ol>
 
@@ -699,12 +699,10 @@ const templatesReady = Promise.all([
 
 // Small face-covering stickers the user can drop onto a cell's photo to hide
 // a bystander. Loaded once up front the same way as the template artwork.
-const STICKER_DEFS = [
-  { key: 'cry', src: 'assets/stickers/sticker-cry.png', label: '哭哭' },
-  { key: 'smile', src: 'assets/stickers/sticker-smile.png', label: '微笑' },
-  { key: 'shock', src: 'assets/stickers/sticker-shock.png', label: '驚訝' },
-  { key: 'squint', src: 'assets/stickers/sticker-squint.png', label: '瞇眼' },
-];
+const STICKER_COUNT = 7;
+const STICKER_DEFS = Array.from({ length: STICKER_COUNT }, (_, i) => ({
+  key: `t${i + 1}`, src: `assets/stickers/sticker-${i + 1}.png`,
+}));
 const stickerImages = {};
 const stickersReady = Promise.all(
   STICKER_DEFS.map(def => loadImage(def.src).then(img => { stickerImages[def.key] = img; }))
@@ -1096,13 +1094,18 @@ function cellImageSize(cell, state) {
   return { dw: state.img.width * eff, dh: state.img.height * eff };
 }
 
+const IMG_OVERSHOOT = 0.07;
 function clampCardOffset(i) {
   const state = activePage().cards[i];
   if (!state.img) return;
   const cell = cellRect(i, activePage().showHeader);
   const { dw, dh } = cellImageSize(cell, state);
-  state.offsetX = clamp(state.offsetX, cell.w - dw, 0);
-  state.offsetY = clamp(state.offsetY, cell.h - dh, 0);
+  // The photo may be pushed past the cell by IMG_OVERSHOOT of its own size on
+  // every side (leaving white showing), so someone at the photo's edge can be
+  // brought toward the middle when zoomed in.
+  const mx = dw * IMG_OVERSHOOT, my = dh * IMG_OVERSHOOT;
+  state.offsetX = clamp(state.offsetX, cell.w - dw - mx, mx);
+  state.offsetY = clamp(state.offsetY, cell.h - dh - my, my);
   state.fx = dw > 0 ? (cell.w / 2 - state.offsetX) / dw : 0.5;
   state.fy = dh > 0 ? (cell.h / 2 - state.offsetY) / dh : 0.5;
 }
@@ -2427,10 +2430,10 @@ STICKER_DEFS.forEach(def => {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'sticker-btn';
-  btn.title = `加入「${def.label}」貼圖到目前選取的格子`;
+  btn.title = '加入貼圖到目前選取的格子';
   const img = document.createElement('img');
   img.src = def.src;
-  img.alt = def.label;
+  img.alt = '貼圖';
   btn.appendChild(img);
   btn.addEventListener('click', () => {
     const idx = activeCard;
