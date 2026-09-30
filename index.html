@@ -52,7 +52,6 @@
   header { margin-bottom: 20px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   p.sub { margin: 0; color: var(--muted); font-size: 13px; }
-  .help-btn { margin-top: 10px; padding: 6px 12px; font-size: 12px; }
   .layout {
     display: grid;
     grid-template-columns: 380px 1fr;
@@ -317,6 +316,22 @@
   .tip-toast-close:hover { background: var(--bg); color: var(--text); }
   .tip-toast p { margin: 0 0 10px; }
   .tip-toast p:last-child { margin-bottom: 0; }
+  .tip-help { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .tip-help button { width: 100%; }
+  .tip-help-lead { margin: 0 0 10px; color: var(--muted); }
+  .tip-toast [hidden] { display: none; }
+  .tip-steps { list-style: none; margin: 0; padding: 0; }
+  .tip-steps li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
+  .tip-steps li:last-child { margin-bottom: 0; }
+  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--bg); border: 1px solid var(--border); color: var(--accent); }
+  .tip-text { min-width: 0; }
+  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; }
+  .tip-text span { display: block; }
+  .tip-text .tip-example { margin-top: 6px; font-size: 12px; }
+  .tip-chips { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .tip-toast .tip-text .tip-chip { display: inline-block; color: #fff; font-size: 12px; font-weight: 700; padding: 1px 8px; }
+  .tip-chip-warn { background: #b45309; }
+  .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: var(--muted); }
   .tip-toast .tip-example { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   /* Only the selected cell's editor is shown; click a cell in the preview to switch. */
@@ -407,7 +422,6 @@
   <header>
     <h1>Line推播套版產生器</h1>
     <p class="sub" id="modeSub"></p>
-    <button type="button" id="helpBtn" class="help-btn">📖 使用說明</button>
   </header>
 
   <div class="layout">
@@ -443,12 +457,24 @@
               <button type="button" data-edit="photo">調整照片</button>
             </div>
           </div>
+          <div class="seg-row"><span class="swatch-label">畫布高度</span>
+            <input type="number" id="collageHeightInput" min="300" max="5000" step="10" style="flex:1; min-width:0">
+            <button type="button" id="collageFitHeightBtn">貼合內容</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="collageAddBtn">＋新增框（接在最下方）</button>
+            <button type="button" id="collageFitImgBtn">框貼合圖片比例</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="collageUpBtn">▲ 上下換位（往上）</button>
+            <button type="button" id="collageDownBtn">▼ 上下換位（往下）</button>
+          </div>
           <div class="btn-row">
             <button type="button" id="collageFrontBtn">移到最上層</button>
             <button type="button" id="collageBackBtn">移到最下層</button>
             <button type="button" id="collageDeleteBtn">刪除此框</button>
           </div>
-          <div class="hint">「調整框」時：在空白處拖曳拉出新框、拖曳框內可移動、拉邊角可改大小，靠近邊緣會自動貼齊；按 Delete 也能刪除選取的框。切到「調整照片」再移動、縮放框內照片。</div>
+          <div class="hint">做直式長圖（例如多張橫向數據圖上下疊）：先調畫布高度，再「＋新增框」貼圖，按「框貼合圖片比例」讓框吻合圖片、不裁切，下方的框會跟著往下推；「上下換位」可調整順序。<br>「調整框」時：在空白處拖曳拉出新框、拖曳框內可移動、拉邊角可改大小，靠近邊緣會自動貼齊；按 Delete 也能刪除選取的框。切到「調整照片」再移動、縮放框內照片。</div>
         </div>
       </div>
 
@@ -506,17 +532,45 @@
 
 <aside class="tip-toast" id="tipToast" role="dialog" aria-label="操作提示">
   <div class="tip-toast-head">
-    <span class="tip-toast-title">操作提示</span>
-    <button type="button" class="tip-toast-close" id="tipToastClose" aria-label="關閉提醒" title="關閉">✕</button>
+    <span class="tip-toast-title" id="tipToastTitle">操作提示</span>
+    <button type="button" class="tip-toast-close" id="tipToastClose" aria-label="關閉" title="關閉">✕</button>
   </div>
-  <p>使用「快速填入」可以將整段推播標題含連結帶入，例如：</p>
-  <p class="tip-example">★國際)婦右腳罹癌截肢 竟"鋸成左腳"怒提告<br>https://news.tvbs.com.tw/world/4029494?</p>
-  <p>如果使用快速填入後發現有誤，可以「直接點擊」對應格子個別在左側編輯區編輯該格錯誤內容，無須重新再更正快速填入。</p>
-  <p>有 (文字) 或 文字) 會自動加上小標籤，如果需要第二個則需到編輯區手動增加，兩個小標籤都可以拖曳位置，靠近格子邊緣則自動吸附貼齊邊緣。</p>
-  <p>圖片可直接拖拉、滑鼠滾輪縮放，縮放也可以讓照片邊緣留白縮放，避免照片人物過於旁邊無法放大或放置在框中，但需注意不要真的讓照片露白，避免輸出留白處呈現透明或空白。</p>
+  <div id="tipNewsBlock">
+    <ol class="tip-steps">
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg></span>
+        <div class="tip-text"><b>貼上就填好</b>
+          <span>把整段推播標題（含連結）貼進「快速填入」，一次帶入所有格子。</span>
+          <div class="tip-example">★國際)婦右腳罹癌截肢 竟"鋸成左腳"怒提告<br>https://news.tvbs.com.tw/world/4029494?</div>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-6 2-2 6z"/></svg></span>
+        <div class="tip-text"><b>填錯了？點格子就能改</b>
+          <span>直接點預覽圖上的格子，就能在左側單獨修改那一格，不用重新快速填入。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></svg></span>
+        <div class="tip-text"><b>小標籤</b>
+          <span>標題前面有 (文字) 或 文字) 會自動變成小標籤；要第二個標籤，到編輯區手動加。兩個都可以拖曳，靠近格子邊緣會自動吸附貼齊。</span>
+          <div class="tip-chips"><span class="tip-chip" style="background:#ff0000">獨家</span><span class="tip-chip" style="background:#a5a5a5">國際</span><span class="tip-chip-note">← 可拖曳</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
+        <div class="tip-text"><b>照片</b>
+          <span>拖曳移動、滾輪縮放。可以留一點空白邊，方便放大靠邊的人物；但輸出前要把空白藏起來，不然成品會露出空白或透明。</span>
+          <div class="tip-chips"><span class="tip-chip tip-chip-warn">⚠ 別讓照片露白</span></div>
+        </div>
+      </li>
+    </ol>
+  </div>
+  <div class="tip-help">
+    <p class="tip-help-lead" id="tipHelpLead">各版型的操作流程、拼圖做法、輸出格式都整理在詳細說明裡。</p>
+    <button type="button" class="primary" id="helpDetailBtn">詳細功能說明</button>
+  </div>
 </aside>
-
-<button type="button" class="tip-fab" id="tipFab" aria-label="開啟操作提示" title="操作提示">!</button>
 
 <div class="modal-overlay" id="helpOverlay">
   <div class="modal">
@@ -525,6 +579,7 @@
       <button type="button" id="helpCloseBtn" class="modal-close" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body">
+
       <h3>操作流程</h3>
       <ol class="help-steps">
         <li><b>選版型</b>：編輯區最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
@@ -543,8 +598,9 @@
       <ol class="help-steps">
         <li><b>等分</b>：選「直向等分」「橫向等分」（不切～4），在預覽圖上拖曳分隔線可調整每格比例，「平均分配」回到等分。</li>
         <li><b>自由框</b>：切到「自由框」後選「調整框」，在空白處拖曳拉出新框、拖曳框內移動、拉邊角改大小，靠近邊緣或其他框會自動貼齊；可「移到最上層／最下層」「刪除此框」（或按 Delete）。</li>
+        <li><b>直式長圖</b>（例如數據圖上下疊）：自由框可改「畫布高度」。先「＋新增框」補到需要的框數、各自貼上圖片，再按「框貼合圖片比例」讓框吻合圖片（不裁切，下方的框會跟著往下推），最後按「貼合內容」；「上下換位」可調整順序。</li>
         <li><b>放照片</b>：（自由框請先切到「調整照片」）單擊選框、雙擊選檔，拖曳移動、滾輪縮放，和其他版型一樣。</li>
-        <li><b>輸出</b>：「下載」存成 1080×1080 JPG；「複製」後切到新聞或娛樂，點選格子按 Ctrl+V 就會貼成那格的照片。</li>
+        <li><b>輸出</b>：「下載」存成 1080 寬的 JPG（等分為 1080×1080，自由框高度可調）；「直接複製」後切到新聞或娛樂，點選格子按 Ctrl+V 就會貼成那格的照片。</li>
       </ol>
 
       <h3>快速填入示範</h3>
@@ -563,8 +619,8 @@
       <h3>輸出格式</h3>
       <table class="help-table">
         <tr><th></th><th>新聞</th><th>娛樂</th><th>拼圖</th></tr>
-        <tr><td>版型</td><td>熱門話題六宮格</td><td>拍立得四格</td><td>1:1 自由拼接</td></tr>
-        <tr><td>尺寸</td><td>1040 × 800</td><td>1040 × 1040</td><td>1080 × 1080</td></tr>
+        <tr><td>版型</td><td>熱門話題六宮格</td><td>拍立得四格</td><td>等分／自由框</td></tr>
+        <tr><td>尺寸</td><td>1040 × 800</td><td>1040 × 1040</td><td>1080 × 1080（自由框可調高度）</td></tr>
         <tr><td>格式</td><td colspan="3">JPG（高品質）、300dpi</td></tr>
         <tr><td>檔名</td><td>20260925新聞Line推播圖_第1頁.jpg</td><td>20260925娛樂Line推播圖_第1頁.jpg</td><td>20260925拼圖.jpg</td></tr>
         <tr><td></td><td colspan="3"><span class="help-note">檔名開頭為下載當天日期（年月日）</span></td></tr>
@@ -593,6 +649,9 @@
     </div>
   </div>
 </div>
+
+<button type="button" class="tip-fab" id="tipFab" aria-label="開啟操作提示" title="操作提示">!</button>
+
 
 <div class="modal-overlay" id="confirmOverlay">
   <div class="modal" style="max-width:360px">
@@ -722,6 +781,10 @@ applyModeGlobals();
 // ---------------------------------------------------------------------------
 const COLLAGE_S = 1080;
 const COLLAGE_MIN = 60;          // smallest grid cell / free frame side
+// Free layout: width stays 1080, height is adjustable (a stack of wide
+// screenshots makes a tall, narrow board). The grid layout stays square.
+const COLLAGE_H_MIN = 300, COLLAGE_H_MAX = 5000;
+const COLLAGE_NEW_FRAME_H = 300;
 const COLLAGE_MAX_FRAMES = 12;
 const COLLAGE_SNAP = 14;         // magnetic snap distance for free frames
 const COLLAGE_DIV_HIT = 12;      // grab distance for grid dividers
@@ -731,7 +794,22 @@ function evenCuts(n) {
   return Array.from({ length: n + 1 }, (_, k) => Math.round(COLLAGE_S * k / n));
 }
 function makeCollageState() {
-  return { layout: 'grid', cols: 2, rows: 1, xs: evenCuts(2), ys: evenCuts(1), freeRects: [], editFrames: true };
+  return { layout: 'grid', cols: 2, rows: 1, xs: evenCuts(2), ys: evenCuts(1), freeRects: [], editFrames: true, h: COLLAGE_S };
+}
+// Board height for the current layout (free = adjustable, grid = square).
+function collageBoardH(cg) { return cg.layout === 'free' ? cg.h : COLLAGE_S; }
+// Lowest edge of any free frame — the least the board height can shrink to.
+function collageContentBottom(cg) { return cg.freeRects.reduce((m, r) => Math.max(m, r.y + r.h), 0); }
+// Keeps the on-screen canvas, preview sizing and export size in step with the
+// collage's board height. Callers redraw afterwards (resizing clears a canvas).
+function applyCollageCanvasSize() {
+  if (mode !== 'collage') return;
+  const H = collageBoardH(activePage().collage);
+  LAYOUTS.collage.H = H;
+  CANVAS_H = H;
+  if (canvas.height !== H) canvas.height = H;
+  canvas.style.aspectRatio = `${COLLAGE_S} / ${H}`;
+  fitPreviewSize();
 }
 function collageCount(cg) {
   return cg.layout === 'free' ? cg.freeRects.length : cg.cols * cg.rows;
@@ -1897,6 +1975,11 @@ function collageDividerAt(pos) {
 
 function collageHandleAt(r, pos) {
   if (!r) return null;
+  // Handles straddle the frame's edge, but only their inside half is
+  // grabbable (+2px), so starting a new frame flush against this one draws instead
+  // of resizing this one.
+  const slop = 2;
+  if (pos.x < r.x - slop || pos.x > r.x + r.w + slop || pos.y < r.y - slop || pos.y > r.y + r.h + slop) return null;
   const h = collageHandles(r).find(h => Math.abs(pos.x - h.x) <= COLLAGE_HANDLE * 0.75 && Math.abs(pos.y - h.y) <= COLLAGE_HANDLE * 0.75);
   return h ? h.k : null;
 }
@@ -1906,7 +1989,7 @@ function collageHandleAt(r, pos) {
 // frames butt up seamlessly. Returns the shift to apply.
 function collageSnapShift(edges, axis, skipIdx) {
   const cg = activePage().collage;
-  const targets = [0, COLLAGE_S];
+  const targets = [0, axis === 'x' ? COLLAGE_S : CANVAS_H];
   cg.freeRects.forEach((r, i) => {
     if (i === skipIdx) return;
     if (axis === 'x') targets.push(r.x, r.x + r.w); else targets.push(r.y, r.y + r.h);
@@ -1949,7 +2032,7 @@ function collagePointerDown(evt, pos) {
 
 function collagePointerMove(evt, pos) {
   const cg = activePage().collage;
-  const S = COLLAGE_S, M = COLLAGE_MIN;
+  const S = COLLAGE_S, SH = CANVAS_H, M = COLLAGE_MIN;
   const d = collageDrag;
   evt.preventDefault();
   if (d.type === 'divider') {
@@ -1960,9 +2043,9 @@ function collagePointerMove(evt, pos) {
   } else if (d.type === 'move') {
     const r = { ...d.start };
     r.x = clamp(Math.round(d.start.x + pos.x - d.px), 0, S - r.w);
-    r.y = clamp(Math.round(d.start.y + pos.y - d.py), 0, S - r.h);
+    r.y = clamp(Math.round(d.start.y + pos.y - d.py), 0, SH - r.h);
     r.x = clamp(r.x + collageSnapShift([r.x, r.x + r.w], 'x', d.idx), 0, S - r.w);
-    r.y = clamp(r.y + collageSnapShift([r.y, r.y + r.h], 'y', d.idx), 0, S - r.h);
+    r.y = clamp(r.y + collageSnapShift([r.y, r.y + r.h], 'y', d.idx), 0, SH - r.h);
     cg.freeRects[d.idx] = r;
     refitCollagePhotos();
   } else if (d.type === 'resize') {
@@ -1972,13 +2055,13 @@ function collagePointerMove(evt, pos) {
     if (d.handle.includes('w')) x0 = clamp(Math.round(snapValue(s.x + dx, 'x', d.idx)), 0, x1 - M);
     if (d.handle.includes('e')) x1 = clamp(Math.round(snapValue(s.x + s.w + dx, 'x', d.idx)), x0 + M, S);
     if (d.handle.includes('n')) y0 = clamp(Math.round(snapValue(s.y + dy, 'y', d.idx)), 0, y1 - M);
-    if (d.handle.includes('s')) y1 = clamp(Math.round(snapValue(s.y + s.h + dy, 'y', d.idx)), y0 + M, S);
+    if (d.handle.includes('s')) y1 = clamp(Math.round(snapValue(s.y + s.h + dy, 'y', d.idx)), y0 + M, SH);
     cg.freeRects[d.idx] = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     refitCollagePhotos();
   } else if (d.type === 'draw') {
     const px = Math.round(clamp(snapValue(pos.x, 'x', -1), 0, S));
-    const py = Math.round(clamp(snapValue(pos.y, 'y', -1), 0, S));
-    const x0 = Math.round(clamp(d.x0, 0, S)), y0 = Math.round(clamp(d.y0, 0, S));
+    const py = Math.round(clamp(snapValue(pos.y, 'y', -1), 0, SH));
+    const x0 = Math.round(clamp(d.x0, 0, S)), y0 = Math.round(clamp(d.y0, 0, SH));
     d.rect = { x: Math.min(x0, px), y: Math.min(y0, py), w: Math.abs(px - x0), h: Math.abs(py - y0) };
   }
   render();
@@ -2346,7 +2429,8 @@ function exportCanvas(off, toDataUrlArgs, filename) {
 // high-quality smoothing — sharper text/photo edges than drawing straight at
 // the smaller size.
 function renderPageToOffscreen(pageState, renderMode) {
-  const { exportW, exportH } = L();
+  const exportW = L().exportW;
+  const exportH = mode === 'collage' ? CANVAS_H : L().exportH;   // 拼圖 height follows the board
   if (exportW === CANVAS_W && exportH === CANVAS_H) {
     const off = document.createElement('canvas');
     off.width = CANVAS_W * EXPORT_SCALE;
@@ -2508,6 +2592,7 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
   if (!(await askConfirm())) return;
   pages[activePageIndex] = makePageState(activePageIndex);
   if (mode === 'collage') {
+    applyCollageCanvasSize();
     syncCollageCount();
     buildAllCardUI();
     syncCollageUI();
@@ -2518,18 +2603,24 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
   render();
 });
 
-const helpBtn = document.getElementById('helpBtn');
-// 新聞-only tips popup: open on load, folds down to a round "!" button after
-// 15s with no click or scroll on it (or when ✕ is pressed); the button
-// reopens it. Hidden entirely outside 新聞.
+const helpOverlay = document.getElementById('helpOverlay');
+document.getElementById('helpDetailBtn').addEventListener('click', () => helpOverlay.classList.add('open'));
+document.getElementById('helpCloseBtn').addEventListener('click', () => helpOverlay.classList.remove('open'));
+helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpOverlay.classList.remove('open'); });
+
+// Tips popup: open on load, folds down to a round "!" button
+// after 15s with no click or scroll on it (or when ✕ is pressed); the button
+// reopens it. 新聞 shows the tips above the "詳細功能說明" button; other modes
+// show just the button (which opens the full-screen guide).
 const tipToast = document.getElementById('tipToast');
 const tipFab = document.getElementById('tipFab');
 const TIP_IDLE_MS = 15000;
 let tipCollapsed = false, tipTimer = null;
 function syncTipToast() {
-  const show = mode === 'news';
-  tipToast.hidden = !show;
-  tipFab.hidden = !show;
+  const isNews = mode === 'news';
+  document.getElementById('tipNewsBlock').hidden = !isNews;
+  document.getElementById('tipHelpLead').hidden = isNews;
+  document.getElementById('tipToastTitle').textContent = isNews ? '操作提示' : '使用說明';
   tipToast.classList.toggle('tip-collapsed', tipCollapsed);
   tipFab.classList.toggle('show', tipCollapsed);
 }
@@ -2547,11 +2638,6 @@ tipFab.addEventListener('click', () => setTipCollapsed(false));
 ['pointerdown', 'wheel', 'scroll', 'touchmove', 'keydown'].forEach(ev =>
   tipToast.addEventListener(ev, armTipTimer, { passive: true }));
 armTipTimer();
-
-const helpOverlay = document.getElementById('helpOverlay');
-helpBtn.addEventListener('click', () => helpOverlay.classList.add('open'));
-document.getElementById('helpCloseBtn').addEventListener('click', () => helpOverlay.classList.remove('open'));
-helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpOverlay.classList.remove('open'); });
 
 const stickerPalette = document.getElementById('stickerPalette');
 STICKER_DEFS.forEach(def => {
@@ -2582,6 +2668,7 @@ const newsHeaderBox = document.getElementById('newsHeaderBox');
 const modeSubEl = document.getElementById('modeSub');
 
 function applyModeChrome() {
+  if (mode === 'collage') LAYOUTS.collage.H = collageBoardH(activePage().collage);
   const l = L();
   canvas.width = l.W;
   canvas.height = l.H;
@@ -2617,7 +2704,9 @@ function fitPreviewSize() {
   if (getComputedStyle(col).position !== 'sticky') return;
   const chrome = col.scrollHeight - canvas.getBoundingClientRect().height;
   const availH = window.innerHeight - 40 - chrome - 2;
-  const w = clamp(Math.floor(availH * l.W / l.H), 320, l.previewMaxWidth);
+  // Tall boards may go narrower than 320px so the whole thing still fits.
+  const minW = Math.max(120, Math.min(320, 320 * l.W / l.H));
+  const w = clamp(Math.floor(availH * l.W / l.H), minW, l.previewMaxWidth);
   canvas.style.maxWidth = `${w}px`;
 }
 window.addEventListener('resize', fitPreviewSize);
@@ -2680,12 +2769,14 @@ function syncCollageUI() {
   document.getElementById('collageFreeCtrl').style.display = cg.layout === 'free' ? '' : 'none';
   collageColsSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', Number(b.dataset.n) === cg.cols));
   collageRowsSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', Number(b.dataset.n) === cg.rows));
+  document.getElementById('collageHeightInput').value = cg.h;
   document.querySelectorAll('#collageEditSeg button').forEach(b => b.classList.toggle('active', (b.dataset.edit === 'frame') === cg.editFrames));
 }
 
 // After any change to the number/order of frames: rebuild the per-frame
 // editors, re-fit photos to their new boxes and redraw.
 function collageLayoutChanged(nextActive) {
+  applyCollageCanvasSize();
   syncCollageCount();
   buildAllCardUI();
   syncAllCellUI();
@@ -2721,6 +2812,73 @@ document.getElementById('collageLayoutSeg').addEventListener('click', e => {
   cg.layout = target;
   collageLayoutChanged(activeCard);
 });
+
+// ---- Free layout: board height, adding / fitting / swapping frames ----------
+function collageRedrawAfterEdit() {
+  applyCollageCanvasSize();
+  refitCollagePhotos();
+  syncCollageUI();
+  render();
+}
+document.getElementById('collageHeightInput').addEventListener('change', e => {
+  const cg = activePage().collage;
+  const floor = Math.max(COLLAGE_H_MIN, collageContentBottom(cg));
+  let v = Math.round(Number(e.target.value)) || cg.h;
+  if (v < floor) statusEl.textContent = `畫布高度不能小於框的最低邊 ${floor}px，可先把框往上移或縮小`;
+  cg.h = clamp(v, floor, COLLAGE_H_MAX);
+  collageRedrawAfterEdit();
+});
+document.getElementById('collageFitHeightBtn').addEventListener('click', () => {
+  const cg = activePage().collage;
+  cg.h = clamp(collageContentBottom(cg), COLLAGE_H_MIN, COLLAGE_H_MAX);
+  collageRedrawAfterEdit();
+});
+document.getElementById('collageAddBtn').addEventListener('click', () => {
+  const pg = activePage(), cg = pg.collage;
+  if (cg.layout !== 'free') return;
+  if (cg.freeRects.length >= COLLAGE_MAX_FRAMES) { statusEl.textContent = `最多 ${COLLAGE_MAX_FRAMES} 個框`; return; }
+  const y = collageContentBottom(cg);
+  if (y + COLLAGE_MIN > COLLAGE_H_MAX) { statusEl.textContent = `畫布高度已達上限 ${COLLAGE_H_MAX}px`; return; }
+  const h = Math.min(COLLAGE_NEW_FRAME_H, COLLAGE_H_MAX - y);
+  cg.freeRects.push({ x: 0, y, w: COLLAGE_S, h });
+  pg.cards.push(freshCardState(pg.cards.length));
+  cg.h = Math.max(cg.h, y + h);
+  collageLayoutChanged(cg.freeRects.length - 1);
+});
+// Resizes the selected frame's height to its photo's aspect ratio at the
+// frame's current width (so nothing is cropped) and shifts every frame that
+// sat below it by the same amount, keeping a stack flush.
+document.getElementById('collageFitImgBtn').addEventListener('click', () => {
+  const pg = activePage(), cg = pg.collage;
+  const i = activeCard, st = pg.cards[i], r = cg.freeRects[i];
+  if (cg.layout !== 'free' || !r) return;
+  if (!st || !st.img) { statusEl.textContent = '這個框還沒有圖片，先貼上或選擇圖片再貼合'; return; }
+  const oldBottom = r.y + r.h;
+  const newH = clamp(Math.round(r.w * st.img.height / st.img.width), COLLAGE_MIN, COLLAGE_H_MAX - r.y);
+  const delta = newH - r.h;
+  cg.freeRects.forEach((o, k) => { if (k !== i && o.y >= oldBottom - 1) o.y = clamp(o.y + delta, 0, COLLAGE_H_MAX - o.h); });
+  r.h = newH;
+  st.scale = 1; st.fx = 0.5; st.fy = 0.5;
+  cg.h = clamp(Math.max(cg.h, collageContentBottom(cg)), COLLAGE_H_MIN, COLLAGE_H_MAX);
+  collageRedrawAfterEdit();
+});
+// Swaps the selected frame's vertical slot with its neighbour above/below
+// (frames ordered by position), keeping the pair's combined span so a flush
+// stack stays flush. Each frame keeps its own photo.
+function swapCollageFrameVertical(dir) {
+  const pg = activePage(), cg = pg.collage;
+  if (cg.layout !== 'free' || !cg.freeRects[activeCard]) return;
+  const order = cg.freeRects.map((r, k) => k).sort((a, b) => cg.freeRects[a].y - cg.freeRects[b].y || cg.freeRects[a].x - cg.freeRects[b].x);
+  const pos = order.indexOf(activeCard), nb = order[pos + dir];
+  if (nb === undefined) { statusEl.textContent = dir < 0 ? '已經在最上面' : '已經在最下面'; return; }
+  const upper = cg.freeRects[dir < 0 ? nb : activeCard], lower = cg.freeRects[dir < 0 ? activeCard : nb];
+  const top = upper.y, bottom = lower.y + lower.h;
+  lower.y = top;
+  upper.y = bottom - upper.h;
+  collageRedrawAfterEdit();
+}
+document.getElementById('collageUpBtn').addEventListener('click', () => swapCollageFrameVertical(-1));
+document.getElementById('collageDownBtn').addEventListener('click', () => swapCollageFrameVertical(1));
 
 document.getElementById('collageEditSeg').addEventListener('click', e => {
   const v = e.target.dataset.edit;
