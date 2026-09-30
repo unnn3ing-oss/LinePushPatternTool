@@ -171,10 +171,16 @@
     user-select: none;
   }
   .quickfill-title { font-size: 15px; font-weight: 600; }
-  .quickfill-chevron { font-size: 12px; color: var(--muted); transition: transform .15s; }
+  .quickfill-chevron {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--accent); color: var(--accent);
+    font-size: 15px; line-height: 1; padding-left: 2px;
+    transition: transform .15s, background .15s, color .15s;
+  }
   .quickfill-body { margin-top: 10px; }
   .quickfill-body.collapsed { display: none; }
-  .quickfill-header.open .quickfill-chevron { transform: rotate(90deg); }
+  .quickfill-header.open .quickfill-chevron { transform: rotate(90deg); background: var(--accent); color: #fff; }
   .cell-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -252,6 +258,66 @@
   /* Header unticked: the label input folds away, leaving just the checkbox row. */
   #newsHeaderBox.header-off #topLabel { display: none; }
   #newsHeaderBox.header-off label { margin-bottom: 0 !important; }
+  /* 新聞 tips popup: bottom-right, closable, sits under the help modal (z-index 100). */
+  .tip-toast {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    width: 380px;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    z-index: 50;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+    padding: 14px 16px 16px;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .tip-toast[hidden] { display: none; }
+  /* Collapsed: slides down out of view; the round "!" button takes its place. */
+  .tip-toast { transition: transform .3s ease, opacity .3s ease, visibility 0s; }
+  .tip-toast.tip-collapsed {
+    transform: translateY(40px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform .3s ease, opacity .3s ease, visibility 0s .3s;
+  }
+  .tip-fab {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 50;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    background: var(--accent);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+    opacity: 0;
+    transform: scale(.6);
+    pointer-events: none;
+    transition: opacity .3s ease .1s, transform .3s ease .1s;
+  }
+  .tip-fab.show { opacity: 1; transform: scale(1); pointer-events: auto; }
+  .tip-fab:hover { background: var(--accent-dark); }
+  .tip-fab[hidden] { display: none; }
+  .tip-toast-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .tip-toast-title { font-size: 16px; font-weight: 700; color: var(--accent); }
+  .tip-toast-close { border: none; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 8px; border-radius: 6px; }
+  .tip-toast-close:hover { background: var(--bg); color: var(--text); }
+  .tip-toast p { margin: 0 0 10px; }
+  .tip-toast p:last-child { margin-bottom: 0; }
+  .tip-toast .tip-example { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   /* Only the selected cell's editor is shown; click a cell in the preview to switch. */
   #cellsList .cell-box:not(.active) { display: none; }
@@ -437,6 +503,20 @@
     </div>
   </div>
 </div>
+
+<aside class="tip-toast" id="tipToast" role="dialog" aria-label="操作提示">
+  <div class="tip-toast-head">
+    <span class="tip-toast-title">操作提示</span>
+    <button type="button" class="tip-toast-close" id="tipToastClose" aria-label="關閉提醒" title="關閉">✕</button>
+  </div>
+  <p>使用「快速填入」可以將整段推播標題含連結帶入，例如：</p>
+  <p class="tip-example">★國際)婦右腳罹癌截肢 竟"鋸成左腳"怒提告<br>https://news.tvbs.com.tw/world/4029494?</p>
+  <p>如果使用快速填入後發現有誤，可以「直接點擊」對應格子個別在左側編輯區編輯該格錯誤內容，無須重新再更正快速填入。</p>
+  <p>有 (文字) 或 文字) 會自動加上小標籤，如果需要第二個則需到編輯區手動增加，兩個小標籤都可以拖曳位置，靠近格子邊緣則自動吸附貼齊邊緣。</p>
+  <p>圖片可直接拖拉、滑鼠滾輪縮放，縮放也可以讓照片邊緣留白縮放，避免照片人物過於旁邊無法放大或放置在框中，但需注意不要真的讓照片露白，避免輸出留白處呈現透明或空白。</p>
+</aside>
+
+<button type="button" class="tip-fab" id="tipFab" aria-label="開啟操作提示" title="操作提示">!</button>
 
 <div class="modal-overlay" id="helpOverlay">
   <div class="modal">
@@ -2390,6 +2470,12 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
   statusEl.textContent = entries.length
     ? `快速填入完成，共套用 ${entries.length} 格`
     : '沒有找到任何「★」開頭的內容可以填入';
+  // Once something was actually filled in, fold the box away to make room
+  // (it stays open when nothing matched, so the pasted text can be fixed).
+  if (entries.length) {
+    quickfillBody.classList.add('collapsed');
+    quickfillHeader.classList.remove('open');
+  }
 });
 
 const quickfillHeader = document.getElementById('quickfillHeader');
@@ -2433,6 +2519,35 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
 });
 
 const helpBtn = document.getElementById('helpBtn');
+// 新聞-only tips popup: open on load, folds down to a round "!" button after
+// 15s with no click or scroll on it (or when ✕ is pressed); the button
+// reopens it. Hidden entirely outside 新聞.
+const tipToast = document.getElementById('tipToast');
+const tipFab = document.getElementById('tipFab');
+const TIP_IDLE_MS = 15000;
+let tipCollapsed = false, tipTimer = null;
+function syncTipToast() {
+  const show = mode === 'news';
+  tipToast.hidden = !show;
+  tipFab.hidden = !show;
+  tipToast.classList.toggle('tip-collapsed', tipCollapsed);
+  tipFab.classList.toggle('show', tipCollapsed);
+}
+function armTipTimer() {
+  clearTimeout(tipTimer);
+  if (!tipCollapsed) tipTimer = setTimeout(() => setTipCollapsed(true), TIP_IDLE_MS);
+}
+function setTipCollapsed(v) {
+  tipCollapsed = v;
+  syncTipToast();
+  armTipTimer();
+}
+document.getElementById('tipToastClose').addEventListener('click', () => setTipCollapsed(true));
+tipFab.addEventListener('click', () => setTipCollapsed(false));
+['pointerdown', 'wheel', 'scroll', 'touchmove', 'keydown'].forEach(ev =>
+  tipToast.addEventListener(ev, armTipTimer, { passive: true }));
+armTipTimer();
+
 const helpOverlay = document.getElementById('helpOverlay');
 helpBtn.addEventListener('click', () => helpOverlay.classList.add('open'));
 document.getElementById('helpCloseBtn').addEventListener('click', () => helpOverlay.classList.remove('open'));
@@ -2487,7 +2602,25 @@ function applyModeChrome() {
   modeSubEl.textContent = l.sub;
   modeTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+  fitPreviewSize();
+  syncTipToast();
 }
+
+// The preview column is sticky with its own max height (viewport − 40px) and
+// scrolls internally when taller. Rather than showing a second scrollbar, the
+// canvas shrinks just enough that the whole column fits the window (never
+// below 320px wide, and never above the mode's normal preview width).
+function fitPreviewSize() {
+  const l = L();
+  const col = document.querySelector('.preview-col');
+  canvas.style.maxWidth = `${l.previewMaxWidth}px`;
+  if (getComputedStyle(col).position !== 'sticky') return;
+  const chrome = col.scrollHeight - canvas.getBoundingClientRect().height;
+  const availH = window.innerHeight - 40 - chrome - 2;
+  const w = clamp(Math.floor(availH * l.W / l.H), 320, l.previewMaxWidth);
+  canvas.style.maxWidth = `${w}px`;
+}
+window.addEventListener('resize', fitPreviewSize);
 
 // The quick-fill box is per mode too: its pasted text and open/closed state
 // are stashed on switch and restored when coming back.
