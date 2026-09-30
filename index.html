@@ -101,10 +101,8 @@
   .sticker-btn:hover { border-color: var(--accent); }
   .sticker-btn img { width: 100%; height: 100%; object-fit: contain; }
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  /* .btn-row only carries a top margin, and .cell-box only a bottom one —
-     with the download buttons now sitting directly above #cellsList, there
-     was no space between the two and they visually ran together. */
-  #cellsList { margin-top: 14px; }
+  /* The boxes above #cellsList each carry a bottom margin, so it needs none. */
+  #cellsList { margin-top: 0; }
   button {
     font-family: inherit;
     font-size: 14px;
@@ -141,6 +139,9 @@
   .seg-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .seg-row .swatch-label { width: 78px; flex-shrink: 0; }
   .seg-row .seg { flex: 1; }
+  /* Download buttons split the row evenly, keeping the row's gap between them. */
+  #downloadRow button { flex: 1 1 0; min-width: 0; }
+  #downloadRow { margin-top: 0; margin-bottom: 14px; }
   #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
   #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
   canvas {
@@ -218,15 +219,17 @@
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
   .swatch-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-  .swatch-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+  .swatch-label { font-size: 13px; line-height: 20px; color: var(--muted); margin-right: 2px; }
   .swatch-indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 5px;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
     border: 1px solid var(--border);
     box-sizing: border-box;
     flex-shrink: 0;
   }
+  /* Fixed label width so every row's colour picker starts at the same x. */
+  .swatch-row.field-header .swatch-label { width: 84px; flex-shrink: 0; white-space: nowrap; }
   .swatch-row.collapsed .color-swatch { display: none; }
   .color-swatch {
     width: 20px;
@@ -244,7 +247,12 @@
   .scale-row .swatch-label { white-space: nowrap; flex-shrink: 0; }
   .scale-row .scale-val { font-size: 11px; color: var(--muted); width: 38px; text-align: right; flex-shrink: 0; }
   .reset-pos-btn { padding: 4px 10px; font-size: 12px; flex-shrink: 0; }
+  /* Header unticked: the label input folds away, leaving just the checkbox row. */
+  #newsHeaderBox.header-off #topLabel { display: none; }
+  #newsHeaderBox.header-off label { margin-bottom: 0 !important; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  /* Only the selected cell's editor is shown; click a cell in the preview to switch. */
+  #cellsList .cell-box:not(.active) { display: none; }
   .modal-overlay {
     display: none;
     position: fixed;
@@ -342,6 +350,12 @@
       <button type="button" class="mode-tab" data-mode="collage">拼圖</button>
     </div>
     <div class="card">
+      <div class="btn-row" id="downloadRow">
+        <button id="downloadJpgBtn">下載本頁</button>
+        <button class="primary" id="downloadAllBtn">全部下載</button>
+        <button id="copyCollageBtn" style="display:none">直接複製</button>
+      </div>
+
       <div class="top-label-box" id="collageBox" style="display:none">
         <label>版面方式</label>
         <div class="seg" id="collageLayoutSeg">
@@ -371,11 +385,11 @@
       </div>
 
       <div class="top-label-box" id="quickfillBox">
-        <div class="quickfill-header" id="quickfillHeader">
+        <div class="quickfill-header open" id="quickfillHeader">
           <span class="quickfill-title">快速填入</span>
           <span class="quickfill-chevron" id="quickfillChevron">▸</span>
         </div>
-        <div class="quickfill-body collapsed" id="quickfillBody">
+        <div class="quickfill-body" id="quickfillBody">
           <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;整段過審推播新聞貼入即可&#10;標題含有空格或驚嘆號、問號，就會自動換行&#10;（網址會自動略過，可直接貼上）"></textarea>
           <div class="btn-row">
             <button type="button" id="quickfillBtn">快速填入</button>
@@ -387,17 +401,10 @@
         <div class="field">
           <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px">
             <input type="checkbox" id="showHeaderToggle" checked style="width:auto; margin:0">
-            這頁顯示頂部黃色標籤列
+            頂部標籤
           </label>
-          <label for="topLabel">頂部標籤文字</label>
-          <input type="text" id="topLabel" value="熱門話題">
+          <input type="text" id="topLabel" value="熱門話題" aria-label="頂部標籤文字">
         </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="primary" id="downloadJpgBtn">下載本頁</button>
-        <button id="downloadAllBtn">全部下載</button>
-        <button id="copyCollageBtn" style="display:none">複製（貼到新聞／娛樂）</button>
       </div>
 
       <div id="cellsList"></div>
@@ -440,8 +447,8 @@
       <ol class="help-steps">
         <li><b>選版型</b>：編輯區最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
         <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
-          <br><span class="help-note">新聞第 1 頁可在「頂部標籤文字」改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
-        <li><b>填標題</b>：展開「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以在下方每一格手動輸入。
+          <br><span class="help-note">新聞第 1 頁可在「頂部標籤」下方的欄位改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
+        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：編輯區一次只顯示一格（預設第一格），在預覽圖上點哪一格，就換成那一格的編輯區。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
           <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span></li>
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
@@ -2105,9 +2112,13 @@ topLabelInput.addEventListener('input', () => {
   activePage().topLabel = normalizeInputValue(topLabelInput);
   render();
 });
+function syncTopToggleUI() {
+  topLabelInput.disabled = !showHeaderToggle.checked;
+  document.getElementById('newsHeaderBox').classList.toggle('header-off', !showHeaderToggle.checked);
+}
 showHeaderToggle.addEventListener('change', () => {
   activePage().showHeader = showHeaderToggle.checked;
-  topLabelInput.disabled = !showHeaderToggle.checked;
+  syncTopToggleUI();
   render();
 });
 
@@ -2117,7 +2128,7 @@ function syncTopUIFromState() {
   const p = activePage();
   topLabelInput.value = p.topLabel;
   showHeaderToggle.checked = p.showHeader;
-  topLabelInput.disabled = !p.showHeader;
+  syncTopToggleUI();
 }
 
 const pageTabs = Array.from(document.querySelectorAll('.page-tab'));
@@ -2465,6 +2476,8 @@ function applyModeChrome() {
   document.getElementById('collageBox').style.display = isCollage ? '' : 'none';
   document.querySelector('.page-tabs').style.display = isCollage ? 'none' : '';
   document.getElementById('downloadAllBtn').style.display = isCollage ? 'none' : '';
+  // 全部下載 is the highlighted button, except in 拼圖 where it's hidden and 下載本頁 takes over.
+  document.getElementById('downloadJpgBtn').classList.toggle('primary', isCollage);
   document.getElementById('copyCollageBtn').style.display = isCollage ? '' : 'none';
   document.getElementById('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
   document.getElementById('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
@@ -2478,9 +2491,9 @@ function applyModeChrome() {
 // are stashed on switch and restored when coming back.
 const quickfillText = document.getElementById('quickfillText');
 const quickfillByMode = {
-  news: { text: '', open: false },
-  ent: { text: '', open: false },
-  collage: { text: '', open: false },
+  news: { text: '', open: true },
+  ent: { text: '', open: true },
+  collage: { text: '', open: true },
 };
 
 function setMode(newMode) {
