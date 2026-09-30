@@ -140,6 +140,31 @@
   .seg-row .seg { flex: 1; }
   /* Download buttons split the row evenly, keeping the row's gap between them. */
   #downloadRow button { flex: 1 1 0; min-width: 0; }
+  /* 全部下載 locked (incomplete cells): greyed out with an instant tooltip. */
+  #downloadRow button { position: relative; }
+  #downloadRow button.is-disabled,
+  #downloadRow button.is-disabled:hover {
+    background: var(--border);
+    border-color: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+  #downloadRow button.is-disabled:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2328;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 4px 10px;
+    border-radius: 6px;
+    z-index: 20;
+    pointer-events: none;
+  }
   #downloadRow { margin-top: 0; margin-bottom: 14px; }
   #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
   #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
@@ -656,10 +681,10 @@
 <div class="modal-overlay" id="confirmOverlay">
   <div class="modal" style="max-width:360px">
     <div class="modal-head">
-      <h2>確定要清除本頁？</h2>
+      <h2 id="confirmTitle">確定要清除本頁？</h2>
     </div>
     <div class="modal-body">
-      <p style="margin:0">這會清空「本頁」所有格子目前的文字、標籤與圖片設定，且無法復原（不會影響另一頁）。</p>
+      <p style="margin:0" id="confirmBody">這會清空「本頁」所有格子目前的文字、標籤與圖片設定，且無法復原（不會影響另一頁）。</p>
       <div class="btn-row" style="justify-content:flex-end; margin-top:16px">
         <button type="button" id="confirmCancelBtn">取消</button>
         <button type="button" id="confirmOkBtn" class="primary">清除本頁</button>
@@ -1599,6 +1624,7 @@ const ctx = canvas.getContext('2d');
 
 function render() {
   renderTo(ctx, 'final', activePage(), { showActiveBorder: true, interactive: true });
+  updateDownloadState();
 }
 
 // ---------------------------------------------------------------------------
@@ -2472,13 +2498,49 @@ function exportFileName(pageIndex) {
   return `${ymd}${L().name}Line推播圖_第${pageIndex + 1}頁.jpg`;
 }
 
+// 新聞／娛樂 completeness: every cell needs both headline lines and a photo.
+// (拼圖 has no such rule.) 「全部下載」 stays locked until every cell on every
+// page is complete; 「下載本頁」 asks first when the current page isn't.
+function cardMissing(st) {
+  const miss = [];
+  if (!(st.line1 || '').trim() || !(st.line2 || '').trim()) miss.push('標題');
+  if (!st.img) miss.push('圖片');
+  return miss;
+}
+function pageMissingReport(pageState) {
+  const rows = [];
+  pageState.cards.forEach((st, i) => {
+    const m = cardMissing(st);
+    if (m.length) rows.push(`第 ${i + 1} 格缺${m.join('、')}`);
+  });
+  return rows;
+}
+function updateDownloadState() {
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+  const locked = mode !== 'collage' && pages.some(pg => pageMissingReport(pg).length > 0);
+  downloadAllBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+  downloadAllBtn.classList.toggle('is-disabled', locked);
+  if (locked) downloadAllBtn.dataset.tip = '圖片製作未完成！'; else delete downloadAllBtn.dataset.tip;
+}
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
+  if (mode !== 'collage') {
+    const report = pageMissingReport(activePage());
+    if (report.length) {
+      const ok = await askConfirm({
+        title: '尚有未完成部分確定要下載?',
+        body: report.join('；'),
+        okText: '仍要下載',
+      });
+      if (!ok) return;
+    }
+  }
   await ensureAssetsReady();
   const off = renderPageToOffscreen(activePage(), 'final');
   exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], exportFileName(activePageIndex));
 });
 
 document.getElementById('downloadAllBtn').addEventListener('click', async () => {
+  if (document.getElementById('downloadAllBtn').getAttribute('aria-disabled') === 'true') return;
   await ensureAssetsReady();
   for (let p = 0; p < PAGE_COUNT; p++) {
     const off = renderPageToOffscreen(pages[p], 'final');
@@ -2569,7 +2631,16 @@ quickfillHeader.addEventListener('click', () => {
   quickfillHeader.classList.toggle('open', !collapsed);
 });
 
-function askConfirm() {
+const CONFIRM_DEFAULTS = {
+  title: '確定要清除本頁？',
+  body: '這會清空「本頁」所有格子目前的文字、標籤與圖片設定，且無法復原（不會影響另一頁）。',
+  okText: '清除本頁',
+};
+function askConfirm(opts = {}) {
+  const o = { ...CONFIRM_DEFAULTS, ...opts };
+  document.getElementById('confirmTitle').textContent = o.title;
+  document.getElementById('confirmBody').textContent = o.body;
+  document.getElementById('confirmOkBtn').textContent = o.okText;
   const overlay = document.getElementById('confirmOverlay');
   overlay.classList.add('open');
   return new Promise(resolve => {
