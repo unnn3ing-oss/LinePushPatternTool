@@ -248,6 +248,8 @@
     flex-shrink: 0;
   }
   .dropzone .dz-text { flex: 1; padding: 4px 10px; text-align: left; }
+  .dropzone .copy-push-btn { flex: none; margin-right: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.3; white-space: nowrap; }
+  #cellsList.collage .copy-push-btn { display: none; }
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
   .swatch-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -566,6 +568,7 @@
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg></span>
         <div class="tip-text"><b>貼上就填好</b>
           <span>把整段推播標題（含連結）貼進「快速填入」，一次帶入所有格子。</span>
+          <span id="tipAutoImg" hidden>連結會順便抓文章第一張圖放進對應格子；想換圖，直接拖進新圖或按 Ctrl+V 就好。</span>
           <div class="tip-example">★國際)婦右腳罹癌截肢 竟"鋸成左腳"怒提告<br>https://news.tvbs.com.tw/world/4029494?</div>
         </div>
       </li>
@@ -612,7 +615,8 @@
           <br><span class="help-note">新聞第 1 頁可在「頂部標籤」下方的欄位改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
         <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：編輯區一次只顯示一格（預設第一格），在預覽圖上點哪一格，就換成那一格的編輯區。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
-          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span></li>
+          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
+          <span class="help-note" id="helpAutoImg" hidden><br>★ 下一行的文章連結會自動抓第一張圖放進對應格子；之後想換圖，直接拖進新圖或選好格子按 Ctrl+V 即可（手動放的圖，再按一次快速填入也不會被蓋掉）。</span></li>
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
         <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
@@ -958,11 +962,17 @@ function freshCardState(i) {
     // spot (null = default).
     tag2: '',
     tag2Color: TAG_COLORS[0],
+    // From quick fill, for 「複製推播標題」: the article link and the ★ line as pasted
+    // (srcSig says which headline text that line produced).
+    url: '',
+    srcLine: '',
+    srcSig: '',
     tagPos: null,
     tag2Pos: null,
     color1: c.color1,
     color2: c.color2,
     img: null,
+    imgSource: '',   // 'auto' (fetched by quick fill) | 'manual' (user-picked) | ''
     fileName: '',
     scale: 1,
     offsetX: 0,
@@ -1650,20 +1660,26 @@ function loadImageFile(file, onLoaded, onError) {
   reader.readAsDataURL(file);
 }
 
-function setCardImage(i, image, fileName) {
-  const state = activePage().cards[i];
+// Puts a photo into cell i of any page (not only the visible one). Photos the
+// user picks are 'manual'; ones quick fill fetched are 'auto', which a later
+// quick fill may replace while leaving manual ones alone.
+function setCardImageAt(pageIdx, i, image, fileName, source = 'manual') {
+  const pg = pages[pageIdx];
+  const state = pg.cards[i];
   state.img = image;
+  state.imgSource = source;
   state.fileName = fileName;
   state.scale = 1;
   state.fx = 0.5;
   state.fy = 0.5;
-  const cell = cellRect(i, activePage().showHeader);
+  const cell = cellRect(i, pg.showHeader);
   const { dw, dh } = cellImageSize(cell, state);
   state.offsetX = (cell.w - dw) / 2;
   state.offsetY = (cell.h - dh) / 2;
-  refreshCardThumb(i);
+  if (pageIdx === activePageIndex) refreshCardThumb(i);
   render();
 }
+function setCardImage(i, image, fileName) { setCardImageAt(activePageIndex, i, image, fileName, 'manual'); }
 
 const cellsList = document.getElementById('cellsList');
 const cardEls = [];
@@ -1690,6 +1706,26 @@ function buildCardUI(i) {
   fi.accept = 'image/*';
   dz.appendChild(dzThumb);
   dz.appendChild(dzText);
+  const copyPushBtn = document.createElement('button');
+  copyPushBtn.type = 'button';
+  copyPushBtn.className = 'copy-push-btn';
+  copyPushBtn.textContent = '複製推播標題';
+  copyPushBtn.title = '複製這一格的推播標題與連結（連結後方自動加上 UTM）';
+  copyPushBtn.addEventListener('click', async e => {
+    e.stopPropagation();   // don't open the file picker
+    setActiveCard(i);
+    const res = pushTextFor(activePage().cards[i]);
+    if (!res) { statusEl.textContent = `第 ${i + 1} 格還沒有標題可以複製`; return; }
+    const ok = await copyText(res.text);
+    statusEl.textContent = !ok ? '這個瀏覽器無法複製，請改用手動複製'
+      : res.hasLink ? `已複製第 ${i + 1} 格推播標題（含連結與 UTM）`
+      : `已複製第 ${i + 1} 格標題（這格沒有連結，是手動輸入或快速填入時沒附連結）`;
+    if (ok) {
+      copyPushBtn.textContent = '已複製 ✓';
+      setTimeout(() => { copyPushBtn.textContent = '複製推播標題'; }, 1500);
+    }
+  });
+  dz.appendChild(copyPushBtn);
   dz.appendChild(fi);
   box.appendChild(dz);
 
@@ -2576,11 +2612,64 @@ function splitHeadline(content) {
   return { line1: content.slice(0, end).trim(), line2: content.slice(rest).trim() };
 }
 
+// ---- 複製推播標題 ------------------------------------------------------------
+// Rebuilds the push text for a cell — the ★ headline line plus the article link
+// with the mode's UTM tail — and copies it. If the cell's headline is still
+// what quick fill produced, the ★ line is reused exactly as pasted; otherwise
+// it's rebuilt from the cell's current fields.
+const PUSH_UTM = {
+  news: 'utm_source=LineNewsPush&utm_medium=push',
+  ent: 'utm_source=LineNewsPush&utm_medium=enewsline',
+};
+function pushSig(card) { return `${card.line1}|${card.line2}|${card.tag}`; }
+function withUtm(url) {
+  const utm = PUSH_UTM[mode];
+  if (!url || !utm) return url;
+  return `${url}&${utm}`;   // exactly as the push tool expects: link + "&utm_…", no "?" added
+}
+function pushTextFor(card) {
+  const l1 = (card.line1 || '').trim(), l2 = (card.line2 || '').trim(), tag = (card.tag || '').trim();
+  if (!l1 && !l2) return null;
+  let head;
+  if (card.srcLine && card.srcSig === pushSig(card)) head = card.srcLine;
+  else head = `★${tag ? tag + ')' : ''}${l1}${l2 ? (/[!?]$/.test(l1) ? '' : ' ') + l2 : ''}`;
+  const link = withUtm(card.url);
+  return { text: link ? `${head}\n${link}` : head, hasLink: !!link };
+}
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { /* ignore */ }
+    ta.remove();
+    return ok;
+  }
+}
+
+function cleanUrl(u) { return u.replace(/[?!.,;:，。、）)\]】]+$/, ''); }
 function parseQuickFillText(text) {
   const entries = [];
+  let current = null;
   for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (!line.startsWith('★')) continue;
+    let line = raw.trim();
+    if (!line.startsWith('★')) {
+      // The article link sits on the line(s) after a ★ line: remember it for
+      // that entry (used to fetch the photo), skip everything else.
+      const m = line.match(/https?:\/\/\S+/);
+      if (m && current && !current.url) current.url = cleanUrl(m[0]);
+      continue;
+    }
+    if (entries.length >= PAGE_COUNT * CELL_COUNT) break;
+    // A link on the ★ line itself belongs to the entry, not the headline.
+    let inlineUrl = '';
+    line = line.replace(/https?:\/\/\S+/, m => { inlineUrl = cleanUrl(m); return ''; }).trim();
     let content = line.slice(1).trim();
     let tag = '', tagColor = TAG_COLORS[0];
     // Two coexisting tag syntaxes, always right after ★: bare text + bare
@@ -2593,13 +2682,80 @@ function parseQuickFillText(text) {
       tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
       content = content.slice(tagMatch[0].length).trim();
     }
-    const entry = splitHeadline(toHalfWidth(content).replace(/\u3000/g, ' '));
+    const entry = splitHeadline(toHalfWidth(content).replace(/　/g, ' '));
     entry.tag = tag;
     entry.tagColor = tagColor;
+    entry.url = inlineUrl;
+    entry.srcLine = line;
     entries.push(entry);
-    if (entries.length >= PAGE_COUNT * CELL_COUNT) break;
+    current = entry;
   }
   return entries;
+}
+
+// ---- Auto photo from the article link ---------------------------------------
+// The browser can't read other sites' pages (CORS), so quick fill asks a small
+// Cloudflare Worker (worker/README.md) for each article's first image. The
+// Worker address comes from ?imageProxy=<url> (remembered in this browser) or
+// DEFAULT_IMAGE_PROXY; with neither, auto photos are simply off.
+const DEFAULT_IMAGE_PROXY = 'https://og-image-proxy.19jpz-3.workers.dev';
+function imageProxyUrl() {
+  try {
+    const q = new URLSearchParams(location.search).get('imageProxy');
+    if (q !== null) {
+      if (q) localStorage.setItem('imageProxy', q); else localStorage.removeItem('imageProxy');
+    }
+    return (localStorage.getItem('imageProxy') || DEFAULT_IMAGE_PROXY).replace(/\/+$/, '');
+  } catch (e) {
+    return DEFAULT_IMAGE_PROXY.replace(/\/+$/, '');
+  }
+}
+let imageFetchRun = 0;
+function blobToImage(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('無法解讀圖片')); };
+    img.src = url;
+  });
+}
+// Returns a status suffix. Cells holding a photo the user chose themselves are
+// left alone; ones holding an earlier auto photo are replaced.
+async function autoFetchImages(entries, baseMsg) {
+  const withUrl = entries.map((entry, idx) => ({ entry, idx })).filter(j => j.entry.url);
+  if (!withUrl.length) return;
+  const proxy = imageProxyUrl();
+  if (!proxy) return;
+  const run = ++imageFetchRun;
+  const startMode = mode, startPages = pages;
+  const failed = [];
+  let ok = 0, done = 0, kept = 0;
+  const progress = () => { statusEl.textContent = `${baseMsg}；抓取文章圖片 ${done}/${withUrl.length}…`; };
+  progress();
+  await Promise.all(withUrl.map(async ({ entry, idx }) => {
+    const p = Math.floor(idx / CELL_COUNT), c = idx % CELL_COUNT;
+    const card = startPages[p].cards[c];
+    try {
+      if (card.img && card.imgSource === 'manual') { kept++; return; }
+      const res = await fetch(`${proxy}?url=${encodeURIComponent(entry.url)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const image = await blobToImage(await res.blob());
+      if (run !== imageFetchRun || mode !== startMode || pages !== startPages) return;   // superseded
+      setCardImageAt(p, c, image, '文章首圖', 'auto');
+      ok++;
+    } catch (err) {
+      failed.push(idx + 1);
+    } finally {
+      done++;
+      if (run === imageFetchRun) progress();
+    }
+  }));
+  if (run !== imageFetchRun) return;
+  let msg = `${baseMsg}；圖片抓取完成，成功 ${ok} 張`;
+  if (kept) msg += `，${kept} 格已有手動放的圖，保留不動`;
+  if (failed.length) msg += `；第 ${failed.sort((a, b) => a - b).join('、')} 格沒抓到圖，請手動放圖`;
+  statusEl.textContent = msg;
 }
 
 document.getElementById('quickfillBtn').addEventListener('click', () => {
@@ -2610,12 +2766,17 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
     card.line2 = entry.line2;
     card.tag = entry.tag;
     card.tagColor = entry.tagColor;
+    card.url = entry.url || '';
+    card.srcLine = entry.srcLine || '';
+    card.srcSig = pushSig(card);
   });
   syncAllCellUI();
   render();
+  const baseMsg = `快速填入完成，共套用 ${entries.length} 格`;
   statusEl.textContent = entries.length
-    ? `快速填入完成，共套用 ${entries.length} 格`
+    ? baseMsg
     : '沒有找到任何「★」開頭的內容可以填入';
+  if (entries.length) autoFetchImages(entries, baseMsg);
   // Once something was actually filled in, fold the box away to make room
   // (it stays open when nothing matched, so the pasted text can be fixed).
   if (entries.length) {
@@ -3004,6 +3165,11 @@ document.getElementById('copyCollageBtn').addEventListener('click', async () => 
   }
 });
 applyModeChrome();
+if (imageProxyUrl()) {
+  document.getElementById('tipAutoImg').hidden = false;
+  document.getElementById('helpAutoImg').hidden = false;
+  quickfillText.placeholder = '★標題第一行 標題第二行\n整段過審推播新聞貼入即可\n標題含有空格或驚嘆號、問號，就會自動換行\n（連結會自動抓文章第一張圖）';
+}
 
 render();
 headlineFontReady.then(render);
