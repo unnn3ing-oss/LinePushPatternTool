@@ -466,7 +466,7 @@
       <div class="btn-row" id="downloadRow">
         <button id="downloadJpgBtn">下載本頁</button>
         <button class="primary" id="downloadAllBtn">全部下載</button>
-        <button id="copyCollageBtn" style="display:none">直接複製</button>
+        <button class="primary" id="copyCollageBtn" style="display:none">直接複製</button>
       </div>
 
       <div class="top-label-box" id="collageBox" style="display:none">
@@ -2920,8 +2920,7 @@ function applyModeChrome() {
   document.getElementById('collageBox').style.display = isCollage ? '' : 'none';
   document.querySelector('.page-tabs').style.display = isCollage ? 'none' : '';
   document.getElementById('downloadAllBtn').style.display = isCollage ? 'none' : '';
-  // 全部下載 is the highlighted button, except in 拼圖 where it's hidden and 下載本頁 takes over.
-  document.getElementById('downloadJpgBtn').classList.toggle('primary', isCollage);
+  // 拼圖: 直接複製 is the highlighted (blue) button, 下載 stays white.
   document.getElementById('copyCollageBtn').style.display = isCollage ? '' : 'none';
   document.getElementById('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
   document.getElementById('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
