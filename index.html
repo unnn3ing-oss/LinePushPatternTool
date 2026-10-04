@@ -176,6 +176,27 @@
     background: #ddd repeating-conic-gradient(#ccc 0% 25%, #ddd 0% 50%) 50% / 24px 24px;
     touch-action: none;
   }
+  .status-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translate(-50%, 24px);
+    width: max-content;
+    max-width: min(560px, calc(100vw - 48px));
+    z-index: 60;
+    background: #1f2328;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.55;
+    padding: 10px 18px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity .5s ease, transform .5s ease;
+  }
+  .status-toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .status-toast[hidden] { display: none; }
   .status { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
   .page-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
   .page-tab { flex: 1; background: transparent; border: none; border-radius: 7px; padding: 8px 10px; color: var(--muted); font-weight: 600; font-size: 16px; }
@@ -251,7 +272,7 @@
   .dz-row { display: flex; gap: 8px; margin-bottom: 10px; }
   /* Exactly half each (borders/padding included), minus half the gap. */
   .dz-row .dropzone { flex: 0 0 calc(50% - 4px); min-width: 0; margin-bottom: 0; }
-  .dz-row .copy-push-btn { flex: 0 0 calc(50% - 4px); min-width: 0; height: 56px; padding: 0 8px; font-size: 13px; }
+  .dz-row .copy-push-btn { flex: 0 0 calc(50% - 4px); min-width: 0; height: 56px; padding: 0 8px; font-size: 18px; }
   #cellsList.collage .dz-row .dropzone { flex: 1 1 auto; }
   #cellsList.collage .copy-push-btn { display: none; }
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -548,7 +569,7 @@
       <div class="canvas-wrap">
         <canvas id="canvas" width="1040" height="800"></canvas>
       </div>
-      <div class="status" id="status">在照片上拖曳可調整位置，滑鼠滾輪可縮放</div>
+      <div class="status" id="statusHint">在照片上拖曳可調整位置，滑鼠滾輪可縮放</div>
 
       <div class="top-label-box preview-box">
         <div class="field" style="margin-bottom:0">
@@ -560,6 +581,8 @@
     </div>
   </div>
 </div>
+
+<div class="status-toast" id="statusToast" role="status" aria-live="polite" title="點一下關閉" hidden></div>
 
 <aside class="tip-toast" id="tipToast" role="dialog" aria-label="操作提示">
   <div class="tip-toast-head">
@@ -2386,7 +2409,33 @@ function downloadDataUrl(dataUrl, filename) {
   a.click();
 }
 
-const statusEl = document.getElementById('status');
+// Status messages (quick-fill results, copy / download feedback, errors) pop up
+// at the bottom of the page, stay 15 seconds, then fade out. The grey line under
+// the preview (#status) is now just a static hint. Assigning to
+// statusEl.textContent shows the toast, so every existing call keeps working.
+const statusToast = document.getElementById('statusToast');
+const STATUS_TOAST_MS = 15000;
+let statusToastTimer = null, statusToastHideTimer = null;
+function hideStatusToast() {
+  clearTimeout(statusToastTimer);
+  statusToast.classList.remove('show');
+  clearTimeout(statusToastHideTimer);
+  statusToastHideTimer = setTimeout(() => { statusToast.hidden = true; }, 600);   // after the fade
+}
+const statusEl = {
+  get textContent() { return statusToast.textContent; },
+  set textContent(msg) {
+    if (!msg) return;
+    clearTimeout(statusToastHideTimer);
+    statusToast.textContent = msg;
+    statusToast.hidden = false;
+    void statusToast.offsetWidth;            // let the entrance transition run from hidden
+    statusToast.classList.add('show');
+    clearTimeout(statusToastTimer);
+    statusToastTimer = setTimeout(hideStatusToast, STATUS_TOAST_MS);
+  },
+};
+statusToast.addEventListener('click', hideStatusToast);
 
 // ---------------------------------------------------------------------------
 // Export resolution / DPI
