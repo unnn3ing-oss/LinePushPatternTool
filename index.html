@@ -2665,28 +2665,24 @@ function splitHeadline(content) {
 // ---- 複製推播連結 ------------------------------------------------------------
 // Copies the cell's article link (taken from quick fill) with the mode's UTM
 // tail. Only the link is copied, not the headline.
+// joiner: what goes between the article link and the tracking code — both
+// modes start a query string ("link?utm_…"); only the code differs.
 const PUSH_UTM = {
-  news: 'utm_source=LineNewsPush&utm_medium=push',
-  ent: 'utm_source=LineNewsPush&utm_medium=enewsline',
+  news: { joiner: '?', code: 'utm_source=LineNewsPush&utm_medium=push' },
+  ent: { joiner: '?', code: 'utm_source=LineNewsPush&utm_medium=enewsline' },
 };
-// Removes any utm_* tracking parameters already on a link (whatever their form:
-// "?utm_…", "?&utm_…" or a bare "&utm_…"), keeping other query parameters.
-function stripUtm(url) {
-  const hashAt = url.indexOf('#');
-  const frag = hashAt >= 0 ? url.slice(hashAt) : '';
-  let path = hashAt >= 0 ? url.slice(0, hashAt) : url;
-  path = path.replace(/[?&]utm_[a-z0-9_]*=[^&#]*/gi, m => (m[0] === '?' ? '?' : ''))
-    .replace(/\?&+/g, '?').replace(/&{2,}/g, '&').replace(/[?&]+$/, '');
-  return path + frag;
+// Cuts a link back to just the article address (…/category/12345): everything
+// from the first "?", "&" or "#" on — old utm_* codes and any other parameters —
+// is dropped, keeping the article ID.
+function stripToArticle(url) {
+  return url.split(/[?&#]/)[0];
 }
-// The link as it should be pasted into a push: old utm_* removed, then this
-// mode's tracking code appended directly ("link&utm_source=…", no "?" added).
+// The link as it should be pasted into a push: cut back to the article address,
+// then this mode's tracking code appended.
 function withUtm(url) {
   const utm = PUSH_UTM[mode];
   if (!url || !utm) return url;
-  const clean = stripUtm(url);
-  const hashAt = clean.indexOf('#');
-  return hashAt >= 0 ? `${clean.slice(0, hashAt)}&${utm}${clean.slice(hashAt)}` : `${clean}&${utm}`;
+  return `${stripToArticle(url)}${utm.joiner}${utm.code}`;
 }
 async function copyText(text) {
   try {
