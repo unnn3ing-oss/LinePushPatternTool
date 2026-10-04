@@ -2669,10 +2669,24 @@ const PUSH_UTM = {
   news: 'utm_source=LineNewsPush&utm_medium=push',
   ent: 'utm_source=LineNewsPush&utm_medium=enewsline',
 };
+// Removes any utm_* tracking parameters already on a link (whatever their form:
+// "?utm_…", "?&utm_…" or a bare "&utm_…"), keeping other query parameters.
+function stripUtm(url) {
+  const hashAt = url.indexOf('#');
+  const frag = hashAt >= 0 ? url.slice(hashAt) : '';
+  let path = hashAt >= 0 ? url.slice(0, hashAt) : url;
+  path = path.replace(/[?&]utm_[a-z0-9_]*=[^&#]*/gi, m => (m[0] === '?' ? '?' : ''))
+    .replace(/\?&+/g, '?').replace(/&{2,}/g, '&').replace(/[?&]+$/, '');
+  return path + frag;
+}
+// The link as it should be pasted into a push: old utm_* removed, then this
+// mode's tracking code appended directly ("link&utm_source=…", no "?" added).
 function withUtm(url) {
   const utm = PUSH_UTM[mode];
   if (!url || !utm) return url;
-  return `${url}&${utm}`;   // exactly as the push tool expects: link + "&utm_…", no "?" added
+  const clean = stripUtm(url);
+  const hashAt = clean.indexOf('#');
+  return hashAt >= 0 ? `${clean.slice(0, hashAt)}&${utm}${clean.slice(hashAt)}` : `${clean}&${utm}`;
 }
 async function copyText(text) {
   try {
