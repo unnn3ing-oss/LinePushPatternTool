@@ -195,6 +195,8 @@
     cursor: pointer;
     transition: opacity .5s ease, transform .5s ease;
   }
+  .status-toast.success { background: #15803d; }
+  .status-toast.error { background: #b91c1c; }
   .status-toast.show { opacity: 1; transform: translate(-50%, 0); }
   .status-toast[hidden] { display: none; }
   .page-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
@@ -1737,9 +1739,10 @@ function buildCardUI(i) {
     e.stopPropagation();   // don't open the file picker
     setActiveCard(i);
     const link = withUtm(activePage().cards[i].url);
-    if (!link) { statusEl.textContent = `第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`; return; }
+    if (!link) { statusEl.show(`第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`, 'error'); return; }
     const ok = await copyText(link);
-    statusEl.textContent = ok ? `已複製第 ${i + 1} 格推播連結（含 UTM）` : '這個瀏覽器無法複製，請改用手動複製';
+    if (ok) statusEl.show(`已複製第 ${i + 1} 格推播連結（含 UTM）`, 'success');
+    else statusEl.show('這個瀏覽器無法複製，請改用手動複製', 'error');
     if (ok) {
       copyPushBtn.textContent = '已複製 ✓';
       setTimeout(() => { copyPushBtn.textContent = '複製推播連結'; }, 1500);
@@ -2403,11 +2406,11 @@ function downloadDataUrl(dataUrl, filename) {
 }
 
 // Status messages (quick-fill results, copy / download feedback, errors) pop up
-// at the bottom of the page, stay 15 seconds, then fade out. The grey line under
+// at the bottom of the page, stay 5 seconds, then fade out. The grey line under
 // the preview (#status) is now just a static hint. Assigning to
 // statusEl.textContent shows the toast, so every existing call keeps working.
 const statusToast = document.getElementById('statusToast');
-const STATUS_TOAST_MS = 15000;
+const STATUS_TOAST_MS = 5000;
 let statusToastTimer = null, statusToastHideTimer = null;
 function hideStatusToast() {
   clearTimeout(statusToastTimer);
@@ -2415,12 +2418,17 @@ function hideStatusToast() {
   clearTimeout(statusToastHideTimer);
   statusToastHideTimer = setTimeout(() => { statusToast.hidden = true; }, 600);   // after the fade
 }
+// kind: 'success' (green) for completed actions, 'error' (red) for failures,
+// '' (dark) for neutral notes such as limits and progress.
 const statusEl = {
   get textContent() { return statusToast.textContent; },
-  set textContent(msg) {
+  set textContent(msg) { this.show(msg, ''); },
+  show(msg, kind = '') {
     if (!msg) return;
     clearTimeout(statusToastHideTimer);
     statusToast.textContent = msg;
+    statusToast.classList.toggle('success', kind === 'success');
+    statusToast.classList.toggle('error', kind === 'error');
     statusToast.hidden = false;
     void statusToast.offsetWidth;            // let the entrance transition run from hidden
     statusToast.classList.add('show');
@@ -2531,7 +2539,7 @@ function exportCanvas(off, toDataUrlArgs, filename) {
     dataUrl = mime === 'image/png' ? pngWithDpi(dataUrl, EXPORT_DPI) : jpegWithDpi(dataUrl, EXPORT_DPI);
     downloadDataUrl(dataUrl, filename);
   } catch (err) {
-    statusEl.textContent = '下載失敗：請改用 http(s) 方式開啟本頁（例如部署後的網址，或本機用 http-server 開啟），直接雙擊開啟 index.html 檔案（file://）無法匯出圖片。';
+    statusEl.show('下載失敗：請改用 http(s) 方式開啟本頁（例如部署後的網址，或本機用 http-server 開啟），直接雙擊開啟 index.html 檔案（file://）無法匯出圖片。', 'error');
     throw err;
   }
 }
@@ -2802,7 +2810,7 @@ async function autoFetchImages(entries, baseMsg) {
   let msg = `${baseMsg}；圖片抓取完成，成功 ${ok} 張`;
   if (kept) msg += `，${kept} 格已有手動放的圖，保留不動`;
   if (failed.length) msg += `；第 ${failed.sort((a, b) => a - b).join('、')} 格沒抓到圖，請手動放圖`;
-  statusEl.textContent = msg;
+  statusEl.show(msg, failed.length ? 'error' : 'success');
 }
 
 document.getElementById('quickfillBtn').addEventListener('click', () => {
@@ -2818,9 +2826,8 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
   syncAllCellUI();
   render();
   const baseMsg = `快速填入完成，共套用 ${entries.length} 格`;
-  statusEl.textContent = entries.length
-    ? baseMsg
-    : '沒有找到任何「★」開頭的內容可以填入';
+  if (entries.length) statusEl.show(baseMsg, 'success');
+  else statusEl.show('沒有找到任何「★」開頭的內容可以填入', 'error');
   if (entries.length) autoFetchImages(entries, baseMsg);
   // Once something was actually filled in, fold the box away to make room
   // (it stays open when nothing matched, so the pasted text can be fixed).
@@ -2891,7 +2898,7 @@ helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpO
 // show just the button (which opens the full-screen guide).
 const tipToast = document.getElementById('tipToast');
 const tipFab = document.getElementById('tipFab');
-const TIP_IDLE_MS = 15000;
+const TIP_IDLE_MS = 5000;
 let tipCollapsed = false, tipTimer = null;
 function syncTipToast() {
   const isNews = mode === 'news';
@@ -3004,7 +3011,6 @@ function setMode(newMode) {
   quickfillText.value = quickfillByMode[newMode].text;
   quickfillBody.classList.toggle('collapsed', !quickfillByMode[newMode].open);
   quickfillHeader.classList.toggle('open', quickfillByMode[newMode].open);
-  statusEl.textContent = '在照片上拖曳可調整位置，滑鼠滾輪可縮放';
   drag = null;
   stickerDrag = null;
   collageDrag = null;
@@ -3128,7 +3134,7 @@ document.getElementById('collageFitImgBtn').addEventListener('click', () => {
   const pg = activePage(), cg = pg.collage;
   const i = activeCard, st = pg.cards[i], r = cg.freeRects[i];
   if (cg.layout !== 'free' || !r) return;
-  if (!st || !st.img) { statusEl.textContent = '這個框還沒有圖片，先貼上或選擇圖片再貼合'; return; }
+  if (!st || !st.img) { statusEl.show('這個框還沒有圖片，先貼上或選擇圖片再貼合', 'error'); return; }
   const oldBottom = r.y + r.h;
   const newH = clamp(Math.round(r.w * st.img.height / st.img.width), COLLAGE_MIN, COLLAGE_H_MAX - r.y);
   const delta = newH - r.h;
@@ -3203,9 +3209,9 @@ document.getElementById('copyCollageBtn').addEventListener('click', async () => 
   try {
     const blob = await new Promise(res => off.toBlob(res, 'image/png'));
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    statusEl.textContent = '已複製拼圖！切到「新聞」或「娛樂」，點選要放的格子後按 Ctrl+V 貼上。';
+    statusEl.show('已複製拼圖！切到「新聞」或「娛樂」，點選要放的格子後按 Ctrl+V 貼上。', 'success');
   } catch (err) {
-    statusEl.textContent = '這個瀏覽器無法直接複製圖片，請改用「下載」後再上傳到格子。';
+    statusEl.show('這個瀏覽器無法直接複製圖片，請改用「下載」後再上傳到格子。', 'error');
   }
 });
 applyModeChrome();
