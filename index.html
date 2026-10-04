@@ -247,8 +247,12 @@
     display: none;
     flex-shrink: 0;
   }
-  .dropzone .dz-text { flex: 1; padding: 4px 10px; text-align: left; }
-  .dropzone .copy-push-btn { flex: none; margin-right: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.3; white-space: nowrap; }
+  .dropzone .dz-text { flex: 1; padding: 4px 8px; text-align: left; line-height: 1.35; }
+  .dz-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  /* Exactly half each (borders/padding included), minus half the gap. */
+  .dz-row .dropzone { flex: 0 0 calc(50% - 4px); min-width: 0; margin-bottom: 0; }
+  .dz-row .copy-push-btn { flex: 0 0 calc(50% - 4px); min-width: 0; height: 56px; padding: 0 8px; font-size: 13px; }
+  #cellsList.collage .dz-row .dropzone { flex: 1 1 auto; }
   #cellsList.collage .copy-push-btn { display: none; }
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
@@ -1708,7 +1712,7 @@ function buildCardUI(i) {
   dz.appendChild(dzText);
   const copyPushBtn = document.createElement('button');
   copyPushBtn.type = 'button';
-  copyPushBtn.className = 'copy-push-btn';
+  copyPushBtn.className = 'copy-push-btn primary';
   copyPushBtn.textContent = '複製推播標題';
   copyPushBtn.title = '複製這一格的推播標題與連結（連結後方自動加上 UTM）';
   copyPushBtn.addEventListener('click', async e => {
@@ -1725,9 +1729,13 @@ function buildCardUI(i) {
       setTimeout(() => { copyPushBtn.textContent = '複製推播標題'; }, 1500);
     }
   });
-  dz.appendChild(copyPushBtn);
   dz.appendChild(fi);
-  box.appendChild(dz);
+  // Photo drop area and the copy button are two independent halves of one row.
+  const dzRow = document.createElement('div');
+  dzRow.className = 'dz-row';
+  dzRow.appendChild(dz);
+  dzRow.appendChild(copyPushBtn);
+  box.appendChild(dzRow);
 
   function handleFile(file) {
     loadImageFile(file, (image, name) => {
