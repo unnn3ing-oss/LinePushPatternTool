@@ -774,11 +774,11 @@ const ENT_CELLS = [
 ];
 // Sample text is TaipeiSans Bold at 53px on the 1040 artboard → 61px here.
 const ENT_BASE_FONT_SIZE = 61;
-const ENT_TAG_BASE_FONT_SIZE = 54;
-// The tape is sized from ENT_TAG_BASE_FONT_SIZE; the text inside is drawn
-// this much larger without growing the tape.
-const ENT_TAG_TEXT_BOOST = 4;
-const ENT_TAG_PAD_X = 32, ENT_TAG_PAD_Y = 19;
+// Tag text size; the tape is built from it (text + padding), so the whole tag
+// scales together. Padding keeps the earlier 58px-text look in proportion
+// (tape ≈ 1.59× the text height, ≈ 0.42× the text height of padding per side).
+const ENT_TAG_BASE_FONT_SIZE = 50;
+const ENT_TAG_PAD_X = 21, ENT_TAG_PAD_Y = 14.6;
 const ENT_TAG_ROTATE = -3 * Math.PI / 180;
 // A light same-colour outline to thicken TaipeiSans Bold toward the sample's
 // weight; kept at 1px since heavier strokes plus the tight negative spacing
@@ -1572,7 +1572,7 @@ function drawEntTag(ctx, c, text, fontSize, spacing, bgColor) {
   traceTapePath(ctx, boxW, boxH);
   ctx.fill();
   ctx.shadowColor = 'transparent';
-  drawSpacedText(ctx, text, 0, ENT_INK_DY, fontSize + ENT_TAG_TEXT_BOOST, spacing, '#ffffff');
+  drawSpacedText(ctx, text, 0, ENT_INK_DY, fontSize, spacing, '#ffffff');
   ctx.restore();
 }
 
