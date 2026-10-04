@@ -987,11 +987,8 @@ function freshCardState(i) {
     // spot (null = default).
     tag2: '',
     tag2Color: TAG_COLORS[0],
-    // From quick fill, for 「複製推播標題」: the article link and the ★ line as pasted
-    // (srcSig says which headline text that line produced).
+    // From quick fill, for 「複製推播連結」: the article link.
     url: '',
-    srcLine: '',
-    srcSig: '',
     tagPos: null,
     tag2Pos: null,
     color1: c.color1,
@@ -1734,20 +1731,18 @@ function buildCardUI(i) {
   const copyPushBtn = document.createElement('button');
   copyPushBtn.type = 'button';
   copyPushBtn.className = 'copy-push-btn primary';
-  copyPushBtn.textContent = '複製推播標題';
-  copyPushBtn.title = '複製這一格的推播標題與連結（連結後方自動加上 UTM）';
+  copyPushBtn.textContent = '複製推播連結';
+  copyPushBtn.title = '複製這一格的推播連結（後方自動加上 UTM）';
   copyPushBtn.addEventListener('click', async e => {
     e.stopPropagation();   // don't open the file picker
     setActiveCard(i);
-    const res = pushTextFor(activePage().cards[i]);
-    if (!res) { statusEl.textContent = `第 ${i + 1} 格還沒有標題可以複製`; return; }
-    const ok = await copyText(res.text);
-    statusEl.textContent = !ok ? '這個瀏覽器無法複製，請改用手動複製'
-      : res.hasLink ? `已複製第 ${i + 1} 格推播標題（含連結與 UTM）`
-      : `已複製第 ${i + 1} 格標題（這格沒有連結，是手動輸入或快速填入時沒附連結）`;
+    const link = withUtm(activePage().cards[i].url);
+    if (!link) { statusEl.textContent = `第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`; return; }
+    const ok = await copyText(link);
+    statusEl.textContent = ok ? `已複製第 ${i + 1} 格推播連結（含 UTM）` : '這個瀏覽器無法複製，請改用手動複製';
     if (ok) {
       copyPushBtn.textContent = '已複製 ✓';
-      setTimeout(() => { copyPushBtn.textContent = '複製推播標題'; }, 1500);
+      setTimeout(() => { copyPushBtn.textContent = '複製推播連結'; }, 1500);
     }
   });
   dz.appendChild(fi);
@@ -2667,29 +2662,17 @@ function splitHeadline(content) {
   return { line1: content.slice(0, end).trim(), line2: content.slice(rest).trim() };
 }
 
-// ---- 複製推播標題 ------------------------------------------------------------
-// Rebuilds the push text for a cell — the ★ headline line plus the article link
-// with the mode's UTM tail — and copies it. If the cell's headline is still
-// what quick fill produced, the ★ line is reused exactly as pasted; otherwise
-// it's rebuilt from the cell's current fields.
+// ---- 複製推播連結 ------------------------------------------------------------
+// Copies the cell's article link (taken from quick fill) with the mode's UTM
+// tail. Only the link is copied, not the headline.
 const PUSH_UTM = {
   news: 'utm_source=LineNewsPush&utm_medium=push',
   ent: 'utm_source=LineNewsPush&utm_medium=enewsline',
 };
-function pushSig(card) { return `${card.line1}|${card.line2}|${card.tag}`; }
 function withUtm(url) {
   const utm = PUSH_UTM[mode];
   if (!url || !utm) return url;
   return `${url}&${utm}`;   // exactly as the push tool expects: link + "&utm_…", no "?" added
-}
-function pushTextFor(card) {
-  const l1 = (card.line1 || '').trim(), l2 = (card.line2 || '').trim(), tag = (card.tag || '').trim();
-  if (!l1 && !l2) return null;
-  let head;
-  if (card.srcLine && card.srcSig === pushSig(card)) head = card.srcLine;
-  else head = `★${tag ? tag + ')' : ''}${l1}${l2 ? (/[!?]$/.test(l1) ? '' : ' ') + l2 : ''}`;
-  const link = withUtm(card.url);
-  return { text: link ? `${head}\n${link}` : head, hasLink: !!link };
 }
 async function copyText(text) {
   try {
@@ -2741,7 +2724,6 @@ function parseQuickFillText(text) {
     entry.tag = tag;
     entry.tagColor = tagColor;
     entry.url = inlineUrl;
-    entry.srcLine = line;
     entries.push(entry);
     current = entry;
   }
@@ -2822,8 +2804,6 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
     card.tag = entry.tag;
     card.tagColor = entry.tagColor;
     card.url = entry.url || '';
-    card.srcLine = entry.srcLine || '';
-    card.srcSig = pushSig(card);
   });
   syncAllCellUI();
   render();
