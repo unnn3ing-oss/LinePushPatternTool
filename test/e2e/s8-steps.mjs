@@ -123,23 +123,23 @@ await shot('s8-1-preview');
 // ===== 2. 步驟顯示：一開始只有步驟 1 =====
 check(await vis('#s8Step1') && !(await vis('#s8Step2')) && !(await vis('#s8Step3')) && !(await vis('#s8Step4')) && !(await vis('#s8Step5')), '一開始只看得到步驟 1');
 check((await page.textContent('#s8PrepBtn')) === '傳送資料', '步驟 1 按鈕是「傳送資料」');
-check(await page.evaluate(() => { const b = getComputedStyle(document.getElementById('s8PrepBtn')); return b.backgroundColor !== 'rgba(0, 0, 0, 0)' && /^rgb\(22, 163, 74\)$/.test(b.backgroundColor); }), '步驟 1 按鈕是綠色');
+check(await page.evaluate(() => /^rgb\(22, 163, 74\)$/.test(getComputedStyle(document.getElementById('s8PrepBtn')).color)), '步驟 1「傳送資料」是綠色（與頁面上方切換頁數同款分段膠囊，白色旋鈕在它底下）');
+check(await page.evaluate(() => { const t = document.getElementById('s8PrepTrack'), k = t.querySelector('.s8-knob'), b = document.getElementById('s8PrepBtn'); return t.classList.contains('has') && Math.abs(k.getBoundingClientRect().left - b.getBoundingClientRect().left) < 1.5 && Math.abs(k.getBoundingClientRect().width - b.getBoundingClientRect().width) < 1.5; }), '步驟 1：白色旋鈕貼在「傳送資料」底下');
+check(await page.isHidden('#s8PrepOut'), '還沒傳送：右邊（原本「第 2 頁」的位置）是空的');
 check((await page.textContent('#s8Step1 > i')) === '1', '步驟 1 前面有圓圈數字');
 
 // ===== 3. 傳送失敗：下方顯示簡單狀態，沒有後續步驟 =====
 prepareFails = true;
 await page.click('#s8PrepBtn');
 await page.waitForFunction(() => /傳送失敗/.test(document.getElementById('s8PrepMsg').textContent));
-check((await page.textContent('#s8PrepMsg')).startsWith('✗ 傳送失敗') && await page.isHidden('#s8PreviewBtn') && !(await vis('#s8Step2')), '失敗：顯示「傳送失敗」，沒有預覽按鈕、不出現步驟 2');
+check((await page.textContent('#s8PrepMsg')).startsWith('✗ 傳送失敗') && !(await vis('#s8Step2')), '失敗：顯示「傳送失敗」、不出現步驟 2');
+check(await page.evaluate(() => { const t = document.getElementById('s8PrepTrack').getBoundingClientRect(), o = document.getElementById('s8PrepOut').getBoundingClientRect(); return o.left >= t.left && o.right <= t.right + 0.5 && o.top >= t.top && o.bottom <= t.bottom + 0.5; }), '狀態包在分段膠囊框內（原本「第 2 頁」的位置）');
 prepareFails = false;
 
-// ===== 4. 傳送成功：狀態＋「開啟S8預覽」按鈕 =====
+// ===== 4. 傳送成功：只顯示簡單狀態（沒有「開啟S8預覽」按鈕）=====
 await page.click('#s8PrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('s8PrepMsg').textContent));
-check((await page.textContent('#s8PrepMsg')).includes('1,234 人'), '成功：顯示「傳送完成」與可發送人數');
-check(await page.isVisible('#s8PreviewBtn') && (await page.textContent('#s8PreviewBtn')) === '開啟S8預覽', '成功：出現「開啟S8預覽」按鈕');
-await page.click('#s8PreviewBtn');
-check((await page.evaluate(() => window.__opened)).includes('https://s8.example/preview/abc'), '按「開啟S8預覽」會開啟 S8 預覽網址');
+check((await page.textContent('#s8PrepMsg')).includes('1,234 人') && !(await page.textContent('#s8PrepMsg')).includes('分鐘內有效'), '成功：顯示「傳送完成」與可發送人數，沒有「預覽 20 分鐘內有效」');
 check(reqs.prepare[1].pages[0].buttons[1].title === expectTitle && reqs.prepare[1].pages[0].buttons[0].title.startsWith('項目1'), '傳給 S8 的區塊名稱：有標題的格子用「★標題」，沒標題的退回「項目N」');
 check(reqs.prepare.length === 2 && reqs.prepare[1].pages.length === 2 && reqs.prepare[1].pages[0].buttons.length === 6 && reqs.prepare[1].pages[0].buttons[1].url === 'https://example.com/p1/n2?utm_source=x', '傳送內容：兩頁、每頁 6 格、連結用目前字框的值');
 check(await vis('#s8Step2') && !(await vis('#s8Step3')), '成功後出現步驟 2，步驟 3 還沒出現');
@@ -151,13 +151,15 @@ check(l1.linked && l1.done && scaleY(l1.track) === 1 && scaleY(l1.fill) === 1, '
 check(!(await lineOf('s8Step2')).linked, '最後一個可見步驟（目前是步驟 2）後面沒有連線');
 check(await page.evaluate(() => { const t = document.getElementById('s8Ptabs'); return t.classList.contains('seg-track') && !!t.querySelector('.seg-knob'); }), '頁籤與頁面上方相同：capsule 軌道＋滑動旋鈕');
 check((await page.textContent('#s8PickDraft')) === '存成草稿' && (await page.textContent('#s8PickSched')).includes('設定排程'), '步驟 2 兩個按鈕：存成草稿／設定排程時間');
-const gap = await page.evaluate(() => { const a = document.getElementById('s8PickDraft').getBoundingClientRect(), b = document.getElementById('s8PickSched').getBoundingClientRect(); return b.left - a.right; });
-check(gap >= 8, `兩個按鈕之間有間距（${gap}px）`);
+check(await page.evaluate(() => { const t = document.getElementById('s8Seg2'); return t.classList.contains('s8-seg') && t.contains(document.getElementById('s8PickDraft')) && t.contains(document.getElementById('s8PickSched')); }), '步驟 2：存成草稿／設定排程是同一條分段膠囊（與切換頁數同款）');
+check(await page.evaluate(() => !document.getElementById('s8Seg2').classList.contains('has')), '還沒選時旋鈕不顯示');
 check(await page.isHidden('#s8WhenMsg'), '還沒按「設定排程時間」前，時間選單不顯示');
 await shot('s8-2-step2');
 
 // ===== 5. 存成草稿 → 步驟 3 → 步驟 4 → 步驟 5 =====
 await page.click('#s8PickDraft');
+await page.waitForTimeout(450);
+check(await page.evaluate(() => { const k = document.querySelector('#s8Seg2 .s8-knob').getBoundingClientRect(), b = document.getElementById('s8PickDraft').getBoundingClientRect(); return Math.abs(k.left - b.left) < 1.5 && Math.abs(k.width - b.width) < 1.5; }), '選「存成草稿」：旋鈕滑到它底下');
 check(await vis('#s8Step3') && !(await vis('#s8Step4')) && !(await vis('#s8Step5')), '按「存成草稿」後才出現步驟 3');
 check((await page.textContent('#s8Step3')).includes('確認人數'), '步驟 3 是「確認人數」');
 check(await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('s8ConfirmTotal')).borderTopLeftRadius) >= 16), '步驟 3 的輸入框是圓角框');
@@ -173,8 +175,8 @@ check((await page.textContent('#s8ConfirmMark')) === '✓' && (await page.getAtt
 mk = await markCss();
 check(mk.bg === 'rgb(22, 163, 74)' && mk.color === 'rgb(255, 255, 255)' && mk.w === mk.h && parseFloat(mk.radius) >= mk.w / 2, `✓ 包在綠底圓圈內（${JSON.stringify(mk)}）`);
 await page.mouse.move(0, 0);
-const cap = await page.evaluate(() => { const g = id => { const c = getComputedStyle(document.getElementById(id)); return `${c.backgroundColor}|${c.borderTopLeftRadius}|${c.fontWeight}`; }; return { count: g('s8CountBtn'), draft: g('s8PickDraft'), sched: g('s8PickSched'), conf: g('s8ConfirmBox'), copy: g('s8CopyName'), create: g('s8CreateBtn') }; });
-check(['draft', 'sched', 'conf', 'copy', 'create'].every(k => cap[k] === cap.count), `步驟 2～5 的膠囊與「計算符合條件的客戶數」同款（背景／圓角／粗細）：${JSON.stringify(cap)}`);
+const cap = await page.evaluate(() => { const g = id => { const c = getComputedStyle(document.getElementById(id)); return `${c.backgroundColor}|${c.borderTopLeftRadius}|${c.fontWeight}`; }; return { count: g('s8CountBtn'), prep: g('s8PrepTrack'), seg2: g('s8Seg2'), conf: g('s8ConfirmBox'), copy: g('s8CopyName'), create: g('s8CreateBtn') }; });
+check(['prep', 'seg2', 'conf', 'copy', 'create'].every(k => cap[k] === cap.count), `步驟 1～5 的膠囊／軌道與「計算符合條件的客戶數」同款（背景／圓角／粗細）：${JSON.stringify(cap)}`);
 check(await vis('#s8Step4') && !(await vis('#s8Step5')), '人數輸入正確：出現步驟 4，步驟 5 還沒出現');
 check((await page.textContent('#s8CopyName')) === '複製群發名稱', '步驟 4 是「複製群發名稱」');
 await page.click('#s8CopyName');
@@ -198,30 +200,54 @@ await page.click('#s8PrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('s8PrepMsg').textContent) && !document.getElementById('s8Step2').hidden);
 await page.click('#s8PickSched');
 check(await vis('#s8WhenMsg') && await vis('#s8Step3'), '按「設定排程時間」：出現月日時分四個下拉選單與步驟 3');
-const opts = await page.evaluate(() => ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].map(id => document.getElementById(id).options.length));
+const opts = [];
+for (const id of ['s8Mo', 's8Dd', 's8Hh', 's8Mi']) { await page.locator(`.s8-cb-btn[data-for="${id}"]`).click(); opts.push(await page.locator('.s8-cblist div').count()); await page.keyboard.press('Escape'); }
 check(JSON.stringify(opts) === JSON.stringify([12, 31, 24, 60]), `月／日／時／分選單選項數：${opts.join('／')}`);
 const def = await page.evaluate(() => { const g = id => Number(document.getElementById(id).value); return Date.UTC(new Date(Date.now() + 8 * 3600e3).getUTCFullYear(), g('s8Mo') - 1, g('s8Dd'), g('s8Hh'), g('s8Mi')) - 8 * 3600e3; });
 check(Math.abs(def - (Date.now() + 24 * 3600e3)) < 10 * 60e3, '預設時間約為 24 小時後（台北時間）');
-const setWhen = async (ms) => { const p = taipeiParts(ms); await page.selectOption('#s8Mo', String(p.mo)); await page.selectOption('#s8Dd', String(p.d)); await page.selectOption('#s8Hh', String(p.h)); await page.selectOption('#s8Mi', String(p.mi)); return p; };
+const setWhen = async (ms) => { const p = taipeiParts(ms); await page.fill('#s8Mo', String(p.mo)); await page.fill('#s8Dd', String(p.d)); await page.fill('#s8Hh', String(p.h)); await page.fill('#s8Mi', String(p.mi)); return p; };
 await page.fill('#s8ConfirmTotal', '1234');
 await setWhen(Date.now() + 10 * 60e3);
 check((await page.getAttribute('#s8WhenMsg', 'class')).includes('bad') && (await page.textContent('#s8WhenMsg')).includes('30 分鐘'), '設成 10 分鐘後：紅字提示要在 30 分鐘之後');
 check(!(await vis('#s8Step4')), '時間不合格：不出現步驟 4');
 await setWhen(Date.now() + 9 * 86400e3);
 check((await page.textContent('#s8WhenMsg')).includes('7 天') && !(await vis('#s8Step4')), '設成 9 天後：提示最晚 7 天內，不出現步驟 4');
-await page.selectOption('#s8Mo', '2'); await page.selectOption('#s8Dd', '31');
+await page.fill('#s8Mo', '2'); await page.fill('#s8Dd', '31');
 check(!(await vis('#s8Step4')) && (await page.textContent('#s8WhenMsg')).includes('沒有 31 日'), '不存在的日期（2 月 31 日）會被擋下');
+const pillText = await page.textContent('#s8PickSched');
+check(pillText.includes('設定排程') && pillText.includes('月') && pillText.includes('日'), '「設定排程」膠囊有「月」「日」文字');
+const fw = await page.evaluate(() => ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().width)));
+check(fw.every(w => w <= 48), `時間輸入框很窄（寬 ${fw.join('／')}px）`);
+await page.fill('#s8Mo', '13');
+check((await page.getAttribute('#s8WhenMsg', 'class')).includes('bad') && (await page.textContent('#s8WhenMsg')).includes('月（1–12）') && !(await vis('#s8Step4')), '手動輸入不合法的月（13）：紅字提示，不出現步驟 4');
+await page.fill('#s8Mo', '');
+check((await page.textContent('#s8WhenMsg')).includes('請輸入有效的月'), '留白：提示要輸入有效的月');
+await setWhen(Date.now() + 3 * 3600e3);
+await page.locator('.s8-cb-btn[data-for="s8Hh"]').click();
+check(await page.locator('.s8-cblist').isVisible() && (await page.locator('.s8-cblist div').count()) === 24, '按 ▾ 開出時的選單（0–23）');
+await shot('s8-5b-time-dropdown');
+await page.locator('.s8-cblist div', { hasText: /^09$/ }).click();
+check((await page.inputValue('#s8Hh')) === '09' && !(await page.locator('.s8-cblist').isVisible()), '從選單挑 09：填入並收起選單');
+await page.fill('#s8Mi', '7'); await page.locator('#s8Mi').blur();
+check((await page.inputValue('#s8Mi')) === '07', '手動輸入 7，離開後補成 07');
+await page.locator('#s8Hh').focus(); await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+check((await page.inputValue('#s8Hh')) === '11', '↑ 鍵可加一');
+await page.keyboard.press('Enter');
 const want = await setWhen(Date.now() + 3 * 3600e3);
 check(!(await page.getAttribute('#s8WhenMsg', 'class')).includes('bad') && await vis('#s8Step4'), '設成 3 小時後：合格，出現步驟 4');
 await page.click('#s8CopyName');
 const wantText = `${want.y}-${pad2(want.mo)}-${pad2(want.d)} ${pad2(want.h)}:${pad2(want.mi)}`;
 check((await page.textContent('#s8CreateBtn')).includes(`建立排程（${wantText} 發送）`), `步驟 5 按鈕寫出確切時間：${wantText}`);
 check((await page.textContent('#s8Tip')).includes('不會暫停') && (await page.textContent('#s8Tip')).includes(wantText) && (await page.textContent('#s8Tip')).includes('1,234'), '步驟 5 提示寫出「不會暫停、何時實際發送給幾人」');
-const sizes = await page.evaluate(() => ['s8PrepBtn', 's8PreviewBtn', 's8PickDraft', 's8PickSched', 's8ConfirmBox', 's8CopyName', 's8CreateBtn'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { id, w: Math.round(r.width), h: Math.round(r.height), clipped: e.scrollWidth > e.clientWidth + 1 }; }));
+const sizes = await page.evaluate(() => ['s8PrepTrack', 's8Seg2', 's8ConfirmBox', 's8CopyName', 's8CreateBtn'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { id, w: Math.round(r.width), h: Math.round(r.height), clipped: e.scrollWidth > e.clientWidth + 1 }; }));
 check(sizes.every(x => x.w === sizes[0].w && x.h === sizes[0].h), `步驟裡所有按鈕尺寸一致：${sizes.map(x => `${x.id}=${x.w}×${x.h}`).join('、')}`);
 check(sizes.every(x => !x.clipped), '最長的內容（排程時間選單、建立排程文字）都放得下，沒有被裁切');
-const rowTops = await page.evaluate(() => ['s8PickDraft', 's8PickSched'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().top)));
-check(rowTops[0] === rowTops[1], '步驟 2 的兩個按鈕仍並排在同一列');
+await page.waitForTimeout(450);
+check(await page.evaluate(() => { const k = document.querySelector('#s8Seg2 .s8-knob').getBoundingClientRect(), b = document.getElementById('s8PickSched').getBoundingClientRect(); return Math.abs(k.left - b.left) < 1.5 && Math.abs(k.width - b.width) < 1.5; }), '選「設定排程」：旋鈕滑到它底下（含月日時分選單）');
+check(await page.evaluate(() => { const k = document.querySelector('#s8ConfirmBox .s8-knob').getBoundingClientRect(), b = document.getElementById('s8ConfirmLabel').getBoundingClientRect(); return Math.abs(k.left - b.left) < 1.5; }), '步驟 3：白色旋鈕在「確認人數」底下，數字框在右邊');
+const slack = await page.evaluate(() => { const t = document.getElementById('s8Seg2'); const kids = Array.from(t.children).filter(e => !e.classList.contains('s8-knob')); const used = kids.reduce((n, e) => n + e.getBoundingClientRect().width, 0) + 6; return Math.round(t.getBoundingClientRect().width - used); });
+const wNow = await page.evaluate(() => Math.round(document.getElementById('s8Seg2').getBoundingClientRect().width));
+check(slack <= 8, `統一寬度由最長的控制項決定，沒有硬塞空間（寬 ${wNow}px，最長那一個多出 ${slack}px）`);
 await shot('s8-5-step5-schedule');
 
 // ===== 7. 建立排程：確認視窗、送出指定時間、紅字橫幅、暫停 =====

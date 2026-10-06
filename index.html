@@ -120,7 +120,7 @@
   .s8-banner .t { font-size: 17px; font-weight: 800; }
   .s8-banner.paused { background: #166534; }
   .s8-banner button { margin-top: 8px; background: #fff; color: #991b1b; border: 0; font-weight: 700; }
-  #s8RetryRow[hidden], #s8cCopyRow[hidden], #s8cTools[hidden], .s8-status[hidden], #s8PreviewBtn[hidden], .s8-when[hidden], #s8CreateOut[hidden] { display: none; }
+  #s8RetryRow[hidden], #s8cCopyRow[hidden], #s8cTools[hidden], .s8-when[hidden], #s8CreateOut[hidden] { display: none; }
   .s8-note { margin: 0 0 14px; padding: 10px 14px; border-radius: 14px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; }
   .s8-grid { display: grid; grid-template-columns: 112px 1fr; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
   .s8-grid label { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
@@ -166,26 +166,34 @@
   .s8-step.linked::before { transform: scaleY(1); }
   .s8-step.linked.done::after { transform: scaleY(1); }
   .s8-sbody { flex: 1; min-width: 0; }
-  /* 所有步驟的控制項都用同一種膠囊（與「計算符合條件的客戶數」一樣）；「設定排程」「確認人數」是把輸入包在膠囊裡 */
-  .s8-steps button, .s8-pillbox { border: none; border-radius: 99px; padding: 9px 22px; font-size: 14px; font-weight: 700; background: var(--track); color: var(--text); }
+  /* 步驟裡的控制項：一般按鈕是灰色膠囊（與「計算符合條件的客戶數」一樣）；傳送資料／存成草稿與排程／確認人數
+     是跟頁面上方「第 1 頁／第 2 頁」同款的分段膠囊（灰色軌道＋白色滑動旋鈕）。全部同寬同高（取最大的那一個）。 */
+  .s8-steps { --s8-ctl-w: 360px; --s8-ctl-h: 44px; }   /* 寬度由 s8FitControls() 依步驟裡最長（字最多）的那一個算出來 */
+  .s8-steps > .s8-step button, .s8-steps button { box-sizing: border-box; border: none; border-radius: 99px; padding: 0 22px; font-size: 14px; font-weight: 700; background: var(--track); color: var(--text); width: var(--s8-ctl-w); max-width: 100%; height: var(--s8-ctl-h); display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
   .s8-steps button:hover { background: var(--border); }
   .s8-steps button:disabled { opacity: .5; cursor: not-allowed; }
-  .s8-steps button.s8-go { background: var(--success); color: #fff; }
-  .s8-steps button.s8-go:hover { filter: brightness(.95); }
-  .s8-status { margin-top: 8px; font-size: 13px; line-height: 1.6; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .s8-status.bad { color: #b91c1c; }
-  .s8-pair { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .s8-pair button.sel, .s8-pillbox.sel { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
-  .s8-pillbox.pick { cursor: pointer; }
-  .s8-pillbox select { width: auto; min-width: 58px; margin: 0; padding: 3px 6px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
-  .s8-pillbox input[type="text"] { width: 8.5em; margin: 0; padding: 3px 12px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
+  .s8-seg { position: relative; box-sizing: border-box; display: flex; align-items: stretch; width: var(--s8-ctl-w); max-width: 100%; min-height: var(--s8-ctl-h); padding: 3px; border-radius: 99px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); font-size: 14px; font-weight: 700; color: var(--text); }
+  .s8-knob { position: absolute; z-index: 0; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--knob); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); pointer-events: none; opacity: 0; }
+  .s8-seg.has .s8-knob { opacity: 1; }
+  .s8-seg.ready .s8-knob { transition: transform .3s cubic-bezier(.3, .9, .3, 1), width .3s cubic-bezier(.3, .9, .3, 1), opacity .2s ease; }
+  .s8-steps .s8-seg > .s8-segbtn { position: relative; z-index: 1; flex: none; display: inline-flex; align-items: center; justify-content: center; width: auto; max-width: none; height: auto; min-height: 0; padding: 0 20px; border-radius: 99px; background: transparent; color: var(--muted); font-weight: 700; transition: color .2s ease; }
+  .s8-steps .s8-seg > .s8-segbtn:hover { background: transparent; color: var(--text); }
+  .s8-steps .s8-seg > .s8-segbtn.active { color: var(--accent); }
+  .s8-steps .s8-seg > .s8-segbtn.go.active { color: var(--success); }
+  .s8-segpill { flex: 1 1 auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+  .s8-segstatus, .s8-segbody { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--text); }
+  .s8-segstatus[hidden] { display: none; }
+  .s8-segstatus.bad { color: #b91c1c; }
+  .s8-cb { position: relative; display: inline-flex; align-items: center; }
+  .s8-cb input[type="text"] { width: 2.5em; margin: 0; padding: 3px 13px 3px 4px; text-align: center; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
+  .s8-cb-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 9px; line-height: 1; color: var(--muted); cursor: pointer; user-select: none; }
+  .s8-segbody input[type="text"] { width: 7.5em; margin: 0; padding: 3px 12px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
+  .s8-cblist { position: fixed; z-index: 100000; max-height: 220px; overflow: auto; padding: 4px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+  .s8-cblist[hidden] { display: none; }
+  .s8-cblist div { padding: 4px 14px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .s8-cblist div:hover { background: var(--track); }
+  .s8-cblist div.cur { background: var(--accent); color: #fff; }
   .s8-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
-  /* 步驟裡所有按鈕／膠囊同一個尺寸（寬高都取最大的那一個：「設定排程」膠囊）*/
-  .s8-steps { --s8-ctl-w: 330px; --s8-ctl-h: 44px; }
-  .s8-steps button, .s8-pillbox { box-sizing: border-box; width: var(--s8-ctl-w); max-width: 100%; height: var(--s8-ctl-h); display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; padding-top: 0; padding-bottom: 0; }
-  .s8-pillbox { padding-left: 14px; padding-right: 14px; gap: 4px; }
-  .s8-pillbox select { min-width: 50px; padding: 3px 3px 3px 6px; }
-  .s8-pillbox input[type="text"] { width: 7em; }
   /* 確認人數的 ✓／✗：圓圈＋綠／紅底 */
   .s8-mark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff; }
   .s8-mark:empty { display: none; }
@@ -1225,21 +1233,23 @@
       </div>
       <ul class="s8-errs" id="s8Errs"></ul>
       <div class="s8-page">傳送資料給S8</div>
-      <div class="s8-steps">
+      <div class="s8-steps" id="s8Steps">
         <div class="s8-step on" id="s8Step1">
           <i>1</i>
           <div class="s8-sbody">
-            <div><button type="button" class="s8-go" id="s8PrepBtn">傳送資料</button></div>
-            <div class="s8-status" id="s8PrepOut" hidden><span id="s8PrepMsg"></span><button type="button" id="s8PreviewBtn" hidden>開啟S8預覽</button></div>
+            <div class="s8-seg" id="s8PrepTrack"><span class="s8-knob" aria-hidden="true"></span>
+              <button type="button" class="s8-segbtn go active" id="s8PrepBtn">傳送資料</button>
+              <div class="s8-segstatus" id="s8PrepOut" hidden><span id="s8PrepMsg"></span></div>
+            </div>
           </div>
         </div>
         <div class="s8-step" id="s8Step2" hidden>
           <i>2</i>
           <div class="s8-sbody">
-            <div class="s8-pair">
-              <button type="button" id="s8PickDraft">存成草稿</button>
-              <div class="s8-pillbox pick" id="s8PickSched" role="button" tabindex="0" aria-label="設定排程時間">設定排程
-                <select id="s8Mo" aria-label="月"></select><span>-</span><select id="s8Dd" aria-label="日"></select><span>-</span><select id="s8Hh" aria-label="時"></select><span>:</span><select id="s8Mi" aria-label="分"></select>
+            <div class="s8-seg" id="s8Seg2"><span class="s8-knob" aria-hidden="true"></span>
+              <button type="button" class="s8-segbtn" id="s8PickDraft">存成草稿</button>
+              <div class="s8-segbtn s8-segpill" id="s8PickSched" role="group" tabindex="0" aria-label="設定排程時間">設定排程
+                <span class="s8-cb"><input type="text" id="s8Mo" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="月"><span class="s8-cb-btn" data-for="s8Mo" aria-hidden="true">▾</span></span>月<span class="s8-cb"><input type="text" id="s8Dd" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="日"><span class="s8-cb-btn" data-for="s8Dd" aria-hidden="true">▾</span></span>日<span class="s8-cb"><input type="text" id="s8Hh" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="時"><span class="s8-cb-btn" data-for="s8Hh" aria-hidden="true">▾</span></span><span>:</span><span class="s8-cb"><input type="text" id="s8Mi" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="分"><span class="s8-cb-btn" data-for="s8Mi" aria-hidden="true">▾</span></span>
               </div>
             </div>
             <div class="s8-whenmsg" id="s8WhenMsg" hidden></div>
@@ -1248,9 +1258,12 @@
         <div class="s8-step" id="s8Step3" hidden>
           <i>3</i>
           <div class="s8-sbody">
-            <div class="s8-pillbox" id="s8ConfirmBox">確認人數
-              <input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入數字" aria-label="確認人數">
-              <span class="s8-mark" id="s8ConfirmMark" aria-live="polite"></span>
+            <div class="s8-seg" id="s8ConfirmBox"><span class="s8-knob" aria-hidden="true"></span>
+              <span class="s8-segbtn active" id="s8ConfirmLabel">確認人數</span>
+              <div class="s8-segbody">
+                <input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入數字" aria-label="確認人數">
+                <span class="s8-mark" id="s8ConfirmMark" aria-live="polite"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -4977,6 +4990,8 @@ async function openS8Dialog() {
   document.getElementById('s8SchedBanners').textContent = '';
   s8Overlay.classList.add('open');
   placeSegKnob(document.getElementById('s8Ptabs'));
+  s8FitControls();
+  s8UpdateSteps();
   s8Refresh();
   // Render the two page images (same pipeline and 2 MB rule as 下載本頁).
   const mine = s8State;
@@ -5051,19 +5066,62 @@ const s8Out = (id, text, bad) => { const o = document.getElementById(id); o.hidd
 const $s8 = id => document.getElementById(id);
 const pad2 = n => String(n).padStart(2, '0');
 const S8_MIN_LEAD_MIN = 30, S8_MAX_LEAD_DAYS = 7;   // 與 Worker 的限制一致（Worker 才是最後把關）
-function s8PrepSet(text, bad, previewUrl) {
+function s8PrepSet(text, bad) {
   const box = $s8('s8PrepOut');
   box.hidden = !text; box.classList.toggle('bad', !!bad);
   $s8('s8PrepMsg').textContent = text || '';
-  const b = $s8('s8PreviewBtn');
-  b.hidden = !previewUrl; b.dataset.url = previewUrl || '';
+  box.title = text || '';
 }
+// 分段膠囊的白色旋鈕：移到被選的那一段底下（seg 為空就收起）。與頁面上方「第 1 頁／第 2 頁」同款動畫。
+function s8SegPlace(track, seg) {
+  const k = track.querySelector(':scope > .s8-knob');
+  if (!seg) { track.classList.remove('has'); return; }
+  if (!seg.offsetWidth) return;   // 這一步還沒顯示
+  k.style.width = `${seg.offsetWidth}px`;
+  k.style.transform = `translateX(${seg.offsetLeft}px)`;
+  track.classList.add('has');
+  if (!track.classList.contains('ready')) { void k.offsetWidth; requestAnimationFrame(() => track.classList.add('ready')); }
+}
+// 所有步驟控制項同寬：找出每種控制項「內容撐開的寬度」，取最大的那一個當統一寬度（不硬塞多餘空間）。
+// 量法：把每個控制項複製到畫面外、寬度設成 max-content 去量；狀態文字、建立按鈕文字用最長的範例字串。
+function s8FitControls() {
+  const host = $s8('s8Steps');
+  if (!host) return;
+  const probe = document.createElement('div');
+  probe.className = 's8-steps';
+  probe.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;display:flex;flex-direction:column;align-items:flex-start;--s8-ctl-w:max-content';
+  const add = (id, tweak) => {
+    const c = $s8(id).cloneNode(true);
+    c.removeAttribute('id'); c.hidden = false;
+    c.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+    if (tweak) tweak(c);
+    probe.appendChild(c);
+  };
+  add('s8PrepTrack', c => { const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = '✓ 傳送完成　可發送 000,000 人'; });
+  add('s8Seg2');
+  add('s8ConfirmBox', c => { c.querySelector('.s8-mark').textContent = '✓'; });
+  add('s8CopyName');
+  add('s8CreateBtn', c => { c.textContent = '建立排程（2026-12-31 23:59 發送）'; });
+  document.body.appendChild(probe);
+  const w = Math.max(...Array.from(probe.children).map(c => c.getBoundingClientRect().width));
+  probe.remove();
+  if (w > 100) host.style.setProperty('--s8-ctl-w', `${Math.ceil(w) + 2}px`);
+  s8PlaceSegs();
+}
+function s8PlaceSegs() {
+  s8SegPlace($s8('s8PrepTrack'), $s8('s8PrepBtn'));
+  const c = s8Flow.choice;
+  s8SegPlace($s8('s8Seg2'), c === 'draft' ? $s8('s8PickDraft') : (c === 'schedule' ? $s8('s8PickSched') : null));
+  s8SegPlace($s8('s8ConfirmBox'), $s8('s8ConfirmLabel'));
+}
+window.addEventListener('resize', () => { if (typeof s8PlaceSegs === 'function') s8PlaceSegs(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { s8FitControls(); });
 function s8ResetCreate() {
   s8Prepared = null;
   s8Flow = { choice: '', copied: false };
   $s8('s8ConfirmTotal').value = '';
   $s8('s8CopyMsg').textContent = '';
-  if (typeof s8SetWhen === 'function' && $s8('s8Mo').options.length) s8SetWhen(s8DefaultWhenMs());
+  s8SetWhen(s8DefaultWhenMs());
   $s8('s8RetryRow').hidden = true;
   s8PrepSet('');
   s8Out('s8CreateOut', '');
@@ -5081,25 +5139,79 @@ const taipeiParts = ms => { const x = new Date(ms + 8 * 3600e3); return { y: x.g
 const fromTaipei = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600e3;
 const s8FmtParts = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)} ${pad2(p.h)}:${pad2(p.mi)}`;
 const s8FmtScheduleAt = iso => String(iso || '').replace('T', ' ').slice(0, 16);   // 2026-10-07T21:30:00+08:00 → 2026-10-07 21:30
-function s8FillSelect(id, from, to) {
-  const sel = $s8(id); sel.textContent = '';
-  for (let v = from; v <= to; v++) { const o = document.createElement('option'); o.value = String(v); o.textContent = pad2(v); sel.appendChild(o); }
-}
 const s8DefaultWhenMs = () => Math.ceil((Date.now() + 24 * 3600e3) / (5 * 60e3)) * 5 * 60e3;   // 預設 24 小時後（進位到 5 分鐘）
+// 月／日／時／分：每格都能直接打字，也能按 ▾（或點格子）從選單挑；↑↓ 鍵可加減
+const S8_WHEN_RANGE = { s8Mo: [1, 12], s8Dd: [1, 31], s8Hh: [0, 23], s8Mi: [0, 59] };
+const s8CbList = document.createElement('div');
+s8CbList.className = 's8-cblist'; s8CbList.hidden = true;
+document.body.appendChild(s8CbList);
+let s8CbFor = '';
+function s8CbHide() { s8CbList.hidden = true; s8CbFor = ''; }
+function s8CbShow(id) {
+  const inp = $s8(id), [lo, hi] = S8_WHEN_RANGE[id], cur = Number(inp.value);
+  s8CbList.textContent = '';
+  for (let v = lo; v <= hi; v++) {
+    const o = document.createElement('div'); o.textContent = pad2(v); o.dataset.v = String(v);
+    if (v === cur) o.className = 'cur';
+    s8CbList.appendChild(o);
+  }
+  const r = inp.getBoundingClientRect();
+  s8CbList.hidden = false; s8CbFor = id;
+  s8CbList.style.minWidth = `${Math.max(64, r.width)}px`;
+  const h = Math.min(220, s8CbList.scrollHeight), below = window.innerHeight - r.bottom - 8;
+  s8CbList.style.top = `${below >= h || r.top < h ? r.bottom + 4 : r.top - h - 4}px`;
+  s8CbList.style.left = `${Math.max(8, Math.min(window.innerWidth - 80, r.left))}px`;
+  const c = s8CbList.querySelector('.cur'); if (c) s8CbList.scrollTop = c.offsetTop - s8CbList.clientHeight / 2 + c.offsetHeight / 2;
+}
+function s8WhenTouched() { s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps(); }
 function s8InitWhen() {
-  s8FillSelect('s8Mo', 1, 12); s8FillSelect('s8Dd', 1, 31); s8FillSelect('s8Hh', 0, 23); s8FillSelect('s8Mi', 0, 59);
-  // 動到任何一個選單，就等於選了「設定排程」
-  ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].forEach(id => $s8(id).addEventListener('change', () => { s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps(); }));
+  Object.keys(S8_WHEN_RANGE).forEach(id => {
+    const inp = $s8(id), [lo, hi] = S8_WHEN_RANGE[id];
+    inp.addEventListener('focus', () => { inp.select(); s8CbShow(id); });
+    inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 2); s8WhenTouched(); if (s8CbFor === id) s8CbShow(id); });
+    inp.addEventListener('blur', () => {   // 離開時把 7 補成 07
+      const n = Number(inp.value);
+      if (inp.value !== '' && Number.isInteger(n) && n >= lo && n <= hi) inp.value = pad2(n);
+      setTimeout(() => { if (s8CbFor === id && document.activeElement !== inp) s8CbHide(); }, 120);
+      s8UpdateSteps();
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        let n = Number(inp.value); if (!Number.isInteger(n)) n = lo;
+        n += e.key === 'ArrowUp' ? 1 : -1; if (n > hi) n = lo; if (n < lo) n = hi;
+        inp.value = pad2(n); s8WhenTouched(); if (s8CbFor === id) s8CbShow(id);
+      } else if (e.key === 'Escape' && s8CbFor) { e.stopPropagation(); s8CbHide(); }
+      else if (e.key === 'Enter') { s8CbHide(); inp.blur(); }
+    });
+  });
+  document.querySelectorAll('.s8-cb-btn').forEach(b => b.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const id = b.dataset.for;
+    if (s8CbFor === id) s8CbHide(); else { $s8(id).focus(); s8CbShow(id); }
+  }));
+  s8CbList.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const o = e.target.closest('[data-v]'); if (!o || !s8CbFor) return;
+    $s8(s8CbFor).value = pad2(Number(o.dataset.v));
+    s8CbHide(); s8WhenTouched();
+  });
+  // 選單開著時按 Esc 只收選單，不要連整個視窗一起關掉
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && s8CbFor) { e.stopImmediatePropagation(); s8CbHide(); } }, true);
+  document.addEventListener('mousedown', e => { if (s8CbFor && !s8CbList.contains(e.target) && !e.target.closest('.s8-cb')) s8CbHide(); });
   s8SetWhen(s8DefaultWhenMs());
 }
 function s8SetWhen(ms) {
   const p = taipeiParts(ms);
-  $s8('s8Mo').value = String(p.mo); $s8('s8Dd').value = String(p.d); $s8('s8Hh').value = String(p.h); $s8('s8Mi').value = String(p.mi);
+  $s8('s8Mo').value = pad2(p.mo); $s8('s8Dd').value = pad2(p.d); $s8('s8Hh').value = pad2(p.h); $s8('s8Mi').value = pad2(p.mi);
 }
 // 讀目前選的時間：回傳 { ms, iso, text, err }。err 有值就不能建立。年份不用選：預設當下（台北）年份，
 // 若選的月日已經明顯過去（例如 12 月底選了 1 月的日期），就當作明年。
 function s8WhenValue() {
-  const mo = Number($s8('s8Mo').value), d = Number($s8('s8Dd').value), h = Number($s8('s8Hh').value), mi = Number($s8('s8Mi').value);
+  const raw = id => $s8(id).value.trim(), num = id => (/^\d{1,2}$/.test(raw(id)) ? Number(raw(id)) : NaN);
+  const mo = num('s8Mo'), d = num('s8Dd'), h = num('s8Hh'), mi = num('s8Mi');
+  const bad = Object.entries(S8_WHEN_RANGE).filter(([id, [lo, hi]]) => !(num(id) >= lo && num(id) <= hi)).map(([id]) => ({ s8Mo: '月（1–12）', s8Dd: '日（1–31）', s8Hh: '時（0–23）', s8Mi: '分（0–59）' }[id]));
+  if (bad.length) return { ms: NaN, iso: '', text: '', err: `請輸入有效的${bad.join('、')}` };
   const now = Date.now();
   let y = taipeiParts(now).y;
   let ms = fromTaipei(y, mo, d, h, mi);
@@ -5130,8 +5242,8 @@ function s8UpdateSteps() {
   mark('s8Step3', confirmOk, prepared && !!choice);
   mark('s8Step4', ready && s8Flow.copied, ready);
   mark('s8Step5', false, ready && s8Flow.copied);
-  $s8('s8PickDraft').classList.toggle('sel', choice === 'draft');
-  $s8('s8PickSched').classList.toggle('sel', choice === 'schedule');
+  $s8('s8PickDraft').classList.toggle('active', choice === 'draft');
+  $s8('s8PickSched').classList.toggle('active', choice === 'schedule');
   const wm = $s8('s8WhenMsg');
   wm.hidden = !when;
   if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || `將在 ${when.text}（台北時間）實際發送。可選範圍：${S8_MIN_LEAD_MIN} 分鐘後 ～ ${S8_MAX_LEAD_DAYS} 天內。`; }
@@ -5141,7 +5253,7 @@ function s8UpdateSteps() {
   cm.textContent = !raw ? '' : (typedOk ? '✓' : '✗');
   cm.className = `s8-mark${!raw ? '' : (typedOk ? ' ok' : ' bad')}`;
   cm.title = !raw ? '' : (typedOk ? '人數正確' : '人數不符');
-  $s8('s8ConfirmBox').classList.toggle('sel', typedOk);
+  s8PlaceSegs();
   const name = $s8('s8Name').value.trim();
   const btn = $s8('s8CreateBtn'), tip = $s8('s8Tip');
   if (choice === 'schedule' && when && !when.err && prepared) {
@@ -5159,7 +5271,6 @@ const s8PickSchedule = () => { if (s8Flow.choice !== 'schedule') { s8Flow.choice
 $s8('s8PickSched').addEventListener('click', s8PickSchedule);
 $s8('s8PickSched').addEventListener('keydown', e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); s8PickSchedule(); } });
 $s8('s8ConfirmTotal').addEventListener('input', () => { s8Flow.copied = false; s8UpdateSteps(); });
-$s8('s8PreviewBtn').addEventListener('click', () => { const u = $s8('s8PreviewBtn').dataset.url; if (/^https:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); });
 $s8('s8CopyName').addEventListener('click', async () => {
   const name = $s8('s8Name').value.trim();
   const ok = await copyText(name);
@@ -5188,8 +5299,7 @@ $s8('s8PrepBtn').addEventListener('click', async () => {
     const r = await s8Api('/s8/prepare', body, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
     s8Prepared = { prepareToken: r.prepareToken, total: r.total, org: r.org.name };
-    const url = r.preview && (r.preview.previewUrl || r.preview.url);
-    s8PrepSet(`✓ 傳送完成　${r.org.name}　可發送 ${r.total.toLocaleString()} 人（已排除封鎖者）${url ? `　預覽 ${r.expiresInMinutes || 20} 分鐘內有效` : ''}`, false, typeof url === 'string' ? url : '');
+    s8PrepSet(`✓ 傳送完成　可發送 ${r.total.toLocaleString()} 人`, false);
     s8UpdateSteps();
   } catch (e) { s8PrepSet(`✗ 傳送失敗：${String(e.message || e).slice(0, 240)}`, true); }
   btn.disabled = false;
