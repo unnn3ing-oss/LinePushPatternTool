@@ -81,6 +81,8 @@ check(await page.evaluate(() => document.getElementById('labToggle').title === '
 await openDialog();
 check((await page.locator('.s8-ptab').count()) === 2 && (await page.textContent('.s8-ptab.active')) === '第 1 頁', '預覽上方有「第 1 頁／第 2 頁」切換，預設第 1 頁');
 check((await page.locator('#s8Stage img').count()) === 1, '預覽區一次只顯示一張圖');
+const box = await page.evaluate(() => { const s = document.getElementById('s8Stage').getBoundingClientRect(), i = document.querySelector('#s8Stage img').getBoundingClientRect(); return { dh: Math.abs(s.height - i.height), dt: Math.abs(s.top - i.top), dw: Math.abs(s.width - i.width) }; });
+check(box.dh < 0.5 && box.dt < 0.5 && box.dw < 0.5, `預覽框與圖片完全貼合，上下沒有多出灰色塊（高度差 ${box.dh.toFixed(1)}px）`);
 check(await page.isDisabled('#s8CellUrl'), '還沒點格子：完整連結字框停用');
 await page.locator('#s8Stage .s8-cell').nth(1).click();
 check((await page.inputValue('#s8CellUrl')) === 'https://example.com/p1/n2?utm_source=x', '點第 1 頁第 2 格：下方顯示該格完整連結');
