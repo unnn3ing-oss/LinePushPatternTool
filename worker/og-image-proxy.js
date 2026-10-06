@@ -24,7 +24,7 @@
 //   POST /s8/status       → 用憑證呼叫 auth_me、auth_organizations（唯讀）
 //   POST /s8/audience     → 試算「全部 LINE 顧客」可發送人數（broadcast_audience_preview，唯讀；組織與參數都由 Worker 固定）
 //   POST /s8/prepare      → （需 write 授權）上傳兩張圖到 S8、產生 S8 預覽網址，並封存要建立的內容
-//   POST /s8/create       → （需 write 授權）重新試算人數後建立群發草稿：先以「建立當下 + 24 小時」排程，立刻暫停成草稿；絕不立即發送、也沒有保留排程的選項
+//   POST /s8/create       → （需 write 授權）重新試算人數後建立群發，先以「建立當下 + 24 小時」排程；body.mode 只接受 'draft'（預設，立刻暫停成草稿）或 'schedule'（明確選擇不暫停、保留 +1 天排程，改用 broadcast_get 確認狀態）；絕不立即發送，沒有 resume／sendNow
 //   POST /s8/pause        → 把排程暫停成草稿（broadcast_update 只允許 pause，沒有 resume／立即發送）
 //   POST /s8/tools        → 列出 S8 工具的名稱與欄位定義（MCP tools/list，唯讀，不執行任何工具）
 // S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
@@ -354,7 +354,8 @@ async function mcpRpc(env, token, sessionId, id, method, params) {
 }
 // ---- 工具白名單與參數把關（階段三：只建立草稿）----
 // 唯讀工具任何時候都可呼叫；其餘工具只有在「有 write 授權」且參數通過下面的把關時才會送出。
-// 程式裡沒有任何路徑能呼叫 resume、sendNow，也沒有省略 scheduleAt 的建立，也沒有「保留排程」。
+// 程式裡沒有任何路徑能呼叫 resume、sendNow，也沒有省略 scheduleAt 的建立。
+// 「保留 +1 天排程」只是 /s8/create 在 mode:'schedule' 時不呼叫 pause；scheduleAt 仍固定為建立當下 +24 小時，上面的把關完全沒有放寬。
 const S8_STAGE3_TOOLS = new Set(['media_upload_url', 'messaging_message_preview', 'broadcast_create', 'broadcast_get', 'broadcast_update']);
 const S8_FIXED_RECIPIENTS = { where: { platforms: ['line'] } };   // 全部 LINE 顧客，不加任何其他條件
 const S8_MIN_LEAD_MS = 23 * 60 * 60 * 1000;                       // scheduleAt 至少要在 23 小時之後（正常是 24 小時）
@@ -604,11 +605,15 @@ async function pauseToDraft(mcp, orgId, taskId) {
   return { ok: status === 'draft' || phase === 'draft', status, phase, get: g2.data };
 }
 
+const S8_CREATE_MODES = new Set(['draft', 'schedule']);   // draft（預設）：建立後立刻暫停成草稿；schedule：使用者明確選擇保留 +1 天排程
 async function handleS8Create(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
   let body = {};
   try { body = JSON.parse((await request.text()) || '{}'); } catch { return jsonError(400, '格式不正確', request, env); }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return jsonError(400, '格式不正確', request, env);
+  const mode = body.mode === undefined ? 'draft' : body.mode;
+  if (typeof mode !== 'string' || !S8_CREATE_MODES.has(mode)) return jsonError(400, "mode 只能是 'draft' 或 'schedule'。沒有建立任何東西。", request, env);
   const prep = await s8Open(env, body.prepareToken);
   if (!prep || prep.t !== 'prepare' || !prep.x || prep.x < Date.now()) return jsonError(400, '預覽已過期或無效，請重新「上傳並產生預覽」', request, env);
   let created = null;
@@ -623,15 +628,22 @@ async function handleS8Create(request, env) {
     if (!Number.isFinite(typed) || Math.abs(typed - total) > Math.max(5, Math.round(total * 0.01))) {
       return jsonError(409, `確認人數不符：S8 現在試算是 ${total} 人，你輸入的是 ${body.confirmTotal}。沒有建立任何東西。`, request, env);
     }
-    // 排程時間由 Worker 決定：建立當下 + 24 小時（台北時間）。建立後馬上暫停成草稿。
+    // 排程時間由 Worker 決定：建立當下 + 24 小時（台北時間），不接受自訂。draft 模式建立後馬上暫停成草稿；schedule 模式保留排程。
     const scheduleAt = taipeiIso(Date.now() + 24 * 3600 * 1000);
     created = await mcp.call('broadcast_create', { orgId: prep.orgId, platform: 'line', recipients: S8_FIXED_RECIPIENTS, previewRef, messages: prep.messages, scheduleAt });
     if (created.isError) throw new Error(`建立失敗：${toolText(created)}`);
     const taskId = pickTaskId(created.data);
-    if (!taskId) return jsonOk({ ok: false, created: true, warning: `群發已建立（排程在 ${scheduleAt}），但我找不到 taskId，無法自動暫停。請立即到 Super 8 Console 暫停或刪除這筆群發！`, scheduleAt, total, raw: created.data, session: refreshed }, request, env);
+    if (!taskId) return jsonOk({ ok: false, created: true, mode, warning: `群發已建立（排程在 ${scheduleAt}），但我找不到 taskId，無法自動${mode === 'schedule' ? '確認狀態' : '暫停'}。它會在 ${scheduleAt} 實際發送，請立即到 Super 8 Console 暫停或刪除這筆群發！`, scheduleAt, total, raw: created.data, session: refreshed }, request, env);
+    if (mode === 'schedule') {
+      // 保留排程：不呼叫 broadcast_update，只用 broadcast_get（唯讀）確認狀態與可用動作
+      const g = await mcp.call('broadcast_get', { orgId: prep.orgId, taskId });
+      if (g.isError) return jsonOk({ ok: false, created: true, mode, taskId, warning: `群發已建立並保留排程，但讀取狀態失敗（${toolText(g)}）。它會在 ${scheduleAt} 實際發送給 ${total} 人，請到 Super 8 Console 確認，或按「暫停成草稿」。`, scheduleAt, total, orgId: prep.orgId, session: refreshed }, request, env);
+      const allowedActions = Array.isArray(g.data && g.data.allowedActions) ? g.data.allowedActions : [];
+      return jsonOk({ ok: true, mode: 'schedule', taskId, scheduleAt, status: pickField(g.data, /(^|\.)status$/i), phase: pickField(g.data, /(^|\.)phase$/i), allowedActions, total, orgId: prep.orgId, session: refreshed }, request, env);
+    }
     const paused = await pauseToDraft(mcp, prep.orgId, taskId);
-    if (!paused.ok) return jsonOk({ ok: false, created: true, taskId, warning: `群發已建立，但沒有成功暫停成草稿（${paused.why || '狀態：' + paused.status}）。它仍排在 ${scheduleAt} 發送，請立即到 Super 8 Console 暫停或刪除，或按「重試暫停」。`, scheduleAt, total, session: refreshed }, request, env);
-    return jsonOk({ ok: true, taskId, status: paused.status, phase: paused.phase, scheduledWas: scheduleAt, total, orgId: prep.orgId, session: refreshed }, request, env);
+    if (!paused.ok) return jsonOk({ ok: false, created: true, mode, taskId, warning: `群發已建立，但沒有成功暫停成草稿（${paused.why || '狀態：' + paused.status}）。它仍排在 ${scheduleAt} 發送，請立即到 Super 8 Console 暫停或刪除，或按「重試暫停」。`, scheduleAt, total, session: refreshed }, request, env);
+    return jsonOk({ ok: true, mode: 'draft', taskId, status: paused.status, phase: paused.phase, scheduledWas: scheduleAt, total, orgId: prep.orgId, session: refreshed }, request, env);
   } catch (e) {
     const extra = created && !created.isError ? `（注意：群發可能已建立，請到 Console 確認：${toolText(created)}）` : '';
     return jsonError(e.status === 401 ? 401 : 502, `${e.message || '無法呼叫 S8'}${extra}`, request, env);

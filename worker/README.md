@@ -45,13 +45,22 @@
 | 憑證保存 | 網頁只存一串加密字串（分頁關閉就消失）；解密只有 Worker 能做；改 `LAB_PASSWORD` 後舊字串全部失效 |
 | 用戶端註冊 | 第一次連結時 Worker 向 S8 動態註冊（公開用戶端、跳轉位址 `https://<worker網址>/s8/callback`），之後瀏覽器記住 client id，不重複註冊 |
 | 升級為可建立草稿 | `POST /s8/login-start` 帶 `upgrade:true`：向 S8 另外註冊一個帶 `insightark-mcp:write` 的用戶端並重新授權；預設（沒帶）仍只請求 read |
-| 建立草稿（階段三） | `POST /s8/prepare`（上傳兩張 PNG 到 S8、產生預覽、封存要建立的內容，20 分鐘有效）→ `POST /s8/create`（需帶使用者輸入的人數；Worker 重新試算人數，差距超過 1%（至少 5 人）就拒絕）→ 先以「當下 + 24 小時」排程再立刻暫停成草稿；`POST /s8/pause` 可重試暫停 |
-| 程式內的硬規則 | 工具參數一律先過把關：發送對象只能是 LINE + 不加條件；`scheduleAt` 必須是 +08:00 的 RFC 3339 且至少 23 小時後；`broadcast_update` 只允許 `action:"pause"`；只允許 imagemap、連結只允許網址；整個程式沒有 resume、sendNow，也沒有省略 `scheduleAt` 的建立 |
+| 建立群發（階段三） | `POST /s8/prepare`（上傳兩張 PNG 到 S8、產生預覽、封存要建立的內容，20 分鐘有效）→ `POST /s8/create`（需帶使用者輸入的人數；Worker 重新試算人數，差距超過 1%（至少 5 人）就拒絕）→ 一律先以「當下 + 24 小時」排程，再依 `mode` 處理（見下一列）；`POST /s8/pause` 可暫停（含重試暫停、暫停保留中的排程） |
+| `/s8/create` 的 `mode` | 只接受 `"draft"`（沒帶就是它）或 `"schedule"`，其他任何值（含 `null`、大小寫不同、空字串）一律回 400，且完全不呼叫 S8。<br>`draft`：建立 → `broadcast_get` → `broadcast_update(pause)` → `broadcast_get`，回 `{ok, mode:'draft', taskId, status, phase, scheduledWas, total, orgId}`。<br>`schedule`（使用者明確選擇、**不暫停**）：建立後只呼叫唯讀的 `broadcast_get` 確認狀態，回 `{ok:true, mode:'schedule', taskId, scheduleAt, status, phase, allowedActions, total, orgId}`；這筆群發會在 `scheduleAt` **實際發送**。讀不到狀態或找不到 taskId 時回 `ok:false` 與 `warning`（明寫實際發送時間），網頁會提示立即處理。<br>兩種模式 `scheduleAt` 都由 Worker 固定為建立當下 +24 小時（+08:00），請求裡的 `scheduleAt`／`recipients` 一律忽略 |
+| 程式內的硬規則 | 工具參數一律先過把關：發送對象只能是 LINE + 不加條件；`scheduleAt` 必須是 +08:00 的 RFC 3339 且至少 23 小時後；`broadcast_update` 只允許 `action:"pause"`；只允許 imagemap、連結只允許網址；整個程式沒有 resume、sendNow，也沒有省略 `scheduleAt` 的建立；`schedule` 模式只是「不呼叫 pause」，上述把關完全沒有放寬 |
 | 試算人數 | `POST /s8/audience` 呼叫 `broadcast_audience_preview`（唯讀）：組織只能是 `news`（TVBS新聞）或 `ent`（TVBS娛樂頭條），由 Worker 依名稱向 S8 解析 id；參數固定為 LINE、只限定平台、不加標籤或其他條件、不取樣本，網頁傳來的任何篩選一律忽略 |
 | 查看工具定義 | `POST /s8/tools` 只做 MCP 的 `tools/list`（列出與群發有關的工具名稱、說明、欄位），不執行任何工具 |
 | 撤銷授權 | S8 Console → 使用者資訊 → Connected Apps；網頁上的「中斷連線」只會清掉這個分頁的連結資料 |
 
 > 若 S8 不接受 `workers.dev` 當跳轉位址，視窗會顯示 S8 回報的原因，請把那段文字貼給維護者。
+
+## 自動測試
+
+```bash
+node --test worker/test/*.test.mjs          # Worker：用假的 S8 MCP 驗證 /s8/create 的 mode（預設 draft、非法 mode 被拒、schedule 不呼叫 broadcast_update、無 resume／sendNow、scheduleAt ≥ +23 小時）
+python3 -m http.server 8960 &               # 前端（Playwright，Worker 回應全由攔截假造；截圖在 test/e2e/screenshots/）
+NODE_PATH=$(npm root -g) node test/e2e/s8-schedule-mode.mjs
+```
 
 ## 快速自我檢查
 

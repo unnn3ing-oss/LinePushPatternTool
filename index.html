@@ -110,6 +110,18 @@
   #pushTitleInput { width: 100%; }
   /* 排入 S8 (lab): the package dialog */
   .s8-modal { max-width: 760px !important; }
+  .s8-modes { display: grid; gap: 8px; margin-bottom: 10px; }
+  .s8-mode { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line, #d6d3d1); border-radius: 12px; cursor: pointer; font-size: 14px; line-height: 1.5; }
+  .s8-mode input { margin-top: 4px; }
+  .s8-mode small { color: var(--muted); }
+  .s8-mode:has(input:checked) { border-color: #1d4ed8; background: rgba(29, 78, 216, .06); }
+  .s8-mode.warn:has(input:checked) { border-color: #b91c1c; background: rgba(185, 28, 28, .07); }
+  .s8-sched-warn { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: #fee2e2; color: #991b1b; font-size: 13px; font-weight: 600; line-height: 1.6; }
+  .s8-banner { margin-top: 12px; padding: 14px 16px; border-radius: 14px; background: #b91c1c; color: #fff; font-size: 14px; line-height: 1.7; }
+  .s8-banner .t { font-size: 17px; font-weight: 800; }
+  .s8-banner.paused { background: #166534; }
+  .s8-banner button { margin-top: 8px; background: #fff; color: #991b1b; border: 0; font-weight: 700; }
+  #s8RetryRow[hidden], #s8ConfirmRow[hidden] { display: none; }
   .s8-note { margin: 0 0 14px; padding: 10px 14px; border-radius: 14px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; }
   .s8-grid { display: grid; grid-template-columns: 112px 1fr; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
   .s8-grid label { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
@@ -1114,7 +1126,7 @@
     </div>
     <div class="modal-body">
       <p class="s8c-state" id="s8cState">尚未連結</p>
-      <p class="hint" style="margin:0 0 12px">按「連結 S8」會開啟 S8 的登入與授權視窗，預設只請求<b>唯讀</b>權限（insightark-mcp:read）。要讓「排入S8」直接建立<b>草稿</b>，需另按「升級為可建立草稿」重新授權（會多請求 write 權限；網頁程式只會做：上傳圖片、預覽、建立後立刻暫停成草稿，沒有立即發送、也沒有保留排程）。授權資料只以加密形式保存，這個網頁看不到內容。要撤銷授權：S8 Console → 使用者資訊 → Connected Apps。</p>
+      <p class="hint" style="margin:0 0 12px">按「連結 S8」會開啟 S8 的登入與授權視窗，預設只請求<b>唯讀</b>權限（insightark-mcp:read）。要讓「排入S8」直接建立<b>草稿</b>，需另按「升級為可建立草稿」重新授權（會多請求 write 權限；網頁程式只會做：上傳圖片、預覽、建立群發；預設建立後立刻暫停成草稿，也可在「直接建立」區明確選擇保留 +1 天排程。沒有立即發送、沒有 resume）。授權資料只以加密形式保存，這個網頁看不到內容。要撤銷授權：S8 Console → 使用者資訊 → Connected Apps。</p>
       <div class="btn-row" style="margin-top:0">
         <button type="button" class="primary" id="s8cConnect">連結 S8</button>
         <button type="button" id="s8cUpgrade">升級為可建立草稿</button>
@@ -1155,14 +1167,20 @@
       <div class="s8-imgs" id="s8Imgs"></div>
       <ul class="s8-errs" id="s8Errs"></ul>
       <div class="s8-page">直接建立草稿（由 Worker 執行）</div>
-      <p class="hint" style="margin:0 0 8px">需要先在右上角「S8」視窗升級授權。流程：① 上傳圖片並產生 S8 預覽（先看預覽）→ ② 輸入下面顯示的人數確認 → 建立。建立時 Worker 會先以「當下 + 24 小時」排程，<b>立刻暫停成草稿</b>；<b>不會立即發送</b>，也沒有保留排程的選項。S8 的建立工具沒有群發名稱欄位，建立後請到 Console 把草稿改名成上面的群發名稱。</p>
+      <p class="hint" style="margin:0 0 8px">需要先在右上角「S8」視窗升級授權。流程：① 上傳圖片並產生 S8 預覽（先看預覽）→ ② 輸入下面顯示的人數確認 → 建立。建立時 Worker 一律先以「當下 + 24 小時」排程（時間由 Worker 決定，不能自訂）。預設<b>立刻暫停成草稿</b>；你也可以明確選「保留為 +1 天排程」，那麼這筆群發<b>不會暫停</b>，會在排程時間<b>實際發送</b>給全部 LINE 顧客。<b>不會立即發送</b>。S8 的建立工具沒有群發名稱欄位，建立後請到 Console 把草稿改名成上面的群發名稱。</p>
       <div class="btn-row" style="margin-top:0"><button type="button" id="s8PrepBtn">① 上傳圖片並產生預覽</button></div>
       <div id="s8PrepOut" class="s8c-out" hidden></div>
       <div id="s8ConfirmRow" hidden style="margin-top:10px">
+        <div class="s8-modes" role="radiogroup" aria-label="建立後的處理方式">
+          <label class="s8-mode"><input type="radio" name="s8Mode" id="s8ModeDraft" value="draft" checked><span><b>建立後暫停成草稿</b>（預設）<br><small>不會發送，除非有人在 Console 手動 resume</small></span></label>
+          <label class="s8-mode warn"><input type="radio" name="s8Mode" id="s8ModeSchedule" value="schedule"><span><b>保留為 +1 天排程</b><br><small>不暫停，時間到會實際發送給全部 LINE 顧客</small></span></label>
+        </div>
+        <p class="s8-sched-warn" id="s8SchedWarn" hidden></p>
         <div class="s8-grid" style="margin-bottom:6px"><label for="s8ConfirmTotal">確認人數</label><input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入上面顯示的「可發送人數」"></div>
         <div class="btn-row" style="margin-top:0"><button type="button" class="primary" id="s8CreateBtn" disabled>② 建立草稿（建立後立刻暫停）</button></div>
       </div>
       <div id="s8CreateOut" class="s8c-out" hidden></div>
+      <div id="s8SchedBanners"></div>
       <div class="btn-row" id="s8RetryRow" hidden style="margin-top:8px"><button type="button" id="s8RetryPause">重試暫停成草稿</button></div>
       <details style="margin-top:12px"><summary style="cursor:pointer; font-size:13px; color:var(--muted)">查看完整指令</summary><textarea class="s8-prompt" id="s8Prompt" readonly></textarea></details>
       <div class="btn-row" style="justify-content:flex-end; margin-top:14px">
@@ -4868,6 +4886,8 @@ async function openS8Dialog() {
   });
   document.getElementById('s8Imgs').textContent = '圖片產生中…';
   s8ResetCreate();
+  document.getElementById('s8ModeDraft').checked = true;          // 每次開啟都回到預設「暫停成草稿」
+  document.getElementById('s8SchedBanners').textContent = '';
   s8Overlay.classList.add('open');
   s8Refresh();
   // Render the two page images (same pipeline and 2 MB rule as 下載本頁).
@@ -4895,6 +4915,8 @@ async function openS8Dialog() {
   s8Refresh();
 }
 function closeS8Dialog() {
+  const live = document.querySelectorAll('#s8SchedBanners .s8-banner[data-live="1"]').length;
+  if (live && !window.confirm(`還有 ${live} 筆保留中的排程尚未暫停，關閉視窗後它們仍會照時間發送。\n\n確定要關閉嗎？`)) return;
   s8ResetCreate();
   s8Overlay.classList.remove('open');
   if (s8State) s8State.images.forEach(im => im && URL.revokeObjectURL(im.url));
@@ -4941,6 +4963,30 @@ async function blobToBase64(blob) {
   return btoa(bin);
 }
 const s8Digits = v => Number(String(v || '').replace(/[,\s]/g, ''));
+// 建立後的處理方式：預設「暫停成草稿」；只有使用者明確選「保留為 +1 天排程」才會送 mode:'schedule'。
+const s8CreateMode = () => (document.getElementById('s8ModeSchedule').checked ? 'schedule' : 'draft');
+const pad2 = n => String(n).padStart(2, '0');
+// 預計發送時間（台北時間，到分鐘）：建立當下 + 24 小時。實際時間由 Worker 決定，建立成功後以橫幅為準。
+function s8PlannedSendText() {
+  const t = new Date(Date.now() + 24 * 3600 * 1000 + 8 * 3600 * 1000);
+  return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())} ${pad2(t.getUTCHours())}:${pad2(t.getUTCMinutes())}`;
+}
+const s8FmtScheduleAt = iso => String(iso || '').replace('T', ' ').slice(0, 16);   // 2026-10-07T21:30:00+08:00 → 2026-10-07 21:30
+function s8UpdateModeUi() {
+  const btn = document.getElementById('s8CreateBtn'), warn = document.getElementById('s8SchedWarn');
+  if (!s8Prepared) return;
+  if (s8CreateMode() === 'schedule') {
+    const msg = `將在 ${s8PlannedSendText()} 實際發送給 ${s8Prepared.total.toLocaleString()} 人`;
+    btn.textContent = `② 建立並保留排程（${msg}）`;
+    warn.hidden = false;
+    warn.textContent = `⚠ ${msg}（全部 LINE 顧客）。這筆群發建立後不會暫停，時間到就會發出；建立後仍可按「暫停成草稿」。實際時間由 Worker 於建立當下 +24 小時決定，成功後會以紅字橫幅顯示確切時間。`;
+  } else {
+    btn.textContent = '② 建立草稿（建立後立刻暫停）';
+    warn.hidden = true; warn.textContent = '';
+  }
+}
+document.querySelectorAll('input[name="s8Mode"]').forEach(r => r.addEventListener('change', s8UpdateModeUi));
+setInterval(() => { if (s8Prepared && s8CreateMode() === 'schedule') s8UpdateModeUi(); }, 15000);   // 預計時間隨時間更新
 document.getElementById('s8PrepBtn').addEventListener('click', async () => {
   const btn = document.getElementById('s8PrepBtn');
   const d = s8Collect();
@@ -4966,6 +5012,7 @@ document.getElementById('s8PrepBtn').addEventListener('click', async () => {
     s8Out('s8PrepOut', `組織：${r.org.name}\n可發送人數（S8 試算，已排除封鎖者）：${r.total.toLocaleString()} 人\n預覽網址：${url || JSON.stringify(r.preview)}\n（預覽 ${r.expiresInMinutes} 分鐘內有效；請點開預覽網址，確認圖片、六個區塊與推播通知「${d.alt}」都正確）`);
     document.getElementById('s8ConfirmRow').hidden = false;
     document.getElementById('s8ConfirmTotal').placeholder = `輸入「${r.total}」確認`;
+    s8UpdateModeUi();
     s8CheckConfirm();
   } catch (e) { s8Out('s8PrepOut', e.message, true); }
   btn.disabled = false;
@@ -4975,18 +5022,59 @@ function s8CheckConfirm() {
   document.getElementById('s8CreateBtn').disabled = !ok;
 }
 document.getElementById('s8ConfirmTotal').addEventListener('input', s8CheckConfirm);
+// 暫停一筆群發（現有 /s8/pause，只會 pause）。回傳 Worker 的結果。
+async function s8PauseTask(org, taskId) {
+  const r = await s8Api('/s8/pause', { org, taskId }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
+  if (r.session) s8Set(S8_SESSION_KEY, r.session);
+  return r;
+}
+// 保留排程成功後的紅字橫幅：寫出確切發送時間，並提供「暫停成草稿」。
+function s8AddScheduleBanner(r, org) {
+  const box = document.getElementById('s8SchedBanners');
+  const el = document.createElement('div');
+  el.className = 's8-banner'; el.dataset.live = '1'; el.dataset.taskId = r.taskId;
+  const head = document.createElement('div'); head.className = 't';
+  const body = document.createElement('div');
+  const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = '暫停成草稿';
+  head.textContent = `⚠ 將在 ${s8FmtScheduleAt(r.scheduleAt)} 實際發送給 ${Number(r.total).toLocaleString()} 人`;
+  body.textContent = `已保留 +1 天排程，不會暫停。狀態：${r.status || r.phase || '（未知）'}　taskId：${r.taskId}\n可用動作：${(r.allowedActions || []).join('、') || '（無）'}\n要取消請按下方「暫停成草稿」，或到 Super 8 Console 處理。名稱請到 Console 改成「${document.getElementById('s8Name').value.trim()}」。`;
+  body.style.whiteSpace = 'pre-wrap';
+  if (!(r.allowedActions || []).includes('pause')) { btn.disabled = true; btn.title = 'S8 回報目前不能暫停'; }
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = '暫停中…';
+    try {
+      const pr = await s8PauseTask(org, r.taskId);
+      if (pr.ok) {
+        el.classList.add('paused'); el.dataset.live = '0';
+        head.textContent = `✓ 已暫停成草稿（${pr.status || 'draft'}），不會發送`;
+        body.textContent = `taskId：${r.taskId}\n原本排在 ${s8FmtScheduleAt(r.scheduleAt)}，現在不會發送，除非有人在 Console 手動 resume。`;
+        btn.remove();
+      } else { body.textContent += `\n⚠ 仍沒有暫停：${pr.why || pr.status}。它還是會在 ${s8FmtScheduleAt(r.scheduleAt)} 發送，請立即到 Super 8 Console 處理。`; btn.disabled = false; btn.textContent = '重試暫停成草稿'; }
+    } catch (e) { body.textContent += `\n⚠ ${e.message}。它還是會在 ${s8FmtScheduleAt(r.scheduleAt)} 發送，請立即到 Super 8 Console 處理。`; btn.disabled = false; btn.textContent = '重試暫停成草稿'; }
+  });
+  el.append(head, body, btn);
+  box.appendChild(el);
+}
 document.getElementById('s8CreateBtn').addEventListener('click', async () => {
   if (!s8Prepared) return;
   const btn = document.getElementById('s8CreateBtn');
+  const cmode = s8CreateMode(), org = mode, total = s8Prepared.total;
+  if (cmode === 'schedule') {
+    const when = s8PlannedSendText();
+    if (!window.confirm(`這筆群發「不會暫停」。\n\n將在 ${when} 實際發送給 ${total.toLocaleString()} 人（全部 LINE 顧客）。\n\n確定要建立並保留排程嗎？（建立後仍可按「暫停成草稿」）`)) return;
+  }
   btn.disabled = true; document.getElementById('s8RetryRow').hidden = true;
-  s8Out('s8CreateOut', '建立中，並立刻暫停成草稿…');
+  s8Out('s8CreateOut', cmode === 'schedule' ? '建立中，並保留 +1 天排程…' : '建立中，並立刻暫停成草稿…');
   const prepared = s8Prepared;
   try {
-    const r = await s8Api('/s8/create', { prepareToken: prepared.prepareToken, confirmTotal: s8Digits(document.getElementById('s8ConfirmTotal').value) }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
+    const r = await s8Api('/s8/create', { prepareToken: prepared.prepareToken, confirmTotal: s8Digits(document.getElementById('s8ConfirmTotal').value), mode: cmode }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
     s8Prepared = null;   // one preview → one broadcast; start again for another
     document.getElementById('s8ConfirmRow').hidden = true;
-    if (r.ok) {
+    if (r.ok && r.mode === 'schedule') {
+      s8Out('s8CreateOut', '');
+      s8AddScheduleBanner(r, org);
+    } else if (r.ok) {
       s8Out('s8CreateOut', `✓ 草稿已建立並確認狀態為 ${r.status || 'draft'}\ntaskId：${r.taskId}\n可發送人數：${r.total.toLocaleString()} 人\n不會發送，除非有人在 Console 手動 resume。\n請到 Super 8 Console 把這筆草稿的名稱改成「${document.getElementById('s8Name').value.trim()}」並檢查內容。`);
     } else {
       s8Out('s8CreateOut', `⚠ ${r.warning}${r.taskId ? `\ntaskId：${r.taskId}` : ''}`, true);
@@ -4999,8 +5087,7 @@ document.getElementById('s8RetryPause').addEventListener('click', async () => {
   if (!taskId) return;
   s8Out('s8CreateOut', '重試暫停中…');
   try {
-    const r = await s8Api('/s8/pause', { org: mode, taskId }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
-    if (r.session) s8Set(S8_SESSION_KEY, r.session);
+    const r = await s8PauseTask(mode, taskId);
     if (r.ok) { document.getElementById('s8RetryRow').hidden = true; s8Out('s8CreateOut', `✓ 已暫停成草稿（${r.status || 'draft'}）。taskId：${taskId}`); }
     else s8Out('s8CreateOut', `⚠ 仍沒有暫停：${r.why || r.status}。請立即到 Super 8 Console 處理。taskId：${taskId}`, true);
   } catch (e) { s8Out('s8CreateOut', `${e.message}。請立即到 Super 8 Console 處理。taskId：${taskId}`, true); }
