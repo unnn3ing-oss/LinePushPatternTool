@@ -676,6 +676,7 @@
       </div>
     </div>
     <button type="button" class="qf-reopen" id="quickfillReopen" hidden>快速填入</button>
+    <button type="button" class="qf-reopen" id="headerOpenBtn" hidden>頂部標籤</button>
 
     <div class="top-label-box" id="newsHeaderBox">
         <div class="field">
@@ -794,7 +795,7 @@
       <ol class="help-steps">
         <li><b>選版型</b>：畫面最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
         <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
-          <br><span class="help-note">新聞第 1 頁可在「頂部標籤」下方的欄位改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
+          <br><span class="help-note">新聞：點預覽圖上黃色的「熱門話題」標籤列，左側會浮出「頂部標籤」面板，可改字或取消勾選隱藏；隱藏後，左側的「頂部標籤」按鈕可再打開。</span></li>
         <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：點預覽圖上的格子，左側就浮出那一格的編輯面板，點空白處收起。按下「快速填入」後面板會自動收起，左上的「快速填入」按鈕可以再打開。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
           <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
@@ -978,6 +979,9 @@ const stepByMode = { news: 1, ent: 1 };
 // Whether a cell is picked: only then does its editor float on the left and its
 // frame light up on the preview. Clicking empty space un-picks it.
 let cellSelected = false;
+// 新聞 only: the yellow 「熱門話題」 bar on the preview is picked instead of a cell
+// (opens the 頂部標籤 editor on the left).
+let headerSelected = false;
 let quickfillOpen = true;
 let chromeReady = false;     // syncChrome() waits until every element it touches exists
 function isLocked() { return mode !== 'collage' && step === 2; }
@@ -1759,6 +1763,13 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
 
+  if (opts.showHeaderBorder && headerSelected && pageState.showHeader) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,74,173,0.9)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, CANVAS_W - 3, HEADER_H - 3);
+    ctx.restore();
+  }
   if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
     ctx.save();
@@ -1822,7 +1833,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 function render() {
-  renderTo(ctx, 'final', activePage(), { showActiveBorder: true, interactive: true });
+  renderTo(ctx, 'final', activePage(), { showActiveBorder: true, showHeaderBorder: true, interactive: true });
   updateDownloadState();
 }
 
@@ -2137,14 +2148,23 @@ function syncAllCellUI() {
 
 function setActiveCard(i, select = true) {
   activeCard = i;
-  if (select) cellSelected = true;
+  if (select) { cellSelected = true; headerSelected = false; }
   cardEls.forEach((el, idx) => el.box.classList.toggle('active', idx === i));
   syncChrome();
   render();
 }
 function clearSelection() {
-  if (!cellSelected) return;
+  if (!cellSelected && !headerSelected) return;
   cellSelected = false;
+  headerSelected = false;
+  syncChrome();
+  render();
+}
+// 新聞: click the yellow bar (or the 「頂部標籤」 button when the bar is off).
+function openHeaderEditor() {
+  if (mode !== 'news' || isLocked()) return;
+  cellSelected = false;
+  headerSelected = true;
   syncChrome();
   render();
 }
@@ -2341,7 +2361,12 @@ function pointerDown(evt) {
   const pos = getCanvasPos(evt);
   if (mode === 'collage' && collagePointerDown(evt, pos)) return;
   const idx = cellIndexAt(pos.x, pos.y);
-  if (idx < 0) { clearSelection(); return; }
+  if (idx < 0) {
+    const onHeader = mode === 'news' && !isLocked() && activePage().showHeader &&
+      pos.x >= 0 && pos.x <= NEWS_W && pos.y >= 0 && pos.y < HEADER_H;
+    if (onHeader) openHeaderEditor(); else clearSelection();
+    return;
+  }
   const state = activePage().cards[idx];
 
   // 步驟 2: photos, tags and stickers are locked. A click just picks the cell
@@ -2428,7 +2453,11 @@ function pointerMove(evt) {
       if (c) { canvas.style.cursor = c; return; }
     }
     const idx = cellIndexAt(pos.x, pos.y);
-    if (idx < 0) { canvas.style.cursor = 'default'; return; }
+    if (idx < 0) {
+      const overHeader = mode === 'news' && !isLocked() && activePage().showHeader && pos.y >= 0 && pos.y < HEADER_H && pos.x >= 0 && pos.x <= NEWS_W;
+      canvas.style.cursor = overHeader ? 'pointer' : 'default';
+      return;
+    }
     const state = activePage().cards[idx];
     if (mode === 'news' && newsTagHit(ctx, cellRect(idx, activePage().showHeader), state, pos.x, pos.y)) {
       canvas.style.cursor = 'grab';
@@ -2577,6 +2606,7 @@ pageTabs.forEach(btn => {
     syncTopUIFromState();
     syncAllCellUI();
     cellSelected = false;
+    headerSelected = false;
     setActiveCard(0, false);
   });
 });
@@ -3100,6 +3130,7 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
     syncCollageUI();
   }
   cellSelected = false;
+  headerSelected = false;
   setActiveCard(0, false);
   syncTopUIFromState();
   syncAllCellUI();
@@ -3229,6 +3260,7 @@ function setMode(newMode) {
   if (mode !== 'collage') stepByMode[mode] = step;
   step = newMode === 'collage' ? 1 : stepByMode[newMode];
   cellSelected = false;
+  headerSelected = false;
   hideDlConfirm();
   hideLockReminder();
   drag = null;
@@ -3447,6 +3479,7 @@ function goStep(n) {
   stepByMode[mode] = n;
   hideDlConfirm();
   hideLockReminder();
+  headerSelected = false;
   drag = null; tagDrag = null; stickerDrag = null; lockProbe = null;
   syncChrome();
   render();
@@ -3553,6 +3586,20 @@ function renderCheckPanel() {
   panel.appendChild(line);
 }
 
+// The left panels start level with the top of the preview image.
+function alignFloatStack() {
+  const stack = document.getElementById('floatStack');
+  const stage = document.getElementById('stage');
+  if (!stack || !stage) return;
+  if (window.innerWidth <= 900) { stack.style.top = ''; stack.style.maxHeight = ''; return; }
+  const stageTop = stage.getBoundingClientRect().top;
+  const top = Math.max(0, Math.round(canvas.getBoundingClientRect().top - stageTop) - 8);   // 8 = the stack's own top padding
+  stack.style.top = `${top}px`;
+  stack.style.maxHeight = `${Math.max(200, window.innerHeight - stageTop - top - 104)}px`;
+}
+window.addEventListener('resize', alignFloatStack);
+document.getElementById('headerOpenBtn').addEventListener('click', openHeaderEditor);
+
 // One place that decides what is visible for the current mode / step / selection.
 function syncChrome() {
   if (!chromeReady) return;
@@ -3571,9 +3618,12 @@ function syncChrome() {
   $('stepLine').classList.toggle('done', step === 2);
 
   $('collageBox').hidden = !isCollage;
-  $('quickfillBox').hidden = !(editing && !cellSelected && quickfillOpen);
-  $('quickfillReopen').hidden = !(editing && !cellSelected && !quickfillOpen);
-  $('newsHeaderBox').hidden = !(mode === 'news' && editing && !cellSelected);
+  const idle = editing && !cellSelected && !headerSelected;
+  $('quickfillBox').hidden = !(idle && quickfillOpen);
+  $('quickfillReopen').hidden = !(idle && !quickfillOpen);
+  $('newsHeaderBox').hidden = !(mode === 'news' && editing && headerSelected);
+  // The yellow bar can be unticked away; this button is then the way back in.
+  $('headerOpenBtn').hidden = !(mode === 'news' && idle && !activePage().showHeader);
   $('cellsList').hidden = !(cellSelected && !checking);
   $('checkPanel').hidden = !checking;
   if (checking) renderCheckPanel();
@@ -3600,6 +3650,7 @@ function syncChrome() {
   $('downloadAllBtn').hidden = !checking;
   $('copyCollageBtn').hidden = !isCollage;
   updateDownloadState();
+  alignFloatStack();
 }
 
 chromeReady = true;
