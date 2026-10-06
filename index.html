@@ -231,6 +231,11 @@
   #downloadRow button.light { background: #fff; border-color: #fff; color: #1f2328; }
   #downloadRow button.light:hover { background: #e6e8eb; border-color: #e6e8eb; }
   #downloadRow button[hidden] { display: none; }
+  /* 步驟 2: 返回編輯 is blue, 全部下載 is green (grey while locked). */
+  #downloadRow #backStepBtn { background: #2f7bff; border-color: #2f7bff; color: #fff; }
+  #downloadRow #backStepBtn:hover { background: #4a8cff; border-color: #4a8cff; }
+  #downloadRow #downloadAllBtn:not(.is-disabled) { background: #16a34a; border-color: #16a34a; color: #fff; }
+  #downloadRow #downloadAllBtn:not(.is-disabled):hover { background: #22b858; border-color: #22b858; }
   /* 全部下載 locked (incomplete cells): greyed out with an instant tooltip. */
   #downloadRow button.is-disabled,
   #downloadRow button.is-disabled:hover {
@@ -557,7 +562,8 @@
   .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; }
   .tip-text span { display: block; }
   .tip-text .tip-example { margin-top: 6px; font-size: 12px; }
-  .tip-chips { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .tip-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 6px; margin-top: 6px; }
+  .tip-chips .tip-chip-note { white-space: nowrap; margin-right: 6px; }
   .tip-toast .tip-text .tip-chip { display: inline-block; color: #fff; font-size: 12px; font-weight: 700; padding: 1px 8px; }
   .tip-chip-warn { background: #b45309; }
   .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: var(--muted); }
@@ -634,6 +640,8 @@
   .help-steps { margin: 0; padding-left: 20px; }
   .help-steps li { margin-bottom: 8px; }
   .help-note { color: var(--muted); font-size: 12px; }
+  .help-marks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .help-code-inline { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 12px; word-break: break-all; }
   .help-code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; margin: 4px 0; font-size: 12px; }
   .help-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: 12px; }
   .help-table th, .help-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
@@ -802,35 +810,101 @@
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg></span>
         <div class="tip-text"><b>貼上就填好</b>
-          <span>把整段推播標題（含連結）貼進「快速填入」，一次帶入所有格子。</span>
+          <span>把整段推播標題（含連結）貼進左側「快速填入」，一次帶入所有格子。</span>
           <span id="tipAutoImg" hidden>連結會順便抓文章第一張圖放進對應格子；想換圖，直接拖進新圖或按 Ctrl+V 就好。</span>
+          <span>面板收起後，上方「拼圖」右側的「快速填入」可再打開。</span>
           <div class="tip-example">★國際)婦右腳罹癌截肢 竟"鋸成左腳"怒提告<br>https://news.tvbs.com.tw/life/4030991</div>
         </div>
       </li>
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-6 2-2 6z"/></svg></span>
-        <div class="tip-text"><b>填錯了？點格子就能改</b>
-          <span>直接點預覽圖上的格子，左側就會浮出那一格的編輯面板，改完點空白處收起，不用重新快速填入。</span>
+        <div class="tip-text"><b>點格子就能改</b>
+          <span>點預覽圖上的格子，左側浮出那一格的編輯面板，點空白處收起。點黃色「熱門話題」列，可改頂部標籤。</span>
         </div>
       </li>
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></svg></span>
         <div class="tip-text"><b>小標籤</b>
-          <span>標題前面有 (文字) 或 文字) 會自動變成小標籤；要第二個標籤，到編輯區手動加。兩個都可以拖曳，靠近格子邊緣會自動吸附貼齊。</span>
+          <span>標題前面有 (文字) 或 文字) 會自動變成小標籤；要第二個標籤，到編輯面板手動加。兩個都可以拖曳，靠近格子邊緣會自動吸附貼齊。</span>
           <div class="tip-chips"><span class="tip-chip" style="background:#ff0000">獨家</span><span class="tip-chip" style="background:#a5a5a5">國際</span><span class="tip-chip-note">← 可拖曳</span></div>
         </div>
       </li>
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
-        <div class="tip-text"><b>照片</b>
-          <span>拖曳移動、滾輪縮放。可以留一點空白邊，方便放大靠邊的人物；但輸出前要把空白藏起來，不然成品會露出空白或透明。</span>
-          <div class="tip-chips"><span class="tip-chip tip-chip-warn">⚠ 別讓照片露白</span></div>
+        <div class="tip-text"><b>照片與貼圖</b>
+          <span>在格子上拖曳移動、滾輪縮放，底部可加 T寶貼圖。可以留一點空白方便放大靠邊的人物，但別讓照片露白。</span>
+          <span>想看照片「看得到」的範圍，打開底部「檢查照片邊緣」，會用紅框框出來。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg></span>
+        <div class="tip-text"><b>檢查並下載</b>
+          <span>編輯完按底部「下一步：畫面檢查」。這一步照片會鎖定，左側列出每格缺圖、缺標題與疑似露白；滑鼠移到預覽圖上的「!」會顯示原因。</span>
+          <span>都沒問題才能按「全部下載」；點預覽圖上的格子，下方可複製該格推播連結。要修改按「返回編輯」。</span>
+          <div class="tip-chips"><i class="dot ok">圖</i><i class="dot ok">字</i><span class="tip-chip-note">沒問題</span><i class="dot warn">!</i><span class="tip-chip-note">疑似露白（仍可下載）</span><i class="dot bad">!</i><span class="tip-chip-note">缺圖／缺標題</span></div>
+        </div>
+      </li>
+    </ol>
+  </div>
+  <div id="tipEntBlock" hidden>
+    <ol class="tip-steps">
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg></span>
+        <div class="tip-text"><b>貼上就填好</b>
+          <span>把整段推播標題（含連結）貼進左側「快速填入」，一次帶入全部格子（兩頁各 4 格，共 8 格）。</span>
+          <span class="tip-ent-auto" hidden>連結會順便抓文章第一張圖放進對應格子；想換圖，直接拖進新圖或按 Ctrl+V 就好。</span>
+          <span>面板收起後，上方「拼圖」右側的「快速填入」可再打開。</span>
+          <div class="tip-example">★獨家)歌手宣布開唱 票價曝光<br>https://news.tvbs.com.tw/ent/777</div>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-6 2-2 6z"/></svg></span>
+        <div class="tip-text"><b>點格子就能改</b>
+          <span>點預覽圖上的格子，左側浮出那一格的編輯面板，點空白處收起。標題第一行預設藍字、第二行黑字，標籤是藍色膠帶。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
+        <div class="tip-text"><b>照片與貼圖</b>
+          <span>在格子上拖曳移動、滾輪縮放，底部可加 T寶貼圖。照片是從相框的洞露出來，被相框、膠帶、黃色字條遮住的部分不會顯示。</span>
+          <span>想看照片「看得到」的範圍，打開底部「檢查照片邊緣」，會用紅框沿相框洞邊緣框出來。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg></span>
+        <div class="tip-text"><b>檢查並下載</b>
+          <span>編輯完按底部「下一步：畫面檢查」。這一步照片會鎖定，左側列出每格缺圖、缺標題與疑似露白；滑鼠移到預覽圖上的「!」會顯示原因。</span>
+          <span>都沒問題才能按「全部下載」；點預覽圖上的格子，下方可複製該格推播連結。要修改按「返回編輯」。</span>
+          <div class="tip-chips"><i class="dot ok">圖</i><i class="dot ok">字</i><span class="tip-chip-note">沒問題</span><i class="dot warn">!</i><span class="tip-chip-note">疑似露白（仍可下載）</span><i class="dot bad">!</i><span class="tip-chip-note">缺圖／缺標題</span></div>
+        </div>
+      </li>
+    </ol>
+  </div>
+  <div id="tipCollageBlock" hidden>
+    <ol class="tip-steps">
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg></span>
+        <div class="tip-text"><b>選版面</b>
+          <span>左側「版面方式」選「等分」（直向、橫向切 1～4 份，拖曳分隔線調比例）或「自由框」（自己拉框）。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
+        <div class="tip-text"><b>放照片</b>
+          <span>點框選取、雙擊選檔，也可以把圖拖進框，或選好後按 Ctrl+V。拖曳移動、滾輪縮放；自由框要先切到「調整照片」。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></span>
+        <div class="tip-text"><b>輸出</b>
+          <span>底部「下載」存成 1080 寬的 JPG；「直接複製」後切到新聞或娛樂，點格子按 Ctrl+V 就會貼成那格的照片。</span>
+          <span>拼圖沒有「畫面檢查」這一步。</span>
         </div>
       </li>
     </ol>
   </div>
   <div class="tip-help">
-    <p class="tip-help-lead" id="tipHelpLead">各版型的操作流程、拼圖做法、輸出格式都整理在詳細說明裡。</p>
+    <p class="tip-help-lead" id="tipHelpLead">每個步驟的細節、檢查規則與輸出格式，都整理在詳細說明裡。</p>
     <button type="button" class="primary" id="helpDetailBtn">詳細功能說明</button>
   </div>
 </aside>
@@ -843,22 +917,49 @@
     </div>
     <div class="modal-body">
 
-      <h3>操作流程</h3>
+      <h3>畫面怎麼看</h3>
+      <ul>
+        <li><b>最上方</b>：標題、版型切換（新聞／娛樂／拼圖）、進度條「① 編輯畫面 → ② 畫面檢查」（拼圖沒有這一步）。快速填入面板收起後，「拼圖」右側會出現「快速填入」按鈕可再打開（新聞版黃色標籤列被隱藏時另有「頂部標籤」按鈕）。</li>
+        <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」，兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
+        <li><b>左側</b>：浮動面板。一開始是「快速填入」；點格子變成那一格的編輯面板，點空白處收起；步驟 2 則是檢查清單。</li>
+        <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「檢查照片邊緣」開關、「清除本頁」、「下一步」；步驟 2 有提示、「返回編輯」、「下載本頁」、「全部下載」。</li>
+        <li><b>右下角</b>「!」：操作提示，5 秒沒操作會自動收起，按「!」可再打開。</li>
+      </ul>
+
+      <h3>新聞／娛樂：步驟 1 編輯畫面</h3>
       <ol class="help-steps">
-        <li><b>選版型</b>：畫面最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
-        <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
+        <li><b>選版型、選頁面</b>：最上方點「新聞」或「娛樂」，預覽圖上方點「第 1 頁／第 2 頁」。各版型、各頁的內容各自保留，切換不會不見。
           <br><span class="help-note">新聞：點預覽圖上黃色的「熱門話題」標籤列，左側會浮出「頂部標籤」面板，可改字或取消勾選隱藏；隱藏後，最上方「拼圖」右側會出現「頂部標籤」按鈕可再打開。</span></li>
-        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：點預覽圖上的格子，左側就浮出那一格的編輯面板，點空白處收起。按下「快速填入」後面板會自動收起，最上方「拼圖」右側會出現「快速填入」按鈕可以再打開。
+        <li><b>填標題</b>：在左側「快速填入」貼上內容，按「快速填入」一次套進所有格子（面板會自動收起）；也可以點格子手動輸入。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
           <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
           <span class="help-note" id="helpAutoImg" hidden><br>★ 下一行的文章連結會自動抓第一張圖放進對應格子；之後想換圖，直接拖進新圖或選好格子按 Ctrl+V 即可（手動放的圖，再按一次快速填入也不會被蓋掉）。</span></li>
-        <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
-          <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
-        <li><b>遮擋人物（選用）</b>：先選格子，再點畫面底部「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題，圖片疑似露白（照片被拖離格子，或照片本身帶白邊、透明邊）的格子會標黃色圓圈「!」，滑鼠移到預覽圖上的黃色「!」會跳出原因說明（仍可下載，但下載前會再問一次）；步驟 1 底部的「檢查照片邊緣」開關只是用紅框框出照片看得到的範圍，供編輯時參考；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
+        <li><b>放照片</b>：把圖片拖進格子、雙擊格子選檔，或選好格子後按 Ctrl+V 貼上。在照片上拖曳可移動、滑鼠滾輪可縮放，編輯面板的「重設位置」回到置中。
+          <br><span class="help-note">照片可以留一點空白邊，方便放大靠邊的人物，但輸出前不要讓成品露出空白或透明。</span></li>
+        <li><b>小標籤</b>：新聞每格有兩段標籤，第一段預設在標題上方左側，第二段（「標籤文字 2」）預設在格子右上角，兩段都能在預覽圖上拖曳，靠近格子邊緣會自動吸附貼齊，「標籤位置還原」可放回預設位置。娛樂每格一個藍色膠帶標籤，會依字數拉長。</li>
+        <li><b>T寶貼圖（選用）</b>：先點格子，再點底部工具列的表情，用來蓋住人物；拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
+        <li><b>檢查照片邊緣（選用）</b>：打開底部開關，預覽圖會用<b>紅色框線</b>框出每格照片「看得到」的範圍（新聞：扣掉黃色標籤列陰影與上下的黑色字條帶；娛樂：沿相框洞的邊緣），新聞版選取格子的藍框上下緣與它一致。這只是編輯時的參考，不會檢查或標示任何東西，也不會輸出到成品。</li>
+        <li><b>下一步</b>：編輯完按底部「下一步：畫面檢查」（或點上方進度條的 ②）。「清除本頁」只會清空目前這一頁。</li>
+      </ol>
+
+      <h3>新聞／娛樂：步驟 2 畫面檢查</h3>
+      <ol class="help-steps">
+        <li><b>照片鎖定</b>：這一步照片、標籤、貼圖都不能動；拖曳時會提醒「返回上一步更改」（顯示 3 秒）。</li>
+        <li><b>左側檢查清單</b>：逐格列出狀態——
+          <div class="help-marks"><i class="dot ok">圖</i><i class="dot ok">字</i> 綠色圓圈＝這項沒問題　<i class="dot warn">!</i> 黃色＝圖片疑似露白　<i class="dot bad">!</i> 紅色＝缺圖片或缺標題</div>
+          <span class="help-note">預覽圖有問題的格子左上角也會標同樣的圓圈，滑鼠移上去會顯示原因，移開後約 1 秒淡出。底部的提示會統計兩頁的狀況。</span></li>
+        <li><b>疑似露白怎麼判斷</b>：只看照片「看得到」的範圍（被範本遮住的部分不算）。照片沒蓋滿這個範圍（例如被拖離格子），或照片邊緣本身接近白色／透明（任一邊有 90% 以上），就會標黃色「!」。這只是提醒，<b>不鎖定下載</b>。</li>
+        <li><b>複製推播連結</b>：點預覽圖上的格子，預覽下方會出現「複製推播連結」，只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
+        <li><b>下載</b>：
+          <ul>
+            <li>「下載本頁」存目前這頁；若還有缺漏或疑似露白，會先問你。</li>
+            <li>「全部下載」存兩頁；<b>缺圖片、缺標題時是灰色、不能按</b>，全部補齊後變綠色，按下會再確認「已確認無錯字、圖片無露白？」（有疑似露白時改問「圖片有露白確定要下載嗎？」）。</li>
+          </ul></li>
+        <li><b>返回編輯</b>：要補圖、改字、移動照片，按底部藍色的「返回編輯」。</li>
       </ol>
 
       <h3>拼圖</h3>
+      <p class="help-note" style="margin:0 0 6px">拼圖沒有標題檢查，所以沒有進度條與步驟 2；左側是版面設定與編輯面板，底部是「清除拼圖」「下載」「直接複製」。</p>
       <ol class="help-steps">
         <li><b>等分</b>：選「直向等分」「橫向等分」（不切～4），在預覽圖上拖曳分隔線可調整每格比例，「平均分配」回到等分。</li>
         <li><b>自由框</b>：切到「自由框」後選「調整框」，在空白處拖曳拉出新框、拖曳框內移動、拉邊角改大小，靠近邊緣或其他框會自動貼齊；可「移到最上層／最下層」「刪除此框」（或按 Delete）。</li>
@@ -906,9 +1007,9 @@
         <li>標題太長會自動壓字距、再縮字級，不會超出格子。</li>
         <li>全形標點會自動轉成半形。</li>
         <li>標籤欄位留空就不顯示；快速填入時標籤是「國際」會自動變灰底。</li>
-        <li>新聞版每格有兩段標籤：第一段預設在標題上方左側，第二段（「標籤文字 2」）預設在格子右上角。兩段都能在預覽圖上直接拖曳，只能停在漸層／黑帶下方、標題上方，靠近格子邊緣會自動貼齊；「標籤位置還原」可一次放回預設位置。</li>
+        <li>新聞版標籤只能停在漸層／黑帶下方、標題上方。</li>
         <li>每行文字與標籤旁的色塊點一下可展開換色。</li>
-        <li>「清除本頁」只會清空目前這一頁。</li>
+        <li>各版型、各頁的內容都留在這個頁面裡；重新整理網頁就會清空，請先下載。</li>
       </ul>
     </div>
   </div>
@@ -3504,17 +3605,16 @@ helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpO
 
 // Tips popup: open on load, folds down to a round "!" button
 // after 15s with no click or scroll on it (or when ✕ is pressed); the button
-// reopens it. 新聞 shows the tips above the "詳細功能說明" button; other modes
-// show just the button (which opens the full-screen guide).
+// reopens it. Each mode shows its own quick-start tips above the "詳細功能說明" button.
 const tipToast = document.getElementById('tipToast');
 const tipFab = document.getElementById('tipFab');
 const TIP_IDLE_MS = 5000;
 let tipCollapsed = false, tipTimer = null;
 function syncTipToast() {
-  const isNews = mode === 'news';
-  document.getElementById('tipNewsBlock').hidden = !isNews;
-  document.getElementById('tipHelpLead').hidden = isNews;
-  document.getElementById('tipToastTitle').textContent = isNews ? '操作提示' : '使用說明';
+  document.getElementById('tipNewsBlock').hidden = mode !== 'news';
+  document.getElementById('tipEntBlock').hidden = mode !== 'ent';
+  document.getElementById('tipCollageBlock').hidden = mode !== 'collage';
+  document.getElementById('tipToastTitle').textContent = '操作提示';
   tipToast.classList.toggle('tip-collapsed', tipCollapsed);
   tipFab.classList.toggle('show', tipCollapsed);
 }
@@ -4096,6 +4196,7 @@ chromeReady = true;
 applyModeChrome();
 if (imageProxyUrl()) {
   document.getElementById('tipAutoImg').hidden = false;
+  document.querySelectorAll('.tip-ent-auto').forEach(e => { e.hidden = false; });
   document.getElementById('helpAutoImg').hidden = false;
   quickfillText.placeholder = '★標題第一行 標題第二行\n整段過審推播新聞貼入即可\n標題含有空格或驚嘆號、問號，就會自動換行\n（連結會自動抓文章第一張圖）';
 }
