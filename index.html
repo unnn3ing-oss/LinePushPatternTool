@@ -167,20 +167,26 @@
   .s8-step.linked::before { transform: scaleY(1); }
   .s8-step.linked.done::after { transform: scaleY(1); }
   .s8-sbody { flex: 1; min-width: 0; }
-  .s8-go { background: var(--success); border-color: transparent; color: #fff; font-weight: 700; }
-  .s8-go:hover { filter: brightness(.95); }
+  /* 所有步驟的控制項都用同一種膠囊（與「計算符合條件的客戶數」一樣）；「設定排程」「確認人數」是把輸入包在膠囊裡 */
+  .s8-steps button, .s8-pillbox { border: none; border-radius: 99px; padding: 9px 22px; font-size: 14px; font-weight: 700; background: var(--track); color: var(--text); }
+  .s8-steps button:hover { background: var(--border); }
+  .s8-steps button:disabled { opacity: .5; cursor: not-allowed; }
+  .s8-steps button.s8-go { background: var(--success); color: #fff; }
+  .s8-steps button.s8-go:hover { filter: brightness(.95); }
   .s8-status { margin-top: 8px; font-size: 13px; line-height: 1.6; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .s8-status.bad { color: #b91c1c; }
-  .s8-pair { display: flex; gap: 12px; flex-wrap: wrap; }
-  .s8-pair button.sel { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 700; }
-  .s8-when { margin-top: 10px; }
-  .s8-whenrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 14px; }
-  .s8-whenrow select { width: auto; min-width: 64px; margin: 0; }
-  .s8-whenrow select#s8Yy { min-width: 78px; }
+  .s8-pair { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .s8-pair button.sel, .s8-pillbox.sel { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+  .s8-pillbox { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; flex-wrap: wrap; }
+  .s8-pillbox.pick { cursor: pointer; }
+  .s8-pillbox select { width: auto; min-width: 58px; margin: 0; padding: 3px 6px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
+  .s8-pillbox input[type="text"] { width: 8.5em; margin: 0; padding: 3px 12px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
+  .s8-mark { min-width: 1.1em; font-weight: 800; }
+  .s8-mark.ok { color: var(--success); }
+  .s8-mark.bad { color: #dc2626; }
   .s8-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .s8-whenmsg[hidden] { display: none; }
   .s8-whenmsg.bad { color: #b91c1c; font-weight: 600; }
-  .s8-lbl { font-size: 14px; font-weight: 700; margin: 4px 0 6px; }
-  input[type="text"].s8-pill { width: 100%; max-width: 280px; border-radius: 99px; padding: 8px 16px; }
   .s8-copymsg { font-size: 13px; color: var(--muted); margin-left: 6px; }
   .s8-tip { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
   .s8-tip:empty { display: none; }
@@ -1235,37 +1241,32 @@
           <div class="s8-sbody">
             <div class="s8-pair">
               <button type="button" id="s8PickDraft">存成草稿</button>
-              <button type="button" id="s8PickSched">設定排程時間</button>
-            </div>
-            <div class="s8-when" id="s8When" hidden>
-              <div class="s8-whenrow">
-                <select id="s8Yy" aria-label="年"></select><span>年</span>
-                <select id="s8Mo" aria-label="月"></select><span>月</span>
-                <select id="s8Dd" aria-label="日"></select><span>日</span>
-                <select id="s8Hh" aria-label="時"></select><span>時</span>
-                <select id="s8Mi" aria-label="分"></select><span>分</span>
+              <div class="s8-pillbox pick" id="s8PickSched" role="button" tabindex="0" aria-label="設定排程時間">設定排程
+                <select id="s8Mo" aria-label="月"></select><span>-</span><select id="s8Dd" aria-label="日"></select><span>-</span><select id="s8Hh" aria-label="時"></select><span>:</span><select id="s8Mi" aria-label="分"></select>
               </div>
-              <div class="s8-whenmsg" id="s8WhenMsg"></div>
             </div>
+            <div class="s8-whenmsg" id="s8WhenMsg" hidden></div>
           </div>
         </div>
         <div class="s8-step" id="s8Step3" hidden>
           <i>3</i>
           <div class="s8-sbody">
-            <div class="s8-lbl">確認人數</div>
-            <input type="text" class="s8-pill" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入上面顯示的可發送人數">
+            <div class="s8-pillbox" id="s8ConfirmBox">確認人數
+              <input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入數字" aria-label="確認人數">
+              <span class="s8-mark" id="s8ConfirmMark" aria-live="polite"></span>
+            </div>
           </div>
         </div>
         <div class="s8-step" id="s8Step4" hidden>
           <i>4</i>
           <div class="s8-sbody">
-            <div><button type="button" id="s8CopyName">複製排程名稱</button> <span class="s8-copymsg" id="s8CopyMsg"></span></div>
+            <div><button type="button" id="s8CopyName">複製群發名稱</button> <span class="s8-copymsg" id="s8CopyMsg"></span></div>
           </div>
         </div>
         <div class="s8-step" id="s8Step5" hidden>
           <i>5</i>
           <div class="s8-sbody">
-            <div><button type="button" class="primary" id="s8CreateBtn">建立草稿</button></div>
+            <div><button type="button" id="s8CreateBtn">建立草稿</button></div>
             <p class="s8-tip" id="s8Tip"></p>
           </div>
         </div>
@@ -5072,6 +5073,7 @@ function s8ResetCreate() {
   s8Flow = { choice: '', copied: false };
   $s8('s8ConfirmTotal').value = '';
   $s8('s8CopyMsg').textContent = '';
+  if (typeof s8SetWhen === 'function' && $s8('s8Mo').options.length) s8SetWhen(s8DefaultWhenMs());
   $s8('s8RetryRow').hidden = true;
   s8PrepSet('');
   s8Out('s8CreateOut', '');
@@ -5089,28 +5091,32 @@ const taipeiParts = ms => { const x = new Date(ms + 8 * 3600e3); return { y: x.g
 const fromTaipei = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600e3;
 const s8FmtParts = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)} ${pad2(p.h)}:${pad2(p.mi)}`;
 const s8FmtScheduleAt = iso => String(iso || '').replace('T', ' ').slice(0, 16);   // 2026-10-07T21:30:00+08:00 → 2026-10-07 21:30
-function s8FillSelect(id, from, to, suffixPad) {
+function s8FillSelect(id, from, to) {
   const sel = $s8(id); sel.textContent = '';
-  for (let v = from; v <= to; v++) { const o = document.createElement('option'); o.value = String(v); o.textContent = suffixPad ? pad2(v) : String(v); sel.appendChild(o); }
+  for (let v = from; v <= to; v++) { const o = document.createElement('option'); o.value = String(v); o.textContent = pad2(v); sel.appendChild(o); }
 }
+const s8DefaultWhenMs = () => Math.ceil((Date.now() + 24 * 3600e3) / (5 * 60e3)) * 5 * 60e3;   // 預設 24 小時後（進位到 5 分鐘）
 function s8InitWhen() {
-  const y = taipeiParts(Date.now()).y;
-  s8FillSelect('s8Yy', y, y + 1, false); s8FillSelect('s8Mo', 1, 12, true); s8FillSelect('s8Dd', 1, 31, true);
-  s8FillSelect('s8Hh', 0, 23, true); s8FillSelect('s8Mi', 0, 59, true);
-  ['s8Yy', 's8Mo', 's8Dd', 's8Hh', 's8Mi'].forEach(id => $s8(id).addEventListener('change', () => { s8Flow.copied = false; s8UpdateSteps(); }));
+  s8FillSelect('s8Mo', 1, 12); s8FillSelect('s8Dd', 1, 31); s8FillSelect('s8Hh', 0, 23); s8FillSelect('s8Mi', 0, 59);
+  // 動到任何一個選單，就等於選了「設定排程」
+  ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].forEach(id => $s8(id).addEventListener('change', () => { s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps(); }));
+  s8SetWhen(s8DefaultWhenMs());
 }
 function s8SetWhen(ms) {
   const p = taipeiParts(ms);
-  $s8('s8Yy').value = String(p.y); $s8('s8Mo').value = String(p.mo); $s8('s8Dd').value = String(p.d); $s8('s8Hh').value = String(p.h); $s8('s8Mi').value = String(p.mi);
+  $s8('s8Mo').value = String(p.mo); $s8('s8Dd').value = String(p.d); $s8('s8Hh').value = String(p.h); $s8('s8Mi').value = String(p.mi);
 }
-// 讀目前選的時間：回傳 { ms, iso, text, err }。err 有值就不能建立。
+// 讀目前選的時間：回傳 { ms, iso, text, err }。err 有值就不能建立。年份不用選：預設當下（台北）年份，
+// 若選的月日已經明顯過去（例如 12 月底選了 1 月的日期），就當作明年。
 function s8WhenValue() {
-  const y = Number($s8('s8Yy').value), mo = Number($s8('s8Mo').value), d = Number($s8('s8Dd').value), h = Number($s8('s8Hh').value), mi = Number($s8('s8Mi').value);
-  const ms = fromTaipei(y, mo, d, h, mi);
+  const mo = Number($s8('s8Mo').value), d = Number($s8('s8Dd').value), h = Number($s8('s8Hh').value), mi = Number($s8('s8Mi').value);
+  const now = Date.now();
+  let y = taipeiParts(now).y;
+  let ms = fromTaipei(y, mo, d, h, mi);
+  if (ms < now - 2 * 86400e3) { y += 1; ms = fromTaipei(y, mo, d, h, mi); }
   const p = taipeiParts(ms);
   const out = { ms, iso: `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}:00+08:00`, text: `${y}-${pad2(mo)}-${pad2(d)} ${pad2(h)}:${pad2(mi)}`, err: '' };
-  const now = Date.now();
-  if (p.y !== y || p.mo !== mo || p.d !== d) out.err = `${y} 年 ${mo} 月沒有 ${d} 日，請重選`;
+  if (p.y !== y || p.mo !== mo || p.d !== d) out.err = `${mo} 月沒有 ${d} 日，請重選`;
   else if (ms < now + S8_MIN_LEAD_MIN * 60e3) out.err = `排程時間要在 ${S8_MIN_LEAD_MIN} 分鐘之後（最早 ${s8FmtParts(taipeiParts(Math.ceil((now + S8_MIN_LEAD_MIN * 60e3) / 60e3) * 60e3))}）`;
   else if (ms > now + S8_MAX_LEAD_DAYS * 86400e3) out.err = `排程時間最晚只能設在 ${S8_MAX_LEAD_DAYS} 天之內（最晚 ${s8FmtParts(taipeiParts(now + S8_MAX_LEAD_DAYS * 86400e3))}）`;
   return out;
@@ -5136,9 +5142,16 @@ function s8UpdateSteps() {
   mark('s8Step5', false, ready && s8Flow.copied);
   $s8('s8PickDraft').classList.toggle('sel', choice === 'draft');
   $s8('s8PickSched').classList.toggle('sel', choice === 'schedule');
-  $s8('s8When').hidden = choice !== 'schedule';
   const wm = $s8('s8WhenMsg');
+  wm.hidden = !when;
   if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || `將在 ${when.text}（台北時間）實際發送。可選範圍：${S8_MIN_LEAD_MIN} 分鐘後 ～ ${S8_MAX_LEAD_DAYS} 天內。`; }
+  // 確認人數膠囊尾端：輸入錯誤 ✗、輸入正確 ✓
+  const raw = $s8('s8ConfirmTotal').value.trim(), cm = $s8('s8ConfirmMark');
+  const typedOk = prepared && !!raw && s8Digits(raw) === s8Prepared.total;
+  cm.textContent = !raw ? '' : (typedOk ? '✓' : '✗');
+  cm.className = `s8-mark${!raw ? '' : (typedOk ? ' ok' : ' bad')}`;
+  cm.title = !raw ? '' : (typedOk ? '人數正確' : '人數不符');
+  $s8('s8ConfirmBox').classList.toggle('sel', typedOk);
   const name = $s8('s8Name').value.trim();
   const btn = $s8('s8CreateBtn'), tip = $s8('s8Tip');
   if (choice === 'schedule' && when && !when.err && prepared) {
@@ -5151,10 +5164,10 @@ function s8UpdateSteps() {
 }
 s8InitWhen();
 $s8('s8PickDraft').addEventListener('click', () => { s8Flow.choice = 'draft'; s8Flow.copied = false; s8UpdateSteps(); });
-$s8('s8PickSched').addEventListener('click', () => {
-  if (s8Flow.choice !== 'schedule') s8SetWhen(Math.ceil((Date.now() + 24 * 3600e3) / (5 * 60e3)) * 5 * 60e3);   // 預設 24 小時後（進位到 5 分鐘）
-  s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps();
-});
+// 點「設定排程」膠囊（含裡面的選單）就是選了排程；選單預設已經填好 24 小時後，開啟視窗與重新傳送時會重設
+const s8PickSchedule = () => { if (s8Flow.choice !== 'schedule') { s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps(); } };
+$s8('s8PickSched').addEventListener('click', s8PickSchedule);
+$s8('s8PickSched').addEventListener('keydown', e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); s8PickSchedule(); } });
 $s8('s8ConfirmTotal').addEventListener('input', () => { s8Flow.copied = false; s8UpdateSteps(); });
 $s8('s8PreviewBtn').addEventListener('click', () => { const u = $s8('s8PreviewBtn').dataset.url; if (/^https:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); });
 $s8('s8CopyName').addEventListener('click', async () => {
