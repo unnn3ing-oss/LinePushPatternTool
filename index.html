@@ -5039,7 +5039,9 @@ function s8AddScheduleBanner(r, org) {
   head.textContent = `⚠ 將在 ${s8FmtScheduleAt(r.scheduleAt)} 實際發送給 ${Number(r.total).toLocaleString()} 人`;
   body.textContent = `已保留 +1 天排程，不會暫停。狀態：${r.status || r.phase || '（未知）'}　taskId：${r.taskId}\n可用動作：${(r.allowedActions || []).join('、') || '（無）'}\n要取消請按下方「暫停成草稿」，或到 Super 8 Console 處理。名稱請到 Console 改成「${document.getElementById('s8Name').value.trim()}」。`;
   body.style.whiteSpace = 'pre-wrap';
-  if (!(r.allowedActions || []).includes('pause')) { btn.disabled = true; btn.title = 'S8 回報目前不能暫停'; }
+  // 只有 S8 明確回報了非空的可用動作、而且沒有 pause，才停用按鈕；清單空白或讀不到時仍讓你試（Worker 會嘗試 pause）
+  const acts = r.allowedActions || [];
+  if (acts.length && !acts.includes('pause')) { btn.disabled = true; btn.title = 'S8 回報目前不能暫停'; }
   btn.addEventListener('click', async () => {
     btn.disabled = true; btn.textContent = '暫停中…';
     try {

@@ -594,15 +594,26 @@ function pickTaskId(data) {
 }
 const pickField = (data, re) => { const f = walkStrings(data).find(([k]) => re.test(k)); return f ? f[1] : ''; };
 
+// broadcast_get 的 allowedActions 可能在任何一層（實測第一層找不到），遞迴找；找不到回 null。
+function findAllowedActions(o, depth = 0) {
+  if (!o || typeof o !== 'object' || depth > 5) return null;
+  if (Array.isArray(o.allowedActions)) return o.allowedActions;
+  for (const k of Object.keys(o)) { const r = findAllowedActions(o[k], depth + 1); if (r) return r; }
+  return null;
+}
+const snippet = d => { try { return JSON.stringify(d).slice(0, 400); } catch { return ''; } };
+
 async function pauseToDraft(mcp, orgId, taskId) {
   const g1 = await mcp.call('broadcast_get', { orgId, taskId });
-  const allowed = (g1.data && g1.data.allowedActions) || [];
-  if (!Array.isArray(allowed) || !allowed.includes('pause')) return { ok: false, why: `目前不能暫停（allowedActions：${JSON.stringify(allowed)}，狀態：${pickField(g1.data, /(^|\.)(status|phase)$/i)}）`, get: g1.data };
+  const allowed = findAllowedActions(g1.data);
+  // S8 明確回報了「非空的可用動作」卻沒有 pause 才放棄；清單找不到或是空的，仍嘗試 pause（pause 是安全方向，S8 自己會拒絕不合法的狀態）
+  if (allowed && allowed.length && !allowed.includes('pause')) return { ok: false, why: `目前不能暫停（allowedActions：${JSON.stringify(allowed)}，狀態：${pickField(g1.data, /(^|\.)(status|phase)$/i)}）`, get: g1.data };
   const upd = await mcp.call('broadcast_update', { orgId, taskId, action: 'pause' });
   if (upd.isError) return { ok: false, why: `暫停失敗：${toolText(upd)}`, get: g1.data };
   const g2 = await mcp.call('broadcast_get', { orgId, taskId });
   const status = pickField(g2.data, /(^|\.)status$/i), phase = pickField(g2.data, /(^|\.)phase$/i);
-  return { ok: status === 'draft' || phase === 'draft', status, phase, get: g2.data };
+  const ok = status === 'draft' || phase === 'draft';
+  return { ok, why: ok ? undefined : `已送出暫停，但狀態仍是 ${status || phase || '（未知）'}（S8 回傳：${snippet(g2.data)}）`, status, phase, get: g2.data };
 }
 
 const S8_CREATE_MODES = new Set(['draft', 'schedule']);   // draft（預設）：建立後立刻暫停成草稿；schedule：使用者明確選擇保留 +1 天排程
@@ -638,7 +649,7 @@ async function handleS8Create(request, env) {
       // 保留排程：不呼叫 broadcast_update，只用 broadcast_get（唯讀）確認狀態與可用動作
       const g = await mcp.call('broadcast_get', { orgId: prep.orgId, taskId });
       if (g.isError) return jsonOk({ ok: false, created: true, mode, taskId, warning: `群發已建立並保留排程，但讀取狀態失敗（${toolText(g)}）。它會在 ${scheduleAt} 實際發送給 ${total} 人，請到 Super 8 Console 確認，或按「暫停成草稿」。`, scheduleAt, total, orgId: prep.orgId, session: refreshed }, request, env);
-      const allowedActions = Array.isArray(g.data && g.data.allowedActions) ? g.data.allowedActions : [];
+      const allowedActions = findAllowedActions(g.data) || [];
       return jsonOk({ ok: true, mode: 'schedule', taskId, scheduleAt, status: pickField(g.data, /(^|\.)status$/i), phase: pickField(g.data, /(^|\.)phase$/i), allowedActions, total, orgId: prep.orgId, session: refreshed }, request, env);
     }
     const paused = await pauseToDraft(mcp, prep.orgId, taskId);
