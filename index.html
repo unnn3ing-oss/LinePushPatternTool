@@ -1721,12 +1721,18 @@ function newsTextBottom(cell) {
   // y = edge - (gap - 5) leaves exactly `gap` px of black below the text.
   return edge === undefined ? cell.y + cell.h : edge - (TOP_ROW_TEXT_GAP - 5);
 }
-// The template's black gradient over the top row's photos (it fades in from clear to solid black, 55px
-// tall, just above the headline) starts above the small tags once the headlines sit lower. The gradient is
-// slid down so its top edge lines up with the top of the bottom-left tag; the solid black band below it is
-// shortened to fit, so its lower edge (NEWS_BAND_EDGE) does not move. Both the drawn template and the
-// 露白 visibility map use this adjusted copy.
-const NEWS_GRADIENT_TOP = { h: 263, p: 246 };   // first row of the top-row gradient in each template PNG
+// The template's black gradient over the photos (it fades in from clear to solid black, 55px tall, just
+// above the headline) was drawn for headlines at the old height. With the top row's headlines lower, the
+// top row's gradient is slid down so that it starts the same distance above the bottom-left tag as the
+// bottom row's does (the tag sits that far into the gradient). The solid black band below it is shortened
+// to fit, so its lower edge (NEWS_BAND_EDGE) does not move. Both the drawn template and the 露白 visibility
+// map use this adjusted copy.
+const NEWS_GRADIENT_TOP = { h: 263, p: 247 };       // first row of the top-row gradient in each template PNG
+const NEWS_GRADIENT_TOP_ROW2 = { h: 648, p: 645 };  // same for the bottom row (left as drawn)
+// top of the default bottom-left tag of a two-line headline at the standard sizes (see newsTagLimitBottom)
+function stdTagTop(textBottom) {
+  return textBottom - 4 - BASE_FONT_SIZE * 0.5 - BASE_FONT_SIZE * 1.18 - BASE_FONT_SIZE * 0.5 - TAG_GAP - (TAG_BASE_FONT_SIZE + TAG_PAD_Y * 2);
+}
 const newsTemplateCache = new Map();
 function newsTemplate(showHeader) {
   const img = showHeader ? templateHeaderImg : templatePlainImg;
@@ -1736,10 +1742,10 @@ function newsTemplate(showHeader) {
   const rowTop = showHeader ? ROW_EDGES_HEADER[0] : ROW_EDGES_PLAIN[0];
   const edge = NEWS_BAND_EDGE[rowTop];
   const gTop = NEWS_GRADIENT_TOP[key];
-  // top of the default bottom-left tag of a two-line headline at the standard sizes (see newsTagLimitBottom)
-  const tagTop = Math.round(newsTextBottom({ y: rowTop, h: 0 }) - 4 - BASE_FONT_SIZE * 0.5 - BASE_FONT_SIZE * 1.18
-    - BASE_FONT_SIZE * 0.5 - TAG_GAP - (TAG_BASE_FONT_SIZE + TAG_PAD_Y * 2));
-  const d = tagTop - gTop;
+  const rows = showHeader ? ROW_EDGES_HEADER : ROW_EDGES_PLAIN;
+  const lead2 = stdTagTop(rows[2]) - NEWS_GRADIENT_TOP_ROW2[key];          // bottom row: gradient starts this far above the tag
+  const gradTarget = Math.round(stdTagTop(newsTextBottom({ y: rowTop, h: 0 })) - lead2);   // where the top row's gradient should start
+  const d = gradTarget - gTop;
   let out = img;
   if (d > 0) {
     const c = document.createElement('canvas');
@@ -1747,8 +1753,8 @@ function newsTemplate(showHeader) {
     const x = c.getContext('2d');
     x.drawImage(img, 0, 0, NEWS_W, NEWS_H);
     x.clearRect(0, gTop, NEWS_W, edge - gTop);
-    // rows [gTop, edge - d) of the template move down to [tagTop, edge)
-    x.drawImage(img, 0, gTop, NEWS_W, edge - d - gTop, 0, tagTop, NEWS_W, edge - d - gTop);
+    // rows [gTop, edge - d) of the template move down to [gradTarget, edge)
+    x.drawImage(img, 0, gTop, NEWS_W, edge - d - gTop, 0, gradTarget, NEWS_W, edge - d - gTop);
     out = c;
   }
   newsTemplateCache.set(key, out);
