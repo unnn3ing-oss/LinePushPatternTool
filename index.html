@@ -1783,8 +1783,14 @@ function newsTagLimitBottom(cell, f) {
 // text band) down to the top of the first headline line (the small tag's lower edge).
 function newsPhotoFrame(ctx, cell, state, showHeader) {
   const top = cardVisibleWindow(cell, showHeader).top;
-  const f = computeCardFit(ctx, cell, state);
-  return { top, bottom: clamp(newsTagLimitBottom(cell, f), top + 24, cell.y + cell.h) };
+  // Measured from the standard font size (like the headline's own baseline), not this cell's possibly
+  // shrunk one, so the frames of a row all end at the same height.
+  const hasLine1 = !!(state.line1 || '').trim(), hasLine2 = !!(state.line2 || '').trim();
+  const bottomAnchor = cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5;
+  const topLineBaseline = hasLine1 ? bottomAnchor - (hasLine2 ? BASE_FONT_SIZE * 1.18 : 0)
+    : hasLine2 ? bottomAnchor : cell.y + cell.h - 4;
+  const bottom = topLineBaseline - BASE_FONT_SIZE * 0.5 - TAG_GAP;
+  return { top, bottom: clamp(bottom, top + 24, cell.y + cell.h) };
 }
 
 // Topmost tag under the point (tag 2 is drawn last, so it wins).
