@@ -4913,10 +4913,19 @@ async function s8Check() {
   try {
     const d = await s8Api('/s8/status', {}, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
     if (d.session) s8Set(S8_SESSION_KEY, d.session);
-    const me = d.me && d.me.data, orgs = d.organizations && d.organizations.data;
-    const orgNames = Array.isArray(orgs) ? orgs.map(o => o.name || o.id).join('、') : JSON.stringify(orgs);
+    // Real S8 shapes: me.data = { user: { id, email, firstName, lastName }, organizations: [...] };
+    // organizations.data = { organizations: [{ id, displayName, insightArkMcpDisabled }] }.
+    const me = (d.me && d.me.data) || {};
+    const user = me.user || me;
+    const who = [user.lastName, user.firstName].filter(Boolean).join('') || user.name || '';
+    const orgList = (d.organizations && d.organizations.data && d.organizations.data.organizations) || (d.organizations && d.organizations.data) || me.organizations || [];
+    const orgs = Array.isArray(orgList) ? orgList : [];
     s8UpdatePill('已連結（唯讀）');
-    s8ShowOut(`身分：${me && (me.name || me.email) ? (me.name || '') + (me.email ? `（${me.email}）` : '') : JSON.stringify(me)}\n可管理的組織：${orgNames}\n授權範圍：${d.scope}\n\n原始回應：\n${JSON.stringify({ me: d.me, organizations: d.organizations }, null, 2)}`);
+    s8ShowOut([
+      `身分：${who || '（未取得姓名）'}${user.email ? `（${user.email}）` : ''}`,
+      `可管理的組織：${orgs.length ? orgs.map(o => `${o.displayName || o.name || o.id}${o.insightArkMcpDisabled ? '（未啟用 InsightArk MCP）' : ''}`).join('、') : '（沒有）'}`,
+      `授權範圍：${d.scope}`,
+    ].join('\n'));
   } catch (e) {
     s8UpdatePill('連結失敗');
     s8ShowOut(e.message);
