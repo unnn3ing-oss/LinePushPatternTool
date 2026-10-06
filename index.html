@@ -1144,6 +1144,8 @@
           <label style="display:flex; gap:8px; align-items:center; margin:0 0 6px; font-size:14px; color:var(--text)"><input type="radio" name="s8Target" id="s8TargetAll" value="all" checked style="width:auto; margin:0">全部 LINE 顧客（不加標籤條件）</label>
           <label style="display:flex; gap:8px; align-items:center; margin:0; font-size:14px; color:var(--text)"><input type="radio" name="s8Target" id="s8TargetTag" value="tag" style="width:auto; margin:0">指定標籤</label>
           <input type="text" id="s8Tag" autocomplete="off" placeholder="標籤名稱（S8 裡的名稱）" style="margin-top:6px" disabled>
+          <div class="btn-row" style="margin-top:8px"><button type="button" id="s8CountBtn">試算全部 LINE 顧客人數（唯讀）</button></div>
+          <pre class="s8c-out" id="s8CountOut" hidden></pre>
         </div>
         <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="必填：來自「推播標題」">
       </div>
@@ -4696,7 +4698,7 @@ const S8_SAFETY_RULES = [
   '建立前，先用 messaging_message_preview 給我每一則訊息的預覽，並用 broadcast_audience_preview 顯示可發送人數與 previewRef，等我明確回覆「確認」才建立；預覽後我若要改內容，要重新預覽。',
   '圖片只能用我附上的兩張 PNG，透過 media_upload_url 取得上傳網址後上傳；不要換圖，也不要重新繪製。',
   '發送對象要完全照上面寫的：不得自行增加、減少或更換任何標籤條件、性別、客戶群等篩選；人數與預覽先給我確認，數字和我預期差很多就停止。',
-  '圖片尺寸是 1040 寬、高 800（新聞）或 1040（娛樂）。若 imagemap 的 size／aspectRatio 不接受這個尺寸，停止並回報，不要自行裁切、縮放或改圖。',
+  '圖片尺寸是 1040 寬、高 800（新聞）或 1040（娛樂）；imagemap 的 size 照這個填，不需要 aspectRatio。若工具不接受這個尺寸，停止並回報，不要自行裁切、縮放或改圖。上傳圖片請用 media_upload_url（purpose=imagemap，contentType=image/png）。',
   '工具報錯、座標或連結對不上、找不到標籤時，停止並回報；不要自行猜測，也不要改用其他標籤、平台或組織。',
 ];
 
@@ -4734,7 +4736,7 @@ function buildS8Prompt(d) {
   out.push('■ 基本設定');
   out.push(`- 組織：${d.account}`);
   out.push('- 平台：line（只選這一個）');
-  out.push(`- 群發名稱：${d.name}`);
+  out.push(`- 群發名稱：${d.name}（注意：broadcast_create 沒有名稱欄位，你無法設定；建立並暫停成草稿後，請明確提醒我到 Super 8 Console 把這筆草稿的名稱改成「${d.name}」，並把 taskId 告訴我）`);
   if (d.target === 'tag') out.push(`- 發送對象：標籤「${d.tag}」（先用 broadcast_audience_preview 試算，把可發送人數與 previewRef 給我確認）`);
   else out.push('- 發送對象：全部 LINE 顧客，不加任何標籤條件、不加其他篩選（先用 broadcast_audience_preview 試算，把可發送人數與 previewRef 給我確認；全部顧客可能是數十萬人，數字出來後務必明講並等我確認）');
   out.push(`- 推播通知文字（圖文訊息的 altText）：${d.alt}`);
@@ -4758,7 +4760,7 @@ function buildS8Prompt(d) {
   out.push('■ 結構化資料（與上面相同，供核對）');
   out.push(JSON.stringify({
     organization: d.account, platform: 'line', name: d.name,
-    audience: d.target === 'tag' ? { type: 'tag', tag: d.tag } : { type: 'all-line-customers', filters: 'none' },
+    audience: d.target === 'tag' ? { type: 'tag', tag: d.tag } : { type: 'all-line-customers', recipients: { where: { platforms: ['line'] } }, note: '只限定平台，不加任何其他條件；以 broadcast_audience_preview 的結果為準' },
     schedule: 'scheduleAt = now(+08:00) + 24h (RFC 3339, strictly future); then pause into a draft; never omit scheduleAt',
     messages: d.pages.map(pg => ({
       contentType: 'application/x-template',
@@ -4766,7 +4768,7 @@ function buildS8Prompt(d) {
         templateType: 'imagemap', altText: d.alt,
         elements: [{
           title: `${d.name} 第${pg.page}則`, imageFile: pg.file, imageUrl: '(media_upload_url 上傳後取得的 https 網址)',
-          size: { width: W, height: H }, aspectRatio: '(依工具說明；不接受就停止回報)', messageTemplateType: 'ImagemapTemplate1',
+          size: { width: W, height: H }, messageTemplateType: 'ImagemapTemplate1',
           buttons: pg.cells.map(c => ({ title: `項目${c.n}（${c.label}）`, type: 'url', data: c.url, tags: [],
             x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })),
         }],
@@ -4886,6 +4888,17 @@ function closeS8Dialog() {
 }
 ['s8Name', 's8Tag', 's8Alt'].forEach(id => document.getElementById(id).addEventListener('input', s8Refresh));
 ['s8TargetAll', 's8TargetTag'].forEach(id => document.getElementById(id).addEventListener('change', s8Refresh));
+document.getElementById('s8CountBtn').addEventListener('click', async () => {
+  const out = document.getElementById('s8CountOut');
+  const btn = document.getElementById('s8CountBtn');
+  if (!s8Get(S8_SESSION_KEY)) { out.hidden = false; out.textContent = '請先按右上角「S8 未連結」完成連結'; return; }
+  btn.disabled = true; out.hidden = false; out.textContent = `向 S8（${S8_ACCOUNT[mode]}）試算中…`;
+  try {
+    const d = await s8Api('/s8/audience', { org: mode }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
+    out.textContent = `組織：${d.org.name}\nS8 試算結果（唯讀，沒有建立任何東西）：\n${JSON.stringify(d.result.data !== undefined ? d.result.data : d.result, null, 2)}`;
+  } catch (e) { out.textContent = e.message; }
+  btn.disabled = false;
+});
 document.getElementById('s8CloseBtn').addEventListener('click', closeS8Dialog);
 document.getElementById('s8CancelBtn').addEventListener('click', closeS8Dialog);
 s8Overlay.addEventListener('mousedown', e => { if (e.target === s8Overlay) closeS8Dialog(); });

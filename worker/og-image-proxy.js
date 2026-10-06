@@ -22,6 +22,7 @@
 //   POST /s8/login-start  → 取得 S8 授權頁網址（只請求 insightark-mcp:read 範圍）
 //   GET  /s8/callback     → S8 授權完成後跳回這裡，換取憑證、加密後交還網頁
 //   POST /s8/status       → 用憑證呼叫 auth_me、auth_organizations（唯讀）
+//   POST /s8/audience     → 試算「全部 LINE 顧客」可發送人數（broadcast_audience_preview，唯讀；組織與參數都由 Worker 固定）
 //   POST /s8/tools        → 列出 S8 工具的名稱與欄位定義（MCP tools/list，唯讀，不執行任何工具）
 // S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
 
@@ -169,7 +170,8 @@ async function handleLabPing(request, env) {
 // 這個階段只請求 read 範圍，且只允許呼叫 S8_READ_TOOLS 內的工具，所以 Worker 無法寫入、發送或排程任何東西。
 const S8_BASE_DEFAULT = 'https://api-next.no8.io';
 const S8_SCOPE_READ = 'insightark-mcp:read';
-const S8_READ_TOOLS = new Set(['auth_me', 'auth_organizations']);   // 階段一唯一允許的 MCP 工具
+const S8_READ_TOOLS = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview']);   // 唯讀工具白名單（只有試算人數，沒有任何建立／發送／排程）
+const S8_ORG_NAMES = { news: 'TVBS新聞', ent: 'TVBS娛樂頭條' };   // 組織只能從這兩個名稱解析，不採信網頁傳來的 orgId
 // 查看工具定義時只列出和群發有關的工具（名稱、說明、欄位），不呼叫它們。
 const S8_TOOLS_SHOWN = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview', 'broadcast_create', 'broadcast_update', 'broadcast_get', 'messaging_message_preview', 'media_upload_url', 'crm_tag_list']);
 const S8_STATE_TTL_MS = 10 * 60 * 1000;
@@ -378,6 +380,30 @@ async function mcpListTools(env, token) {
   return all.filter(t => S8_TOOLS_SHOWN.has(t.name)).map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
 }
 
+async function handleS8Audience(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  let body = {};
+  try { body = JSON.parse((await request.text()) || '{}'); } catch { return jsonError(400, '格式不正確', request, env); }
+  const orgName = S8_ORG_NAMES[body.org];
+  if (!orgName) return jsonError(400, 'org 只能是 news 或 ent', request, env);
+  const sess = await s8Open(env, request.headers.get('X-S8-Session'));
+  if (!sess || !sess.a) return jsonError(401, '尚未連結 S8（或連結資料無效），請重新連結', request, env);
+  if (sess.e < Date.now() + 30 * 1000) return jsonError(401, '憑證即將過期，請先在「連結 S8」視窗按「重新檢查」更新後再試', request, env);
+  try {
+    // 組織 id 由 S8 自己的清單依名稱解析
+    const first = await mcpCallTools(env, sess.a, [{ name: 'auth_organizations' }]);
+    const list = (first.auth_organizations.data && first.auth_organizations.data.organizations) || [];
+    const org = list.find(o => o.displayName === orgName);
+    if (!org || !org.id) return jsonError(404, `S8 帳號下找不到組織「${orgName}」`, request, env);
+    // 參數全部固定：LINE、只限定平台，不加任何標籤或其他條件；不要樣本。
+    const res = await mcpCallTools(env, sess.a, [{ name: 'broadcast_audience_preview', args: { orgId: org.id, platform: 'line', recipients: { where: { platforms: ['line'] } }, includeSample: false } }]);
+    return jsonOk({ ok: true, org: { id: org.id, name: orgName }, result: res.broadcast_audience_preview }, request, env);
+  } catch (e) {
+    return jsonError(e.status === 401 ? 401 : 502, e.message || '無法呼叫 S8', request, env);
+  }
+}
+
 async function handleS8Tools(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
@@ -425,6 +451,7 @@ export default {
     if (path === '/s8/callback') return handleS8Callback(request, env);
     if (path === '/s8/status') return handleS8Status(request, env);
     if (path === '/s8/tools') return handleS8Tools(request, env);
+    if (path === '/s8/audience') return handleS8Audience(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 
     const articleParam = new URL(request.url).searchParams.get('url');

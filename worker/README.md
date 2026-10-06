@@ -44,6 +44,7 @@
 | 授權範圍 | 只請求 `insightark-mcp:read`；程式內只允許這兩個唯讀工具，**沒有任何建立、發送、排程的程式路徑** |
 | 憑證保存 | 網頁只存一串加密字串（分頁關閉就消失）；解密只有 Worker 能做；改 `LAB_PASSWORD` 後舊字串全部失效 |
 | 用戶端註冊 | 第一次連結時 Worker 向 S8 動態註冊（公開用戶端、跳轉位址 `https://<worker網址>/s8/callback`），之後瀏覽器記住 client id，不重複註冊 |
+| 試算人數 | `POST /s8/audience` 呼叫 `broadcast_audience_preview`（唯讀）：組織只能是 `news`（TVBS新聞）或 `ent`（TVBS娛樂頭條），由 Worker 依名稱向 S8 解析 id；參數固定為 LINE、只限定平台、不加標籤或其他條件、不取樣本，網頁傳來的任何篩選一律忽略 |
 | 查看工具定義 | `POST /s8/tools` 只做 MCP 的 `tools/list`（列出與群發有關的工具名稱、說明、欄位），不執行任何工具 |
 | 撤銷授權 | S8 Console → 使用者資訊 → Connected Apps；網頁上的「中斷連線」只會清掉這個分頁的連結資料 |
 
