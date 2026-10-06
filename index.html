@@ -391,6 +391,7 @@
   .gap-tip.show { opacity: 1; }
   .gap-tip[hidden] { display: none; }
   .gap-tip b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .lab-tip { padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 700; white-space: nowrap; }
   /* Same size as the buttons beside it in the dock. */
   .dock-chip { box-sizing: border-box; font-size: 14px; font-weight: 700; padding: 9px 18px; border: 1px solid transparent; border-radius: 99px; white-space: nowrap; }
   .dock-chip[hidden] { display: none !important; }
@@ -823,7 +824,7 @@
   <p class="sub" id="modeSub" hidden></p>
   <div class="tb-right">
     <button type="button" class="lab-toggle s8-link" id="s8Link" data-state="off" title="連結 SUPER 8 Studio（OAuth）">S8 未連結</button>
-    <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false" title="S8串接測試">試驗功能</button>
+    <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false" aria-describedby="labTip">試驗功能</button>
   </div>
 </header>
 
@@ -939,6 +940,7 @@
 </div>
 
 <div class="gap-tip" id="gapTip" role="tooltip" hidden></div>
+<div class="gap-tip lab-tip" id="labTip" role="tooltip" hidden>S8串接測試</div>
 <button type="button" class="primary cell-copy" id="cellCopyBtn" hidden>複製推播連結</button>
 
 <div class="lock-toast" id="lockToast" role="status" hidden>
@@ -4774,7 +4776,6 @@ function setLab(on) {
   document.body.classList.toggle('lab-on', on);
   document.getElementById('labBadge').hidden = !on;
   labToggle.setAttribute('aria-pressed', String(on));
-  labToggle.title = 'S8串接測試';
   try { sessionStorage.setItem('labOn', on ? '1' : '0'); } catch (e) { /* tab-only convenience */ }
   cellSelected = false; headerSelected = false;
   s8UpdatePill();
@@ -4813,6 +4814,30 @@ async function submitLabLogin() {
   }
   labEnterBtn.disabled = false;
 }
+// 滑過「試驗功能」：用懸浮泡泡（跟「!」的提示同款）顯示「S8串接測試」，不用瀏覽器內建的小提示
+const labTip = document.getElementById('labTip');
+let labTipTimer = null;
+function showLabTip() {
+  clearTimeout(labTipTimer);
+  labTip.hidden = false;
+  const r = labToggle.getBoundingClientRect();
+  labTip.style.left = '0px'; labTip.style.top = '0px';
+  const w = labTip.offsetWidth;
+  labTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+  labTip.style.top = `${r.bottom + 10}px`;
+  void labTip.offsetWidth;
+  labTip.classList.add('show');
+}
+function hideLabTip() {
+  labTip.classList.remove('show');
+  clearTimeout(labTipTimer);
+  labTipTimer = setTimeout(() => { if (!labTip.classList.contains('show')) labTip.hidden = true; }, 320);
+}
+labToggle.addEventListener('mouseenter', showLabTip);
+labToggle.addEventListener('mouseleave', hideLabTip);
+labToggle.addEventListener('focus', showLabTip);
+labToggle.addEventListener('blur', hideLabTip);
+labToggle.addEventListener('click', hideLabTip);
 labToggle.addEventListener('click', () => {
   if (labOn) { setLab(false); return; }
   if (readLabAuth()) { setLab(true); return; }
