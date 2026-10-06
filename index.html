@@ -234,8 +234,8 @@
   #downloadRow button:hover { background: #3a414b; }
   #downloadRow button.primary { background: #2f7bff; border-color: #2f7bff; }
   #downloadRow button.primary:hover { background: #4a8cff; border-color: #4a8cff; }
-  #downloadRow button.ghost { background: transparent; border-color: transparent; color: #aab1bb; font-weight: 500; }
-  #downloadRow button.ghost:hover { color: #fff; background: #2d333b; }
+  #downloadRow button.ghost { background: #4b5563; border-color: #4b5563; color: #f3f4f6; font-weight: 600; }
+  #downloadRow button.ghost:hover { background: #5d6877; border-color: #5d6877; color: #fff; }
   /* 拼圖: 直接複製 is the highlighted (blue) button, 下載 stays white. */
   #downloadRow button.light { background: #fff; border-color: #fff; color: #1f2328; }
   #downloadRow button.light:hover { background: #e6e8eb; border-color: #e6e8eb; }
@@ -1461,7 +1461,7 @@ function drawTemplateOverlay(ctx, showHeader) {
     if (templateEntImg) ctx.drawImage(templateEntImg, 0, 0, CANVAS_W, CANVAS_H);
     return;
   }
-  const img = showHeader ? templateHeaderImg : templatePlainImg;
+  const img = newsTemplate(showHeader);
   if (!img) return;
   // Exporting at an exact multiple of the template: copy its pixels as they are (no re-smoothing).
   ctx.save();
@@ -1720,6 +1720,39 @@ function newsTextBottom(cell) {
   // The ink of the last line ends 6px above this y (4px padding + the glyph's own side bearing), so
   // y = edge - (gap - 5) leaves exactly `gap` px of black below the text.
   return edge === undefined ? cell.y + cell.h : edge - (TOP_ROW_TEXT_GAP - 5);
+}
+// The template's black gradient over the top row's photos (it fades in from clear to solid black, 55px
+// tall, just above the headline) starts above the small tags once the headlines sit lower. The gradient is
+// slid down so its top edge lines up with the top of the bottom-left tag; the solid black band below it is
+// shortened to fit, so its lower edge (NEWS_BAND_EDGE) does not move. Both the drawn template and the
+// 露白 visibility map use this adjusted copy.
+const NEWS_GRADIENT_TOP = { h: 263, p: 246 };   // first row of the top-row gradient in each template PNG
+const newsTemplateCache = new Map();
+function newsTemplate(showHeader) {
+  const img = showHeader ? templateHeaderImg : templatePlainImg;
+  if (!img) return null;
+  const key = showHeader ? 'h' : 'p';
+  if (newsTemplateCache.has(key)) return newsTemplateCache.get(key);
+  const rowTop = showHeader ? ROW_EDGES_HEADER[0] : ROW_EDGES_PLAIN[0];
+  const edge = NEWS_BAND_EDGE[rowTop];
+  const gTop = NEWS_GRADIENT_TOP[key];
+  // top of the default bottom-left tag of a two-line headline at the standard sizes (see newsTagLimitBottom)
+  const tagTop = Math.round(newsTextBottom({ y: rowTop, h: 0 }) - 4 - BASE_FONT_SIZE * 0.5 - BASE_FONT_SIZE * 1.18
+    - BASE_FONT_SIZE * 0.5 - TAG_GAP - (TAG_BASE_FONT_SIZE + TAG_PAD_Y * 2));
+  const d = tagTop - gTop;
+  let out = img;
+  if (d > 0) {
+    const c = document.createElement('canvas');
+    c.width = NEWS_W; c.height = NEWS_H;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0, NEWS_W, NEWS_H);
+    x.clearRect(0, gTop, NEWS_W, edge - gTop);
+    // rows [gTop, edge - d) of the template move down to [tagTop, edge)
+    x.drawImage(img, 0, gTop, NEWS_W, edge - d - gTop, 0, tagTop, NEWS_W, edge - d - gTop);
+    out = c;
+  }
+  newsTemplateCache.set(key, out);
+  return out;
 }
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 4;
@@ -3096,7 +3129,7 @@ let imgIdCounter = 0;
 const overlayAlphaCache = new Map();
 // Alpha channel of the 新聞 template for this page, or null if it can't be read.
 function overlayAlphaData(showHeader) {
-  const img = showHeader ? templateHeaderImg : templatePlainImg;
+  const img = newsTemplate(showHeader);
   if (!img) return null;
   const key = showHeader ? 'h' : 'p';
   if (overlayAlphaCache.has(key)) return overlayAlphaCache.get(key);
