@@ -2889,7 +2889,7 @@ function pageMissingReport(pageState) {
 //      scanned — an edge counts as white when >= 90% of its pixels are near-white (R,G,B >= 240)
 //      or see-through. This also catches photos that carry their own white / transparent border.
 const EDGE_BAND_PX = 3, EDGE_WHITE_MIN = 240, EDGE_WHITE_RATIO = 0.9;
-const OVERLAY_HIDE_ALPHA = 200;   // template pixels at least this opaque (0-255) hide a white gap
+const OVERLAY_HIDE_ALPHA = 240;   // template pixels at least this opaque (0-255, ~94%) hide a white gap; higher = stricter
 let imgIdCounter = 0;
 const overlayAlphaCache = new Map();
 // Alpha channel of the 新聞 template for this page, or null if it can't be read.
