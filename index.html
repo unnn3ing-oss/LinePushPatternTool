@@ -916,7 +916,7 @@
         <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」，兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
         <li><b>左側</b>：浮動面板。一開始是「快速填入」；點格子變成那一格的編輯面板，點空白處收起；步驟 2 則是檢查清單。</li>
         <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「檢查照片邊緣」開關、「清除本頁」、「下一步」；步驟 2 有提示、「返回編輯」、「下載本頁」、「全部下載」。</li>
-        <li><b>右下角</b>「!」：操作提示，5 秒沒操作會自動收起，按「!」可再打開。</li>
+        <li><b>右下角</b>「!」：操作提示。剛開啟網頁時約 5 秒後自動收起；游標移到彈窗上就會一直顯示，移出彈窗外 1 秒後漸漸收起；按「!」可再打開。</li>
       </ul>
 
       <h3>新聞／娛樂：步驟 1 編輯畫面</h3>
@@ -3634,8 +3634,9 @@ helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpO
 // reopens it. Each mode shows its own quick-start tips above the "詳細功能說明" button.
 const tipToast = document.getElementById('tipToast');
 const tipFab = document.getElementById('tipFab');
-const TIP_IDLE_MS = 5000;
-let tipCollapsed = false, tipTimer = null;
+const TIP_IDLE_MS = 5000;     // folds away this long after it opens (or after the last click / scroll on it)
+const TIP_LEAVE_MS = 1000;   // ...but while the pointer is over it, it stays; this long after the pointer leaves
+let tipCollapsed = false, tipTimer = null, tipHover = false;
 function syncTipToast() {
   document.getElementById('tipNewsBlock').hidden = mode !== 'news';
   document.getElementById('tipEntBlock').hidden = mode !== 'ent';
@@ -3644,19 +3645,28 @@ function syncTipToast() {
   tipToast.classList.toggle('tip-collapsed', tipCollapsed);
   tipFab.classList.toggle('show', tipCollapsed);
 }
-function armTipTimer() {
+function armTipTimer(ms = TIP_IDLE_MS) {
   clearTimeout(tipTimer);
-  if (!tipCollapsed) tipTimer = setTimeout(() => setTipCollapsed(true), TIP_IDLE_MS);
+  if (!tipCollapsed && !tipHover) tipTimer = setTimeout(() => setTipCollapsed(true), ms);
 }
 function setTipCollapsed(v) {
   tipCollapsed = v;
+  if (v) tipHover = false;
   syncTipToast();
   armTipTimer();
 }
 document.getElementById('tipToastClose').addEventListener('click', () => setTipCollapsed(true));
-tipFab.addEventListener('click', () => setTipCollapsed(false));
+// Reopened from the "!" button: the popup appears right where the pointer is, so count it as hovering
+// (the browser may not send a mouseenter until the pointer moves).
+tipFab.addEventListener('click', () => { setTipCollapsed(false); tipHover = true; clearTimeout(tipTimer); });
 ['pointerdown', 'wheel', 'scroll', 'touchmove', 'keydown'].forEach(ev =>
-  tipToast.addEventListener(ev, armTipTimer, { passive: true }));
+  tipToast.addEventListener(ev, () => armTipTimer(), { passive: true }));
+tipToast.addEventListener('mouseenter', () => { tipHover = true; clearTimeout(tipTimer); });
+tipToast.addEventListener('mouseleave', () => { tipHover = false; armTipTimer(TIP_LEAVE_MS); });
+// Fallback when the pointer leaves without a mouseleave having been seen (see above).
+document.addEventListener('mousemove', e => {
+  if (tipHover && !tipCollapsed && !tipToast.contains(e.target)) { tipHover = false; armTipTimer(TIP_LEAVE_MS); }
+});
 armTipTimer();
 
 const stickerHintShown = { news: false, ent: false };
