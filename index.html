@@ -932,7 +932,7 @@
           <br><span class="help-note">新聞：點預覽圖上黃色的「熱門話題」標籤列，左側會浮出「頂部標籤」面板，可改字或取消勾選隱藏；隱藏後，最上方「拼圖」右側會出現「頂部標籤」按鈕可再打開。</span></li>
         <li><b>填標題</b>：在左側「快速填入」貼上內容，按「快速填入」一次套進所有格子（面板會自動收起）；也可以點格子手動輸入。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
-          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
+          <span class="help-note">★ 開頭一則一格；「標籤)」或「（標籤）」寫在★後面會變成標籤，不寫就沒有標籤；新聞版可以連寫兩個標籤，例如 ★（國際）（急集體隔離）標題…：其中「國際」或「獨家」會自動放在格子右上角（第二標籤），另一個放在左下角（第一標籤）；若不是這種組合，第一個放左下角、第二個放右上角（娛樂版只有一個標籤，取第一個）；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
           <span class="help-note" id="helpAutoImg" hidden><br>★ 下一行的文章連結會自動抓第一張圖放進對應格子；之後想換圖，直接拖進新圖或選好格子按 Ctrl+V 即可（手動放的圖，再按一次快速填入也不會被蓋掉）。</span></li>
         <li><b>放照片</b>：把圖片拖進格子、雙擊格子選檔，或選好格子後按 Ctrl+V 貼上。在照片上拖曳可移動、滑鼠滾輪可縮放，編輯面板的「重設位置」回到置中。
           <br><span class="help-note">照片可以留一點空白邊，方便放大靠邊的人物，但輸出前不要讓成品露出空白或透明。</span></li>
@@ -3419,6 +3419,8 @@ async function copyText(text) {
 }
 
 function cleanUrl(u) { return u.replace(/[?!.,;:，。、）)\]】]+$/, ''); }
+// 「國際」 tags are grey, everything else the default red/blue.
+function tagColorFor(tag) { return tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0]; }
 function parseQuickFillText(text) {
   const entries = [];
   let current = null;
@@ -3436,20 +3438,38 @@ function parseQuickFillText(text) {
     let inlineUrl = '';
     line = line.replace(/https?:\/\/\S+/, m => { inlineUrl = cleanUrl(m); return ''; }).trim();
     let content = line.slice(1).trim();
-    let tag = '', tagColor = TAG_COLORS[0];
-    // Two coexisting tag syntaxes, always right after ★: bare text + bare
-    // ")" ("日本)...") or a matched "(文字)"/"（文字）" pair ("(獨家)...").
-    const frontBareMatch = content.match(/^([^()（）]+)[)）]/);
-    const frontPairMatch = !frontBareMatch && content.match(/^[(（]([^()（）]+)[)）]/);
-    const tagMatch = frontBareMatch || frontPairMatch;
-    if (tagMatch) {
-      tag = toHalfWidth(tagMatch[1].trim());
-      tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
+    // Up to two tags, always right after ★, each in one of two coexisting syntaxes: bare text +
+    // bare ")" ("日本)...") or a matched "(文字)"/"（文字）" pair ("(獨家)...").
+    // e.g. "★（國際）（急集體隔離）標題..." or "★國際)急集體隔離)標題...".
+    const tags = [];
+    while (tags.length < 2) {
+      const frontBareMatch = content.match(/^([^()（）]+)[)）]/);
+      const frontPairMatch = !frontBareMatch && content.match(/^[(（]([^()（）]+)[)）]/);
+      const tagMatch = frontBareMatch || frontPairMatch;
+      if (!tagMatch) break;
+      const t = toHalfWidth(tagMatch[1].trim());
       content = content.slice(tagMatch[0].length).trim();
+      if (t) tags.push(t);
     }
     const entry = splitHeadline(toHalfWidth(content).replace(/　/g, ' '));
-    entry.tag = tag;
-    entry.tagColor = tagColor;
+    entry.tags = tags;
+    // First tag as before (kept for 娛樂, which has a single tag).
+    entry.tag = tags[0] || '';
+    entry.tagColor = tagColorFor(entry.tag);
+    entry.tag2 = '';
+    entry.tag2Color = TAG_COLORS[0];
+    if (tags.length === 2) {
+      // 新聞 shows two tags. If exactly one of them is 「國際」 or 「獨家」, that one goes to the top right
+      // (the second tag) and the other one stays at the bottom left; otherwise they keep their order:
+      // first at the bottom left, second at the top right.
+      const special = t => t === '國際' || t === '獨家';
+      const [a, b] = tags;
+      const [left, right] = (special(a) !== special(b) && special(a)) ? [b, a] : [a, b];
+      entry.newsTag = left; entry.newsTagColor = tagColorFor(left);
+      entry.tag2 = right; entry.tag2Color = tagColorFor(right);
+    } else {
+      entry.newsTag = entry.tag; entry.newsTagColor = entry.tagColor;
+    }
     entry.url = inlineUrl;
     entries.push(entry);
     current = entry;
@@ -3528,8 +3548,15 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
     const card = pages[Math.floor(idx / CELL_COUNT)].cards[idx % CELL_COUNT];
     card.line1 = entry.line1;
     card.line2 = entry.line2;
-    card.tag = entry.tag;
-    card.tagColor = entry.tagColor;
+    if (mode === 'news') {
+      card.tag = entry.newsTag;
+      card.tagColor = entry.newsTagColor;
+      card.tag2 = entry.tag2;
+      card.tag2Color = entry.tag2Color;
+    } else {
+      card.tag = entry.tag;
+      card.tagColor = entry.tagColor;
+    }
     card.url = entry.url || '';
   });
   syncAllCellUI();
