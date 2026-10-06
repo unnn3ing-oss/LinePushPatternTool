@@ -18,6 +18,10 @@
     font-display: swap;
   }
   :root {
+    --stage: #e9ebf0;
+    --step-soft: #e6effa;
+    --track: #dcdfe5;   /* filled capsule behind a segmented control, like a toggle's track */
+    --knob: #ffffff;    /* the raised pill for the current item */
     --bg: #f4f5f7;
     --card-bg: #ffffff;
     --text: #1f2328;
@@ -29,6 +33,10 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
+      --stage: #0f1115;
+      --step-soft: #1b2a44;
+      --track: #2b2f38;
+      --knob: #4a505c;
       --bg: #16181d;
       --card-bg: #21242b;
       --text: #e6e8eb;
@@ -43,31 +51,100 @@
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
-    background: var(--bg);
+    background: var(--stage);
     color: var(--text);
-    padding: 24px;
     min-height: 100vh;
   }
-  .wrap { max-width: 1200px; margin: 0 auto; }
-  header { margin-bottom: 20px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 { font-size: 18px; margin: 0; white-space: nowrap; }
   p.sub { margin: 0; color: var(--muted); font-size: 13px; }
-  .layout {
+  /* ---- Top bar: title + mode tabs | step progress | (spacer) ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    height: 56px;
     display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 20px;
-    align-items: start;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
+    padding: 0 22px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
   }
-  .preview-col {
-    position: sticky;
-    top: 20px;
-    align-self: start;
-    max-height: calc(100vh - 40px);
+  .tb-left { display: flex; align-items: center; gap: 16px; flex: none; }
+  /* Centred on the window; the grid pushes it right only if the left group gets wide enough to touch it. */
+  /* Segmented controls share one look: a solid-colour capsule "track" (slightly inset) with a
+     plain white pill "knob" on the current item — no glass or blur. */
+  .mode-tabs, .page-tabs, .tb-tools {
+    display: flex; align-items: center; gap: 2px;
+    background: var(--track); border: none; border-radius: 99px; padding: 3px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+  }
+  /* 新聞/娛樂/拼圖 and 頁數: one white knob slides under the labels, and can be dragged with the mouse. */
+  .seg-track { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .seg-track > button { position: relative; z-index: 1; transition: color .2s ease; }
+  .seg-track > button.hot, .seg-track.dragging > button.hot:hover { color: var(--accent); }
+  .seg-track.dragging > button.active:not(.hot) { color: var(--muted); }
+  .seg-knob { position: absolute; z-index: 0; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--knob); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); pointer-events: none; opacity: 0; }
+  .seg-track.ready .seg-knob { opacity: 1; transition: transform .3s cubic-bezier(.3, .9, .3, 1), width .3s cubic-bezier(.3, .9, .3, 1); }
+  .seg-track.dragging .seg-knob { transition: none; }
+  .seg-track.dragging { cursor: grabbing; }
+  /* Step progress is plain (no track): numbered circles, and only the current step shows its name. */
+  .stepper { display: flex; align-items: center; gap: 4px; justify-self: center; }
+  @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr; } .stepper { justify-self: end; } }
+  .stepper[hidden] { display: none; }
+  .step-btn {
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 6px; border: none; border-radius: 99px;
+    background: transparent; color: var(--muted);
+    font-size: 15px; font-weight: 700;
+  }
+  .step-btn i {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0, 0, 0, .12); color: var(--muted);
+    display: inline-grid; place-items: center;
+    font-style: normal; font-size: 12px;
+  }
+  .step-btn.active { color: var(--accent); }
+  .step-btn:not(.active) .step-label { display: none; }
+  .step-btn.active i { background: var(--accent); color: #fff; }
+  .step-btn.done i { background: var(--success); color: #fff; }
+  .step-line { width: 28px; height: 2px; background: rgba(0, 0, 0, .14); border-radius: 2px; }
+  .step-line.done { background: var(--success); }
+  /* ---- Stage: preview in the middle, panels float over the empty left side ---- */
+  .stage {
+    position: relative;
+    min-height: calc(100vh - 56px);
+    padding: 12px 20px 128px;
+  }
+  .center-col {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .float-stack {
+    display: flex; flex-direction: column; gap: 12px;
+    width: 336px;
+    max-height: calc(100vh - 56px - 8px - 110px);
     overflow-y: auto;
+    /* side/bottom padding leaves room for the panels' shadows inside the scroll box */
+    padding: 8px 18px 28px;
+    z-index: 20;
+  }
+  .float-stack:empty { display: none; }
+  @media (min-width: 901px) {
+    .stage { padding-left: 348px; }
+    .float-stack { position: absolute; left: 2px; top: 8px; }
+  }
+  /* Wide enough to centre the preview on the whole window. */
+  @media (min-width: 1400px) {
+    .stage { padding-left: 20px; }
   }
   @media (max-width: 900px) {
-    .layout { grid-template-columns: 1fr; }
-    .preview-col { position: static; max-height: none; overflow: visible; }
+    .stage { padding-bottom: 150px; }
+    .float-stack { width: 100%; max-width: 560px; max-height: none; margin: 0 auto 4px; padding: 4px 0 12px; }
+    .topbar { display: flex; flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 8px; }
+    .stepper { justify-self: auto; }
   }
   .card {
     background: var(--card-bg);
@@ -89,7 +166,6 @@
   textarea { resize: vertical; line-height: 1.5; }
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
-  .preview-box { margin-top: 14px; margin-bottom: 0; background: var(--card-bg); }
   .sticker-palette { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
   .sticker-btn {
     width: 82px; height: 82px; padding: 5px;
@@ -100,8 +176,8 @@
   .sticker-btn:hover { border-color: var(--accent); }
   .sticker-btn img { width: 100%; height: 100%; object-fit: contain; }
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  /* The boxes above #cellsList each carry a bottom margin, so it needs none. */
-  #cellsList { margin-top: 0; }
+  #cellsList { margin: 0; }
+  #cellsList:empty { display: none; }
   button {
     font-family: inherit;
     font-size: 14px;
@@ -120,79 +196,122 @@
   }
   button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  .canvas-wrap {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px;
-    display: flex;
-    justify-content: center;
-  }
-  .left-col { display: flex; flex-direction: column; gap: 14px; }
-  .mode-tabs { display: flex; gap: 6px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 5px; }
-  .mode-tab { flex: 1; background: transparent; border: none; border-radius: 8px; padding: 10px; color: var(--muted); font-weight: 700; font-size: 17px; }
-  .mode-tab.active { background: var(--accent); color: #fff; }
+  .canvas-wrap { display: flex; justify-content: center; width: 100%; }
+  /* Same capsule look as the step progress: a fully rounded pill, the current one in soft blue. */
+  .mode-tab { white-space: nowrap; background: transparent; border: none; border-radius: 99px; padding: 6px 18px; color: var(--muted); font-size: 15px; font-weight: 700; }
+  .mode-tab:hover { color: var(--text); }
+  .mode-tab.active, .mode-tab.active:hover { color: var(--accent); }
   .seg { display: flex; gap: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
   .seg button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 6px 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
   .seg button.active { background: var(--accent); color: #fff; }
   .seg-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .seg-row .swatch-label { width: 78px; flex-shrink: 0; }
   .seg-row .seg { flex: 1; }
-  /* Download buttons split the row evenly, keeping the row's gap between them. */
-  #downloadRow button { flex: 1 1 0; min-width: 0; }
+  /* ---- Bottom floating dock: T寶貼圖 (editing) + step / download actions ---- */
+  .dock {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    z-index: 45;
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px 14px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    background: #1f2328; color: #fff;
+    padding: 10px 18px; border-radius: 36px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+  }
+  .dock-stickers { display: flex; align-items: center; gap: 12px; }
+  .dock-stickers[hidden], .dock-sep[hidden] { display: none; }
+  .dock-label { font-size: 12px; opacity: .75; white-space: nowrap; }
+  .dock-sep { width: 1px; height: 32px; background: #3a414b; }
+  .dock .sticker-palette { margin: 0; gap: 8px; flex-wrap: nowrap; }
+  .dock .sticker-btn { width: 46px; height: 46px; padding: 3px; border-radius: 10px; background: #fff; border-color: transparent; }
+  .dock .sticker-btn:hover { border-color: #2f7bff; }
+  #downloadRow { position: relative; display: flex; align-items: center; gap: 10px; }
+  #downloadRow button {
+    position: relative; white-space: nowrap;
+    background: #2d333b; border-color: #3a414b; color: #fff;
+    padding: 9px 18px; font-weight: 600; border-radius: 99px;
+  }
+  #downloadRow button:hover { background: #3a414b; }
+  #downloadRow button.primary { background: #2f7bff; border-color: #2f7bff; }
+  #downloadRow button.primary:hover { background: #4a8cff; border-color: #4a8cff; }
+  #downloadRow button.ghost { background: #4b5563; border-color: #4b5563; color: #f3f4f6; font-weight: 600; }
+  #downloadRow button.ghost:hover { background: #5d6877; border-color: #5d6877; color: #fff; }
+  /* 拼圖: 直接複製 is the highlighted (blue) button, 下載 stays white. */
+  #downloadRow button.light { background: #fff; border-color: #fff; color: #1f2328; }
+  #downloadRow button.light:hover { background: #e6e8eb; border-color: #e6e8eb; }
+  #downloadRow button[hidden] { display: none; }
+  /* 步驟 2: 返回編輯 is blue, 全部下載 is green (grey while locked). */
+  #downloadRow #backStepBtn { background: #2f7bff; border-color: #2f7bff; color: #fff; }
+  #downloadRow #backStepBtn:hover { background: #4a8cff; border-color: #4a8cff; }
+  #downloadRow #downloadAllBtn:not(.is-disabled) { background: #16a34a; border-color: #16a34a; color: #fff; }
+  #downloadRow #downloadAllBtn:not(.is-disabled):hover { background: #22b858; border-color: #22b858; }
   /* 全部下載 locked (incomplete cells): greyed out with an instant tooltip. */
-  #downloadRow button { position: relative; }
   #downloadRow button.is-disabled,
   #downloadRow button.is-disabled:hover {
-    background: var(--border);
-    border-color: var(--border);
-    color: var(--muted);
-    cursor: not-allowed;
+    background: #2d333b; border-color: #3a414b; color: #6b7280; cursor: not-allowed;
   }
   #downloadRow button.is-disabled:hover::after {
     content: attr(data-tip);
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1f2328;
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-    padding: 4px 10px;
-    border-radius: 6px;
-    z-index: 20;
-    pointer-events: none;
+    position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+    background: #b91c1c; color: #fff;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    padding: 4px 10px; border-radius: 6px; z-index: 20; pointer-events: none;
   }
-  #downloadRow { margin-top: 0; margin-bottom: 14px; position: relative; }
-  /* 全部下載 asks "typos checked, no photo showing white?" in a small popover under the button. */
+  /* 步驟 1 option in the dock: an iOS-style switch. */
+  .dock-switch { display: inline-flex; margin: 0; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .dock-switch[hidden] { display: none; }
+  .dock-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .sw-track { position: relative; flex: none; width: 42px; height: 24px; border-radius: 99px; background: #4b5563; transition: background .2s ease; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .3); }
+  .sw-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: transform .2s ease; }
+  .dock-switch input:checked + .sw-track { background: #34c759; }
+  .dock-switch input:checked + .sw-track .sw-knob { transform: translateX(18px); }
+  .dock-switch input:focus-visible + .sw-track { outline: 2px solid #2f7bff; outline-offset: 2px; }
+  /* Hover pop-up on a "!" in the preview: says why the cell is flagged, fades out a second after the pointer leaves. */
+  .gap-tip { position: fixed; z-index: 70; max-width: 260px; background: #1f2328; color: #fff; border-radius: 18px; padding: 10px 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); font-size: 13px; line-height: 1.5; pointer-events: none; opacity: 0; transition: opacity .3s ease; }
+  .gap-tip.show { opacity: 1; }
+  .gap-tip[hidden] { display: none; }
+  .gap-tip b { display: block; font-size: 14px; margin-bottom: 2px; }
+  /* Same size as the buttons beside it in the dock. */
+  .dock-chip { box-sizing: border-box; font-size: 14px; font-weight: 700; padding: 9px 18px; border: 1px solid transparent; border-radius: 99px; white-space: nowrap; }
+  .dock-chip[hidden] { display: none !important; }
+  .dock-chip.bad { background: #fee2e2; color: #b91c1c; }
+  .dock-chip .warn-dot { width: 18px; height: 18px; font-size: 12px; }
+  .dock-chip.warn { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 6px; }
+  /* 全部下載 asks "typos checked, no photo showing white?" in a small popover above the button. */
   .dl-confirm {
     position: absolute;
-    top: calc(100% + 10px);
+    bottom: calc(100% + 16px);
     right: 0;
     width: 260px;
     z-index: 30;
-    background: var(--card-bg);
+    background: var(--card-bg); color: var(--text);
     border: 1px solid var(--border);
-    border-top: 3px solid var(--accent);
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
-    padding: 12px 14px 14px;
+    border-radius: 22px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+    padding: 16px 18px 18px;
   }
-  .dl-confirm::before {
+  .dl-confirm::after {
     content: '';
     position: absolute;
-    top: -9px;
+    bottom: -8px;
     right: 62px;
-    border: 7px solid transparent;
-    border-top: 0;
-    border-bottom: 7px solid var(--accent);
+    width: 12px; height: 12px;
+    background: var(--card-bg);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    transform: rotate(45deg);
   }
   .dl-confirm[hidden] { display: none; }
   .dl-confirm-text { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
   .dl-confirm-actions { display: flex; gap: 8px; }
-  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 8px 6px; font-size: 14px; }
+  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 9px 6px; font-size: 14px; font-weight: 700; border-radius: 99px; background: var(--track); border-color: var(--track); color: var(--text); }
+  #downloadRow .dl-confirm-actions button:hover { background: var(--border); border-color: var(--border); }
+  #downloadRow .dl-confirm-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #downloadRow .dl-confirm-actions button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+  .modal .btn-row button { border: none; border-radius: 99px; padding: 9px 22px; font-weight: 700; background: var(--track); color: var(--text); }
+  .modal .btn-row button:hover { background: var(--border); }
+  .modal .btn-row button.primary { background: var(--accent); color: #fff; }
+  .modal .btn-row button.primary:hover { background: var(--accent-dark); }
   #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
   #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
   canvas {
@@ -206,7 +325,7 @@
   .status-toast {
     position: fixed;
     left: 50%;
-    bottom: 24px;
+    bottom: 108px;
     transform: translate(-50%, 24px);
     width: max-content;
     max-width: min(560px, calc(100vw - 48px));
@@ -215,8 +334,8 @@
     color: #fff;
     font-size: 14px;
     line-height: 1.55;
-    padding: 10px 18px;
-    border-radius: 12px;
+    padding: 10px 20px;
+    border-radius: 22px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
     opacity: 0;
     cursor: pointer;
@@ -226,9 +345,80 @@
   .status-toast.error { background: #b91c1c; }
   .status-toast.show { opacity: 1; transform: translate(-50%, 0); }
   .status-toast[hidden] { display: none; }
-  .page-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
-  .page-tab { flex: 1; background: transparent; border: none; border-radius: 7px; padding: 8px 10px; color: var(--muted); font-weight: 600; font-size: 16px; }
-  .page-tab.active { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .page-tabs { margin: 0; }
+  .page-tab { background: transparent; border: none; border-radius: 99px; padding: 6px 20px; color: var(--muted); font-weight: 600; font-size: 15px; }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active, .page-tab.active:hover { color: var(--accent); }
+  .page-tabs[hidden] { display: none; }
+  /* ---- Floating panels on the left ---- */
+  .float-stack > .top-label-box,
+  .float-stack > #cellsList .cell-box,
+  .float-stack > .check-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .16);
+    margin: 0;
+    padding: 14px;
+  }
+  .float-stack > #cellsList .cell-box.active { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0, 0, 0, .18), 0 0 0 1px var(--accent); }
+  .float-stack > [hidden] { display: none; }
+  .panel-x { position: absolute; top: 8px; right: 8px; border: none; background: transparent; color: var(--muted); padding: 2px 8px; font-size: 16px; line-height: 1; }
+  .panel-x:hover { background: var(--bg); color: var(--text); }
+  #quickfillBox { position: relative; }
+  #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
+  /* 快速填入 / 頂部標籤 re-open buttons: their own little group right of the mode tabs. */
+  .tb-tools { gap: 10px; }
+  .tb-tools[hidden], .tb-tools button[hidden] { display: none; }
+  .tb-tools button { white-space: nowrap; background: var(--knob); border: none; border-radius: 99px; padding: 6px 16px; color: var(--accent); font-weight: 700; font-size: 15px; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
+  .tb-tools button:hover { background: var(--card-bg); filter: brightness(.97); }
+  /* ---- Step 2 check panel ---- */
+  .check-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 15px; font-weight: 700; }
+  .check-head small { font-size: 12px; font-weight: 700; }
+  .check-head small.bad { color: #b91c1c; }
+  .check-head small.ok { color: #15803d; }
+  .check-head small.warn { color: #b45309; }
+  .check-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .check-row:hover { background: var(--bg); }
+  .check-row.sel { background: var(--step-soft); }
+  .check-row .n { flex: none; width: 22px; height: 22px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+  .check-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .check-row .t.empty { color: var(--muted); }
+  .chip { flex: none; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+  /* Every status mark in the check list sits in a same-width slot, so 圖 / ! / 缺圖片 and 字 line up in columns. */
+  .check-row .chip-slot { flex: none; box-sizing: border-box; width: 34px; display: flex; align-items: center; justify-content: center; }
+  /* Check marks are all circles: green 圖 / 字 = fine, yellow ! = photo shows white, red ! = missing. */
+  .dot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 800; line-height: 1; font-style: normal; cursor: default; }
+  .dot.ok { background: #dcfce7; color: #15803d; }
+  .dot.warn { background: #facc15; color: #1f2328; }
+  .dot.bad { background: #dc2626; color: #fff; }
+  .chip.ok { background: #dcfce7; color: #15803d; }
+  .chip.bad { background: #fee2e2; color: #b91c1c; }
+  .chip.warn { background: #fef3c7; color: #92400e; }
+  /* 露白 reminder: a yellow circled "!". */
+  .warn-dot { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #facc15; color: #1f2328; font-size: 13px; font-weight: 800; line-height: 1; font-style: normal; cursor: help; }
+  .check-note { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .check-other { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
+  .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
+  /* ---- Copy bar under the preview (step 2, one cell picked) ---- */
+  /* Step 2: floats over the cell the pointer is on; no fixed spot under the preview. */
+  .cell-copy { position: fixed; z-index: 60; transform: translate(-50%, -50%); padding: 10px 22px; border-radius: 99px; font-size: 14px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .15s ease; }
+  .cell-copy.show { opacity: 1; }
+  .cell-copy[hidden] { display: none; }
+  .cell-copy.no-link { background: #8a8f98; border-color: #8a8f98; cursor: default; }
+  /* ---- Reminder when something is dragged while the photos are locked ---- */
+  .lock-toast {
+    position: fixed; left: 50%; bottom: 108px; transform: translate(-50%, 24px);
+    z-index: 61; display: flex; align-items: center; gap: 12px;
+    background: #1f2328; color: #fff;
+    padding: 9px 10px 9px 16px; border-radius: 99px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+    font-size: 14px; white-space: nowrap;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+  }
+  .lock-toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .lock-toast[hidden] { display: none; }
+  .lock-toast button { background: #2f7bff; border: none; color: #fff; border-radius: 99px; padding: 6px 14px; font-weight: 700; font-size: 14px; }
   .top-label-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -236,24 +426,8 @@
     margin-bottom: 14px;
     background: var(--bg);
   }
-  .quickfill-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    user-select: none;
-  }
-  .quickfill-title { font-size: 15px; font-weight: 600; }
-  .quickfill-chevron {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; border-radius: 50%;
-    border: 2px solid var(--accent); color: var(--accent);
-    font-size: 15px; line-height: 1; padding-left: 2px;
-    transition: transform .15s, background .15s, color .15s;
-  }
-  .quickfill-body { margin-top: 10px; }
-  .quickfill-body.collapsed { display: none; }
-  .quickfill-header.open .quickfill-chevron { transform: rotate(90deg); background: var(--accent); color: #fff; }
+  .quickfill-header { display: flex; align-items: center; margin-bottom: 8px; }
+  .quickfill-title { font-size: 15px; font-weight: 700; }
   .cell-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -298,11 +472,7 @@
   }
   .dropzone .dz-text { flex: 1; padding: 4px 8px; text-align: left; line-height: 1.35; }
   .dz-row { display: flex; gap: 8px; margin-bottom: 10px; }
-  /* Exactly half each (borders/padding included), minus half the gap. */
-  .dz-row .dropzone { flex: 0 0 calc(50% - 4px); min-width: 0; margin-bottom: 0; }
-  .dz-row .copy-push-btn { flex: 0 0 calc(50% - 4px); min-width: 0; height: 56px; padding: 0 8px; font-size: 18px; }
-  #cellsList.collage .dz-row .dropzone { flex: 1 1 auto; }
-  #cellsList.collage .copy-push-btn { display: none; }
+  .dz-row .dropzone { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
   .swatch-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -337,22 +507,23 @@
   /* Header unticked: the label input folds away, leaving just the checkbox row. */
   #newsHeaderBox.header-off #topLabel { display: none; }
   #newsHeaderBox.header-off label { margin-bottom: 0 !important; }
-  /* 新聞 tips popup: bottom-right, closable, sits under the help modal (z-index 100). */
+  /* 操作提示 popup: bottom-right, closable, sits under the help modal (z-index 100). White floating card like
+     the left panels, with round buttons and circle icons. */
   .tip-toast {
     position: fixed;
     right: 20px;
     bottom: 20px;
-    width: 380px;
+    width: 372px;
     max-width: calc(100vw - 40px);
     max-height: calc(100vh - 40px);
     overflow-y: auto;
     z-index: 50;
     background: var(--card-bg);
+    color: var(--text);
     border: 1px solid var(--border);
-    border-top: 4px solid var(--accent);
-    border-radius: 12px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
-    padding: 14px 16px 16px;
+    border-radius: 28px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
+    padding: 18px 20px 18px;
     font-size: 13px;
     line-height: 1.65;
   }
@@ -375,44 +546,47 @@
     height: 46px;
     padding: 0;
     border-radius: 50%;
-    border: 2px solid #fff;
-    background: var(--accent);
-    color: #fff;
-    font-size: 24px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--accent);
+    font-size: 22px;
     font-weight: 800;
     line-height: 1;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
     opacity: 0;
     transform: scale(.6);
     pointer-events: none;
-    transition: opacity .3s ease .1s, transform .3s ease .1s;
+    transition: opacity .3s ease .1s, transform .3s ease .1s, background .15s ease;
   }
   .tip-fab.show { opacity: 1; transform: scale(1); pointer-events: auto; }
-  .tip-fab:hover { background: var(--accent-dark); }
+  .tip-fab:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
   .tip-fab[hidden] { display: none; }
-  .tip-toast-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .tip-toast-title { font-size: 16px; font-weight: 700; color: var(--accent); }
-  .tip-toast-close { border: none; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 8px; border-radius: 6px; }
-  .tip-toast-close:hover { background: var(--bg); color: var(--text); }
+  .tip-toast-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .tip-toast-title { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text); }
+  .tip-toast-title::before { content: '!'; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 800; line-height: 1; }
+  .tip-toast-close { width: 28px; height: 28px; border: none; border-radius: 50%; background: var(--track); color: var(--muted); font-size: 13px; line-height: 1; padding: 0; display: inline-grid; place-items: center; }
+  .tip-toast-close:hover { background: var(--border); color: var(--text); }
   .tip-toast p { margin: 0 0 10px; }
   .tip-toast p:last-child { margin-bottom: 0; }
-  .tip-help { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .tip-help button { width: 100%; }
+  .tip-help { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .tip-help button { width: 100%; border: none; border-radius: 99px; background: var(--accent); color: #fff; padding: 10px 18px; font-size: 14px; font-weight: 700; }
+  .tip-help button:hover { background: var(--accent-dark); }
   .tip-help-lead { margin: 0 0 10px; color: var(--muted); }
   .tip-toast [hidden] { display: none; }
   .tip-steps { list-style: none; margin: 0; padding: 0; }
   .tip-steps li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
   .tip-steps li:last-child { margin-bottom: 0; }
-  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--bg); border: 1px solid var(--border); color: var(--accent); }
+  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--step-soft); border: none; color: var(--accent); }
   .tip-text { min-width: 0; }
-  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; }
-  .tip-text span { display: block; }
+  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; color: var(--text); }
+  .tip-text span { display: block; color: var(--muted); }
   .tip-text .tip-example { margin-top: 6px; font-size: 12px; }
-  .tip-chips { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .tip-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 6px; margin-top: 6px; }
+  .tip-chips .tip-chip-note { white-space: nowrap; margin-right: 6px; }
   .tip-toast .tip-text .tip-chip { display: inline-block; color: #fff; font-size: 12px; font-weight: 700; padding: 1px 8px; }
   .tip-chip-warn { background: #b45309; }
   .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: var(--muted); }
-  .tip-toast .tip-example { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
+  .tip-toast .tip-example { background: var(--track); border: none; border-radius: 14px; padding: 9px 12px; color: var(--text); word-break: break-all; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   /* Only the selected cell's editor is shown; click a cell in the preview to switch. */
   #cellsList .cell-box:not(.active) { display: none; }
@@ -420,7 +594,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.5);
+    background: rgba(15, 17, 21, .55);
     align-items: center;
     justify-content: center;
     padding: 20px;
@@ -429,7 +603,8 @@
   .modal-overlay.open { display: flex; }
   .modal {
     background: var(--card-bg);
-    border-radius: 14px;
+    border-radius: 26px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .35);
     max-width: 560px;
     width: 100%;
     max-height: 85vh;
@@ -441,23 +616,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: 16px 20px 14px 24px;
     border-bottom: 1px solid var(--border);
   }
   .modal-head h2 { font-size: 16px; margin: 0; }
   .modal-close {
-    padding: 4px 10px;
-    font-size: 14px;
-    line-height: 1;
-    border-radius: 6px;
+    width: 32px; height: 32px; padding: 0;
+    display: inline-grid; place-items: center;
+    font-size: 14px; line-height: 1;
+    border: none; border-radius: 50%;
+    background: var(--track); color: var(--muted);
   }
+  .modal-close:hover { background: var(--border); color: var(--text); }
   .modal-body {
-    padding: 16px 20px 20px;
+    padding: 18px 24px 24px;
     overflow-y: auto;
     font-size: 13px;
     line-height: 1.6;
   }
-  .modal-body h3 { font-size: 14px; margin: 20px 0 6px; }
+  .modal-body h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 22px 0 8px; }
+  .modal-body h3::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
   .modal-body h3:first-child { margin-top: 0; }
   .modal-body ul { margin: 0; padding-left: 20px; }
   .modal-body li { margin-bottom: 4px; }
@@ -465,7 +643,7 @@
     max-width: 100%;
     display: block;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 14px;
     margin: 8px 0;
   }
   .help-compare {
@@ -482,12 +660,18 @@
     text-align: center;
     margin-top: 4px;
   }
-  .help-steps { margin: 0; padding-left: 20px; }
-  .help-steps li { margin-bottom: 8px; }
+  /* numbered steps use the same filled circles as the step progress bar */
+  .help-steps { list-style: none; counter-reset: hs; margin: 0; padding: 0; }
+  .help-steps > li { counter-increment: hs; position: relative; padding-left: 34px; margin-bottom: 12px; }
+  .help-steps > li::before { content: counter(hs); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; line-height: 1; }
   .help-note { color: var(--muted); font-size: 12px; }
-  .help-code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; margin: 4px 0; font-size: 12px; }
-  .help-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: 12px; }
-  .help-table th, .help-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+  .help-marks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .help-code-inline { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--track); border: none; border-radius: 99px; padding: 1px 8px; font-size: 12px; word-break: break-all; }
+  .help-code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--track); border: none; border-radius: 14px; padding: 8px 12px; margin: 4px 0; font-size: 12px; }
+  .help-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .help-table th, .help-table td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+  .help-table tr:last-child td { border-bottom: none; }
+  .help-table th:last-child, .help-table td:last-child { border-right: none; }
   .help-table th { background: var(--bg); }
   .help-arrow {
     align-self: center;
@@ -498,34 +682,30 @@
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
+<header class="topbar">
+  <div class="tb-left">
     <h1>Line推播套版產生器</h1>
-    <p class="sub" id="modeSub"></p>
-  </header>
-
-  <div class="layout">
-    <div class="left-col">
     <div class="mode-tabs">
       <button type="button" class="mode-tab active" data-mode="news">新聞</button>
       <button type="button" class="mode-tab" data-mode="ent">娛樂</button>
       <button type="button" class="mode-tab" data-mode="collage">拼圖</button>
     </div>
-    <div class="card">
-      <div class="btn-row" id="downloadRow">
-        <button id="downloadJpgBtn">下載本頁</button>
-        <button class="primary" id="downloadAllBtn">全部下載</button>
-        <button class="primary" id="copyCollageBtn" style="display:none">直接複製</button>
-        <div class="dl-confirm" id="dlConfirm" role="dialog" aria-label="下載前確認" hidden>
-          <div class="dl-confirm-text">已確認無錯字、圖片無露白？</div>
-          <div class="dl-confirm-actions">
-            <button type="button" id="dlConfirmBack">再修改</button>
-            <button type="button" class="primary" id="dlConfirmOk">確認下載</button>
-          </div>
-        </div>
-      </div>
+    <div class="tb-tools" id="tbTools" hidden>
+      <button type="button" id="quickfillReopen" hidden>快速填入</button>
+      <button type="button" id="headerOpenBtn" hidden>頂部標籤</button>
+    </div>
+  </div>
+  <nav class="stepper" id="stepper" aria-label="製作步驟">
+    <button type="button" class="step-btn active" data-step="1" title="編輯畫面" aria-label="步驟 1：編輯畫面"><i>1</i><span class="step-label">編輯畫面</span></button>
+    <span class="step-line" id="stepLine"></span>
+    <button type="button" class="step-btn" data-step="2" title="畫面檢查" aria-label="步驟 2：畫面檢查"><i>2</i><span class="step-label">畫面檢查</span></button>
+  </nav>
+  <p class="sub" id="modeSub" hidden></p>
+</header>
 
-      <div class="top-label-box" id="collageBox" style="display:none">
+<main class="stage" id="stage">
+  <div class="float-stack" id="floatStack">
+    <div class="top-label-box" id="collageBox" hidden>
         <label>版面方式</label>
         <div class="seg" id="collageLayoutSeg">
           <button type="button" data-layout="grid" class="active">等分</button>
@@ -565,20 +745,20 @@
         </div>
       </div>
 
-      <div class="top-label-box" id="quickfillBox">
-        <div class="quickfill-header open" id="quickfillHeader">
-          <span class="quickfill-title">快速填入</span>
-          <span class="quickfill-chevron" id="quickfillChevron">▸</span>
-        </div>
-        <div class="quickfill-body" id="quickfillBody">
-          <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;整段過審推播新聞貼入即可&#10;標題含有空格或驚嘆號、問號，就會自動換行&#10;（網址會自動略過，可直接貼上）"></textarea>
-          <div class="btn-row">
-            <button type="button" id="quickfillBtn">快速填入</button>
-          </div>
+    <div class="top-label-box" id="quickfillBox">
+      <button type="button" class="panel-x" id="quickfillClose" aria-label="收起快速填入" title="收起">✕</button>
+      <div class="quickfill-header" id="quickfillHeader">
+        <span class="quickfill-title">快速填入</span>
+      </div>
+      <div class="quickfill-body" id="quickfillBody">
+        <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;整段過審推播新聞貼入即可&#10;標題含有空格或驚嘆號、問號，就會自動換行&#10;（網址會自動略過，可直接貼上）"></textarea>
+        <div class="btn-row">
+          <button type="button" class="primary" id="quickfillBtn">快速填入</button>
         </div>
       </div>
+    </div>
 
-      <div class="top-label-box" id="newsHeaderBox">
+    <div class="top-label-box" id="newsHeaderBox">
         <div class="field">
           <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px">
             <input type="checkbox" id="showHeaderToggle" checked style="width:auto; margin:0">
@@ -588,32 +768,57 @@
         </div>
       </div>
 
-      <div id="cellsList"></div>
+    <div id="cellsList"></div>
 
-      <div class="btn-row">
-        <button id="resetAllBtn">清除本頁</button>
-      </div>
+    <div class="check-panel" id="checkPanel" hidden></div>
+  </div>
+
+  <div class="center-col" id="centerCol">
+    <div class="page-tabs">
+      <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
+      <button type="button" class="page-tab" data-page="1">第 2 頁</button>
     </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="canvas" width="1040" height="800"></canvas>
     </div>
+  </div>
+</main>
 
-    <div class="preview-col">
-      <div class="page-tabs">
-        <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
-        <button type="button" class="page-tab" data-page="1">第 2 頁</button>
-      </div>
-      <div class="canvas-wrap">
-        <canvas id="canvas" width="1040" height="800"></canvas>
-      </div>
-
-      <div class="top-label-box preview-box">
-        <div class="field" style="margin-bottom:0">
-          <label>T寶貼圖</label>
-          <div class="hint" style="margin-top:0; margin-bottom:8px">先在上方預覽圖點選要編輯的格子，再點下方貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。</div>
-          <div class="sticker-palette" id="stickerPalette"></div>
-        </div>
+<div class="dock" id="dock">
+  <div class="dock-stickers" id="dockStickers" title="先在預覽圖點選要編輯的格子，再點貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。">
+    <span class="dock-label">T寶貼圖</span>
+    <div class="sticker-palette" id="stickerPalette"></div>
+  </div>
+  <span class="dock-sep" id="dockSep"></span>
+  <label class="dock-switch" id="edgeSwitch" title="開啟後，預覽圖會用紅框框出照片「看得到」的範圍，編輯時當參考用；露白檢查與提示在步驟 2 才進行" hidden>
+    <input type="checkbox" id="edgeCheckToggle">
+    <span class="sw-track"><span class="sw-knob"></span></span>
+    <span class="sw-label">檢查照片邊緣</span>
+  </label>
+  <div id="downloadRow">
+    <span class="dock-chip" id="dockChip" hidden></span>
+    <button type="button" class="ghost" id="resetAllBtn">清除本頁</button>
+    <button type="button" id="backStepBtn" hidden>← 返回編輯</button>
+    <button type="button" class="primary" id="nextStepBtn">下一步：畫面檢查 →</button>
+    <button type="button" class="light" id="downloadJpgBtn" hidden>下載本頁</button>
+    <button type="button" class="primary" id="downloadAllBtn" hidden>全部下載</button>
+    <button type="button" class="primary" id="copyCollageBtn" hidden>直接複製</button>
+    <div class="dl-confirm" id="dlConfirm" role="dialog" aria-label="下載前確認" hidden>
+      <div class="dl-confirm-text">已確認無錯字、圖片無露白？</div>
+      <div class="dl-confirm-actions">
+        <button type="button" id="dlConfirmBack">再修改</button>
+        <button type="button" class="primary" id="dlConfirmOk">確認下載</button>
       </div>
     </div>
   </div>
+</div>
+
+<div class="gap-tip" id="gapTip" role="tooltip" hidden></div>
+<button type="button" class="primary cell-copy" id="cellCopyBtn" hidden>複製推播連結</button>
+
+<div class="lock-toast" id="lockToast" role="status" hidden>
+  <span>🔒 套版已鎖定，回上一步才能調整</span>
+  <button type="button" id="lockToastBtn">返回上一步更改</button>
 </div>
 
 <div class="status-toast" id="statusToast" role="status" aria-live="polite" title="點一下關閉" hidden></div>
@@ -628,35 +833,94 @@
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg></span>
         <div class="tip-text"><b>貼上就填好</b>
-          <span>把整段推播標題（含連結）貼進「快速填入」，一次帶入所有格子。</span>
-          <span id="tipAutoImg" hidden>連結會順便抓文章第一張圖放進對應格子；想換圖，直接拖進新圖或按 Ctrl+V 就好。</span>
-          <div class="tip-example">★國際)婦右腳罹癌截肢 竟"鋸成左腳"怒提告<br>https://news.tvbs.com.tw/life/4030991</div>
+          <span>貼進左側「快速填入」，一次填滿所有格子。</span>
+          <span id="tipAutoImg" hidden>連結會自動抓首圖。</span>
+          <div class="tip-example">★國際)標題第一行 標題第二行<br>https://news.tvbs.com.tw/…</div>
         </div>
       </li>
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-6 2-2 6z"/></svg></span>
-        <div class="tip-text"><b>填錯了？點格子就能改</b>
-          <span>直接點預覽圖上的格子，就能在左側單獨修改那一格，不用重新快速填入。</span>
+        <div class="tip-text"><b>點格子就能改</b>
+          <span>點格子，左側出現編輯面板；點空白處收起。</span>
         </div>
       </li>
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></svg></span>
         <div class="tip-text"><b>小標籤</b>
-          <span>標題前面有 (文字) 或 文字) 會自動變成小標籤；要第二個標籤，到編輯區手動加。兩個都可以拖曳，靠近格子邊緣會自動吸附貼齊。</span>
-          <div class="tip-chips"><span class="tip-chip" style="background:#ff0000">獨家</span><span class="tip-chip" style="background:#a5a5a5">國際</span><span class="tip-chip-note">← 可拖曳</span></div>
+          <span>標題前寫 (獨家) 會變小標籤，可拖曳。</span>
+          <div class="tip-chips"><span class="tip-chip" style="background:#ff0000">獨家</span><span class="tip-chip" style="background:#a5a5a5">國際</span></div>
         </div>
       </li>
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
-        <div class="tip-text"><b>照片</b>
-          <span>拖曳移動、滾輪縮放。可以留一點空白邊，方便放大靠邊的人物；但輸出前要把空白藏起來，不然成品會露出空白或透明。</span>
-          <div class="tip-chips"><span class="tip-chip tip-chip-warn">⚠ 別讓照片露白</span></div>
+        <div class="tip-text"><b>照片與貼圖</b>
+          <span>拖曳移動、滾輪縮放；底部可加 T寶貼圖。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg></span>
+        <div class="tip-text"><b>檢查並下載</b>
+          <span>按「下一步」檢查缺圖、缺標題、露白，沒問題才能全部下載。</span>
+          <div class="tip-chips"><i class="dot ok">圖</i><i class="dot ok">字</i><span class="tip-chip-note">正常</span><i class="dot warn">!</i><span class="tip-chip-note">疑似露白</span><i class="dot bad">!</i><span class="tip-chip-note">缺圖／缺標題</span></div>
+        </div>
+      </li>
+    </ol>
+  </div>
+  <div id="tipEntBlock" hidden>
+    <ol class="tip-steps">
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg></span>
+        <div class="tip-text"><b>貼上就填好</b>
+          <span>貼進左側「快速填入」，一次填滿所有格子。</span>
+          <span class="tip-ent-auto" hidden>連結會自動抓首圖。</span>
+          <div class="tip-example">★獨家)標題第一行 標題第二行<br>https://news.tvbs.com.tw/…</div>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-6 2-2 6z"/></svg></span>
+        <div class="tip-text"><b>點格子就能改</b>
+          <span>點格子，左側出現編輯面板；點空白處收起。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
+        <div class="tip-text"><b>照片與貼圖</b>
+          <span>拖曳移動、滾輪縮放；底部可加 T寶貼圖。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg></span>
+        <div class="tip-text"><b>檢查並下載</b>
+          <span>按「下一步」檢查缺圖、缺標題、露白，沒問題才能全部下載。</span>
+          <div class="tip-chips"><i class="dot ok">圖</i><i class="dot ok">字</i><span class="tip-chip-note">正常</span><i class="dot warn">!</i><span class="tip-chip-note">疑似露白</span><i class="dot bad">!</i><span class="tip-chip-note">缺圖／缺標題</span></div>
+        </div>
+      </li>
+    </ol>
+  </div>
+  <div id="tipCollageBlock" hidden>
+    <ol class="tip-steps">
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg></span>
+        <div class="tip-text"><b>選版面</b>
+          <span>左側選「等分」或「自由框」。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></span>
+        <div class="tip-text"><b>放照片</b>
+          <span>點框選取，拖進圖片或按 Ctrl+V 貼上。</span>
+        </div>
+      </li>
+      <li>
+        <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></span>
+        <div class="tip-text"><b>輸出</b>
+          <span>「下載」存成 PNG；「直接複製」可貼到新聞、娛樂的格子。</span>
         </div>
       </li>
     </ol>
   </div>
   <div class="tip-help">
-    <p class="tip-help-lead" id="tipHelpLead">各版型的操作流程、拼圖做法、輸出格式都整理在詳細說明裡。</p>
+    <p class="tip-help-lead" id="tipHelpLead">完整步驟與規則，請看詳細說明。</p>
     <button type="button" class="primary" id="helpDetailBtn">詳細功能說明</button>
   </div>
 </aside>
@@ -669,28 +933,55 @@
     </div>
     <div class="modal-body">
 
-      <h3>操作流程</h3>
+      <h3>畫面怎麼看</h3>
+      <ul>
+        <li><b>最上方</b>：標題、版型切換（新聞／娛樂／拼圖，白色滑塊會滑動過去，也可以用滑鼠按住滑塊左右拖曳來切換）、進度條「① 編輯畫面 → ② 畫面檢查」（拼圖沒有這一步）。快速填入面板收起後，「拼圖」右側會出現「快速填入」按鈕可再打開（新聞版黃色標籤列被隱藏時另有「頂部標籤」按鈕）。</li>
+        <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」（同樣有滑動效果，也能按住滑塊拖曳切換），兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
+        <li><b>左側</b>：浮動面板。一開始是「快速填入」；點格子變成那一格的編輯面板，點空白處收起；步驟 2 則是檢查清單。</li>
+        <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「檢查照片邊緣」開關、「清除本頁」、「下一步」；步驟 2 有提示、「返回編輯」、「下載本頁」、「全部下載」。</li>
+        <li><b>右下角</b>「!」：操作提示。剛開啟網頁時約 5 秒後自動收起；游標移到彈窗上就會一直顯示，移出彈窗外 1 秒後漸漸收起；按「!」可再打開。</li>
+      </ul>
+
+      <h3>新聞／娛樂：步驟 1 編輯畫面</h3>
       <ol class="help-steps">
-        <li><b>選版型</b>：編輯區最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
-        <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
-          <br><span class="help-note">新聞第 1 頁可在「頂部標籤」下方的欄位改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
-        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：編輯區一次只顯示一格（預設第一格），在預覽圖上點哪一格，就換成那一格的編輯區。
+        <li><b>選版型、選頁面</b>：最上方點「新聞」或「娛樂」，預覽圖上方點「第 1 頁／第 2 頁」。各版型、各頁的內容各自保留，切換不會不見。
+          <br><span class="help-note">新聞：點預覽圖上黃色的「熱門話題」標籤列，左側會浮出「頂部標籤」面板，可改字或取消勾選隱藏；隱藏後，最上方「拼圖」右側會出現「頂部標籤」按鈕可再打開。</span></li>
+        <li><b>填標題</b>：在左側「快速填入」貼上內容，按「快速填入」一次套進所有格子（面板會自動收起）；也可以點格子手動輸入。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
-          <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
+          <span class="help-note">★ 開頭一則一格；「標籤)」或「（標籤）」寫在★後面會變成標籤，不寫就沒有標籤；新聞版可以連寫兩個標籤，例如 ★（國際）（急集體隔離）標題…：其中「國際」或「獨家」會自動放在格子右上角（第二標籤），另一個放在左下角（第一標籤）；若不是這種組合，第一個放左下角、第二個放右上角（娛樂版只有一個標籤，取第一個）；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
           <span class="help-note" id="helpAutoImg" hidden><br>★ 下一行的文章連結會自動抓第一張圖放進對應格子；之後想換圖，直接拖進新圖或選好格子按 Ctrl+V 即可（手動放的圖，再按一次快速填入也不會被蓋掉）。</span></li>
-        <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
-          <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
-        <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>下載</b>：按「下載本頁」存目前這頁，或「全部下載」一次存兩頁。</li>
+        <li><b>放照片</b>：把圖片拖進格子、雙擊格子選檔，或選好格子後按 Ctrl+V 貼上。在照片上拖曳可移動、滑鼠滾輪可縮放，編輯面板的「重設位置」回到置中。
+          <br><span class="help-note">照片可以留一點空白邊，方便放大靠邊的人物，但輸出前不要讓成品露出空白或透明。</span></li>
+        <li><b>小標籤</b>：新聞每格有兩段標籤，第一段預設在標題上方左側，第二段（「標籤文字 2」）預設在格子右上角，兩段都能在預覽圖上拖曳，靠近格子邊緣會自動吸附貼齊，「標籤位置還原」可放回預設位置。娛樂每格一個藍色膠帶標籤，會依字數拉長。</li>
+        <li><b>T寶貼圖（選用）</b>：先點格子，再點底部工具列的表情，用來蓋住人物；拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
+        <li><b>檢查照片邊緣（選用）</b>：打開底部開關，預覽圖會用<b>紅色框線</b>框出每格照片「看得到」的範圍（新聞：扣掉黃色標籤列陰影與上下的黑色字條帶；娛樂：沿相框洞的邊緣），新聞版選取格子的藍框上下緣與它一致。這只是編輯時的參考，不會檢查或標示任何東西，也不會輸出到成品。</li>
+        <li><b>下一步</b>：編輯完按底部「下一步：畫面檢查」（或點上方進度條的 ②）。「清除本頁」只會清空目前這一頁。</li>
+      </ol>
+
+      <h3>新聞／娛樂：步驟 2 畫面檢查</h3>
+      <ol class="help-steps">
+        <li><b>照片鎖定</b>：這一步照片、標籤、貼圖都不能動；拖曳時會提醒「套版已鎖定，回上一步才能調整」（顯示 3 秒）。</li>
+        <li><b>左側檢查清單</b>：逐格列出狀態——
+          <div class="help-marks"><i class="dot ok">圖</i><i class="dot ok">字</i> 綠色圓圈＝這項沒問題　<i class="dot warn">!</i> 黃色＝圖片疑似露白　<i class="dot bad">!</i> 紅色＝缺圖片或缺標題</div>
+          <span class="help-note">預覽圖有問題的格子左上角也會標同樣的圓圈，滑鼠移上去會顯示原因，移開後約 1 秒淡出。底部的提示會統計兩頁的狀況。</span></li>
+        <li><b>疑似露白怎麼判斷</b>：只看照片「看得到」的範圍（被範本遮住的部分不算）。照片沒蓋滿這個範圍（例如被拖離格子），或照片邊緣本身接近白色／透明（任一邊有 90% 以上），就會標黃色「!」。這只是提醒，<b>不鎖定下載</b>。</li>
+        <li><b>複製推播連結</b>：在步驟 2 點預覽圖的格子，該格整個會淡淡反灰（暗 10%，沒有藍框線），正中間會出現「複製推播連結」按鈕（編輯畫面時不會出現；點空白處或換頁會收起），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
+        <li><b>下載</b>：
+          <ul>
+            <li>「下載本頁」存目前這頁；若還有缺漏或疑似露白，會先問你。</li>
+            <li>「全部下載」存兩頁；<b>缺圖片、缺標題時是灰色、不能按</b>，全部補齊後變綠色，按下會再確認「已確認無錯字、圖片無露白？」（有疑似露白時改問「圖片有露白確定要下載嗎？」）。</li>
+          </ul></li>
+        <li><b>返回編輯</b>：要補圖、改字、移動照片，按底部藍色的「返回編輯」。</li>
       </ol>
 
       <h3>拼圖</h3>
+      <p class="help-note" style="margin:0 0 6px">拼圖沒有標題檢查，所以沒有進度條與步驟 2；左側是版面設定與編輯面板，底部是「清除拼圖」「下載」「直接複製」。</p>
       <ol class="help-steps">
         <li><b>等分</b>：選「直向等分」「橫向等分」（不切～4），在預覽圖上拖曳分隔線可調整每格比例，「平均分配」回到等分。</li>
         <li><b>自由框</b>：切到「自由框」後選「調整框」，在空白處拖曳拉出新框、拖曳框內移動、拉邊角改大小，靠近邊緣或其他框會自動貼齊；可「移到最上層／最下層」「刪除此框」（或按 Delete）。</li>
         <li><b>直式長圖</b>（例如數據圖上下疊）：自由框可改「畫布高度」。先「＋新增框」補到需要的框數、各自貼上圖片，再按「框貼合圖片比例」讓框吻合圖片（不裁切，下方的框會跟著往下推），最後按「貼合內容」；「上下換位」可調整順序。</li>
         <li><b>放照片</b>：（自由框請先切到「調整照片」）單擊選框、雙擊選檔，拖曳移動、滾輪縮放，和其他版型一樣。</li>
-        <li><b>輸出</b>：「下載」存成 1080 寬的 JPG（等分為 1080×1080，自由框高度可調）；「直接複製」後切到新聞或娛樂，點選格子按 Ctrl+V 就會貼成那格的照片。</li>
+        <li><b>輸出</b>：「下載」存成 1080 寬的 PNG（等分為 1080×1080，自由框高度可調）；「直接複製」後切到新聞或娛樂，點選格子按 Ctrl+V 就會貼成那格的照片。</li>
       </ol>
 
       <h3>快速填入示範</h3>
@@ -711,8 +1002,8 @@
         <tr><th></th><th>新聞</th><th>娛樂</th><th>拼圖</th></tr>
         <tr><td>版型</td><td>熱門話題六宮格</td><td>拍立得四格</td><td>等分／自由框</td></tr>
         <tr><td>尺寸</td><td>1040 × 800</td><td>1040 × 1040</td><td>1080 × 1080（自由框可調高度）</td></tr>
-        <tr><td>格式</td><td colspan="3">JPG（高品質）、300dpi</td></tr>
-        <tr><td>檔名</td><td>20260925新聞Line推播圖_第1頁.jpg</td><td>20260925娛樂Line推播圖_第1頁.jpg</td><td>20260925拼圖.jpg</td></tr>
+        <tr><td>格式</td><td colspan="3">PNG（無損，尺寸固定）、300dpi、檔案小於 2MB</td></tr>
+        <tr><td>檔名</td><td>20260925新聞Line推播圖_第1頁.png</td><td>20260925娛樂Line推播圖_第1頁.png</td><td>20260925拼圖.png</td></tr>
         <tr><td></td><td colspan="3"><span class="help-note">檔名開頭為下載當天日期（年月日）</span></td></tr>
         <tr><td>快速填入</td><td>最多 12 格（每頁 6 格）</td><td>最多 8 格（每頁 4 格）</td><td>—（一張畫布）</td></tr>
       </table>
@@ -732,9 +1023,9 @@
         <li>標題太長會自動壓字距、再縮字級，不會超出格子。</li>
         <li>全形標點會自動轉成半形。</li>
         <li>標籤欄位留空就不顯示；快速填入時標籤是「國際」會自動變灰底。</li>
-        <li>新聞版每格有兩段標籤：第一段預設在標題上方左側，第二段（「標籤文字 2」）預設在格子右上角。兩段都能在預覽圖上直接拖曳，只能停在漸層／黑帶下方、標題上方，靠近格子邊緣會自動貼齊；「標籤位置還原」可一次放回預設位置。</li>
+        <li>新聞版標籤只能停在漸層／黑帶下方、標題上方。</li>
         <li>每行文字與標籤旁的色塊點一下可展開換色。</li>
-        <li>「清除本頁」只會清空目前這一頁。</li>
+        <li>各版型、各頁的內容都留在這個頁面裡；重新整理網頁就會清空，請先下載。</li>
       </ul>
     </div>
   </div>
@@ -850,6 +1141,21 @@ const LAYOUTS = {
 };
 let mode = 'news';
 function L() { return LAYOUTS[mode]; }
+// 新聞／娛樂 work in two steps: 1 編輯畫面, 2 畫面檢查 (photos locked, downloads
+// unlocked). 拼圖 has no headline check, so it has no steps.
+let step = 1;
+const stepByMode = { news: 1, ent: 1 };
+// Whether a cell is picked: only then does its editor float on the left and its
+// frame light up on the preview. Clicking empty space un-picks it.
+let cellSelected = false;
+// 新聞 only: the yellow 「熱門話題」 bar on the preview is picked instead of a cell
+// (opens the 頂部標籤 editor on the left).
+let headerSelected = false;
+let quickfillOpen = true;
+// 步驟 1 option: show the photo-edge check right on the preview (check range + yellow "!").
+let edgeCheckOn = false;
+let chromeReady = false;     // syncChrome() waits until every element it touches exists
+function isLocked() { return mode !== 'collage' && step === 2; }
 // Mode-dependent values the rest of the code reads as plain globals.
 let CELL_COUNT, CELL_LABELS, LINE_COLORS, TAG_COLORS, STICKER_BASE_SIZE;
 function applyModeGlobals() {
@@ -1171,9 +1477,13 @@ function drawTemplateOverlay(ctx, showHeader) {
     if (templateEntImg) ctx.drawImage(templateEntImg, 0, 0, CANVAS_W, CANVAS_H);
     return;
   }
-  const img = showHeader ? templateHeaderImg : templatePlainImg;
+  const img = newsTemplate(showHeader);
   if (!img) return;
+  // Exporting at an exact multiple of the template: copy its pixels as they are (no re-smoothing).
+  ctx.save();
+  if (templateNearest) ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H);
+  ctx.restore();
   if (showHeader) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, CANVAS_W, HEADER_TOP_LINE_H);
@@ -1414,6 +1724,73 @@ function computeCardFit(ctx, cell, state) {
   return result;
 }
 
+// The headline block of a 新聞 cell hangs from this y (its bottom edge). Bottom row: the cell's own bottom.
+// Top row: the headline sits in the black band that runs on below the cell, down to where the lower row's
+// photo starts to show (measured off the template PNGs: 432 with the yellow bar, 414 without), so it is
+// moved down to end TOP_ROW_TEXT_GAP px above that edge. Tags, the blue/red frames and the copy button
+// are all measured from the headline, so they follow.
+const TOP_ROW_TEXT_GAP = 5;
+const NEWS_BAND_EDGE = { [ROW_EDGES_HEADER[0]]: 432, [ROW_EDGES_PLAIN[0]]: 414 };
+function newsTextBottom(cell) {
+  const edge = NEWS_BAND_EDGE[cell.y];
+  // The ink of the last line ends 6px above this y (4px padding + the glyph's own side bearing), so
+  // y = edge - (gap - 5) leaves exactly `gap` px of black below the text.
+  return edge === undefined ? cell.y + cell.h : edge - (TOP_ROW_TEXT_GAP - 5);
+}
+// The template's black gradient over the photos (it fades in from clear to solid black, 55px tall, just
+// above the headline) was drawn for headlines at the old height. With the top row's headlines lower, the
+// top row's gradient is slid down so that it starts the same distance above the bottom-left tag as the
+// bottom row's does (the tag sits that far into the gradient). The solid black band below it is shortened
+// to fit, so its lower edge (NEWS_BAND_EDGE) does not move. Both the drawn template and the 露白 visibility
+// map use this adjusted copy.
+const NEWS_GRADIENT_TOP = { h: 263, p: 247 };       // first row of the top-row gradient in each template PNG
+const NEWS_GRADIENT_TOP_ROW2 = { h: 648, p: 645 };  // same for the bottom row (left as drawn)
+// top of the default bottom-left tag of a two-line headline at the standard sizes (see newsTagLimitBottom)
+function stdTagTop(textBottom) {
+  return textBottom - 4 - BASE_FONT_SIZE * 0.5 - BASE_FONT_SIZE * 1.18 - BASE_FONT_SIZE * 0.5 - TAG_GAP - (TAG_BASE_FONT_SIZE + TAG_PAD_Y * 2);
+}
+const newsTemplateCache = new Map();
+function newsTemplate(showHeader) {
+  const img = showHeader ? templateHeaderImg : templatePlainImg;
+  if (!img) return null;
+  const key = showHeader ? 'h' : 'p';
+  if (newsTemplateCache.has(key)) return newsTemplateCache.get(key);
+  const rowTop = showHeader ? ROW_EDGES_HEADER[0] : ROW_EDGES_PLAIN[0];
+  const edge = NEWS_BAND_EDGE[rowTop];
+  const gTop = NEWS_GRADIENT_TOP[key];
+  const rows = showHeader ? ROW_EDGES_HEADER : ROW_EDGES_PLAIN;
+  const lead2 = stdTagTop(rows[2]) - NEWS_GRADIENT_TOP_ROW2[key];          // bottom row: gradient starts this far above the tag
+  const gradTarget = Math.round(stdTagTop(newsTextBottom({ y: rowTop, h: 0 })) - lead2);   // where the top row's gradient should start
+  const d = gradTarget - gTop;
+  let out = img;
+  if (d > 0) {
+    const c = document.createElement('canvas');
+    c.width = NEWS_W; c.height = NEWS_H;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0, NEWS_W, NEWS_H);
+    x.clearRect(0, gTop, NEWS_W, edge - gTop);
+    // rows [gTop, edge - d) of the template move down to [gradTarget, edge)
+    x.drawImage(img, 0, gTop, NEWS_W, edge - d - gTop, 0, gradTarget, NEWS_W, edge - d - gTop);
+    out = c;
+  }
+  newsTemplateCache.set(key, out);
+  return out;
+}
+// The whole area of a cell as the viewer sees it (step 2's selection highlight and the copy button's
+// centre): 新聞 from the top of the visible photo to the lower edge of the cell's black band; 娛樂 is its quarter of the page.
+function stepTwoCellRect(i, showHeader) {
+  if (mode === 'ent') {
+    const w = CANVAS_W / 2, h = CANVAS_H / 2;
+    return { x: (i % 2) * w, y: Math.floor(i / 2) * h, w, h };
+  }
+  const cell = cellRect(i, showHeader);
+  // from where the cell starts to show (below the yellow bar's edge / the upper row's black band) ...
+  const top = cardVisibleWindow(cell, showHeader).top;
+  // ... to the lower edge of its own black band (the top row's band runs on below the cell)
+  const edge = NEWS_BAND_EDGE[cell.y];
+  const bottom = edge === undefined ? cell.y + cell.h : edge;
+  return { x: cell.x, y: top, w: cell.w, h: bottom - top };
+}
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 4;
   const centerX = cell.x + cell.w / 2;
@@ -1423,7 +1800,7 @@ function drawCellText(ctx, cell, state) {
   // have shrunk to fit long text) so line 1 and line 2 land at the exact
   // same height in every cell of a row — a cell with a long, shrunk title
   // still lines up with its neighbors instead of sitting lower/higher.
-  const bottomAnchor = cell.y + cell.h - paddingBottom - BASE_FONT_SIZE * 0.5;
+  const bottomAnchor = newsTextBottom(cell) - paddingBottom - BASE_FONT_SIZE * 0.5;
   const lineGap = BASE_FONT_SIZE * 1.18;
 
   let baseY1 = null, baseY2 = null;
@@ -1488,11 +1865,28 @@ function newsTagLayout(ctx, cell, state, n) {
 // this is the y just above the headline block, where tag 1 sits by default
 // and the lowest a tag may reach.
 function newsTagLimitBottom(cell, f) {
-  const topLineBaseline = f.line1 ? cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5 - (f.line2 ? BASE_FONT_SIZE * 1.18 : 0)
-    : f.line2 ? cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5
-    : cell.y + cell.h - 4;
+  const tb = newsTextBottom(cell);
+  const topLineBaseline = f.line1 ? tb - 4 - BASE_FONT_SIZE * 0.5 - (f.line2 ? BASE_FONT_SIZE * 1.18 : 0)
+    : f.line2 ? tb - 4 - BASE_FONT_SIZE * 0.5
+    : tb - 4;
   const topLineFontSize = f.line1 ? f.fontSize1 : f.fontSize2;
   return topLineBaseline - topLineFontSize * 0.5 - TAG_GAP;
+}
+
+// The part of a 新聞 cell that shows the photo, as drawn by both the blue selection frame and the red
+// 「檢查照片邊緣」 frame: from where the photo starts to show (below the header bar / the upper row's black
+// text band) down to the top of the first headline line (the small tag's lower edge).
+function newsPhotoFrame(ctx, cell, state, showHeader) {
+  const top = cardVisibleWindow(cell, showHeader).top;
+  // Measured from the standard font size (like the headline's own baseline), not this cell's possibly
+  // shrunk one, so the frames of a row all end at the same height.
+  const hasLine1 = !!(state.line1 || '').trim(), hasLine2 = !!(state.line2 || '').trim();
+  const tb = newsTextBottom(cell);
+  const bottomAnchor = tb - 4 - BASE_FONT_SIZE * 0.5;
+  const topLineBaseline = hasLine1 ? bottomAnchor - (hasLine2 ? BASE_FONT_SIZE * 1.18 : 0)
+    : hasLine2 ? bottomAnchor : tb - 4;
+  const bottom = topLineBaseline - BASE_FONT_SIZE * 0.5 - TAG_GAP;
+  return { top, bottom: clamp(bottom, top + 24, tb) };
 }
 
 // Topmost tag under the point (tag 2 is drawn last, so it wins).
@@ -1619,7 +2013,7 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   drawTemplateOverlay(ctx, pageState.showHeader);
   if (renderMode === 'final') {
-    for (let i = 0; i < CELL_COUNT; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive);
+    for (let i = 0; i < CELL_COUNT; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive && !isLocked());
     for (let i = 0; i < CELL_COUNT; i++) {
       if (mode === 'ent') drawEntCellText(ctx, i, pageState.cards[i]);
       else if (mode === 'news') drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
@@ -1627,14 +2021,75 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
   if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
+  // On-screen aids only (never exported):
+  //  - 步驟 1 with the 「檢查照片邊緣」 switch on: a red frame around the part of each cell where the
+  //    photo can be seen — just a reference while editing, nothing is checked or flagged here.
+  //  - 步驟 2: the check itself — a circled "!" on every cell that needs a look (red when something
+  //    is missing, yellow when the photo shows white).
+  if (opts.interactive && mode !== 'collage' && !isLocked() && edgeCheckOn) {
+    if (mode === 'ent') {
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const ov = entCheckOverlay(i);
+        if (ov) { const cell = cellRect(i, pageState.showHeader); ctx.drawImage(ov, cell.x, cell.y); }
+      }
+    } else {
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const cell = cellRect(i, pageState.showHeader);
+        const fr = newsPhotoFrame(ctx, cell, pageState.cards[i], pageState.showHeader);
+        ctx.save();
+        ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 3;
+        ctx.strokeRect(cell.x + 1.5, fr.top + 1.5, cell.w - 3, fr.bottom - fr.top - 3);
+        ctx.restore();
+      }
+    }
+  }
+  if (opts.interactive && mode !== 'collage' && isLocked()) {
+    for (let i = 0; i < CELL_COUNT; i++) {
+      const kind = cardBadgeKind(pageState, i);
+      if (!kind) continue;
+      const missing = kind === 'bad';
+      const cell = cellRect(i, pageState.showHeader);
+      const bx = cell.x + 24, by = cell.y + 24;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(bx, by, 15, 0, Math.PI * 2);
+      ctx.fillStyle = missing ? '#dc2626' : '#facc15'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = missing ? '#ffffff' : '#1f2328'; ctx.stroke();
+      ctx.fillStyle = missing ? '#ffffff' : '#1f2328'; ctx.font = `800 20px ${FONT_STACK}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('!', bx, by + 1);
+      ctx.restore();
+    }
+  }
 
-  if (opts.showActiveBorder && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
-    const cell = cellRect(activeCard, pageState.showHeader);
+  if (opts.showHeaderBorder && headerSelected && pageState.showHeader) {
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(cell.x + 1.5, cell.y + 1.5, cell.w - 3, cell.h - 3);
+    ctx.strokeRect(1.5, 1.5, CANVAS_W - 3, HEADER_H - 3);
     ctx.restore();
+  }
+  if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
+    const cell = cellRect(activeCard, pageState.showHeader);
+    if (isLocked() && mode !== 'collage') {
+      // 步驟 2: no frame; the whole cell is just dimmed (black at 10%).
+      const rc = stepTwoCellRect(activeCard, pageState.showHeader);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.10)';
+      ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
+      ctx.restore();
+    } else {
+      // 新聞: the frame marks the photo you can see, not the text area (same range as the red edge-check frame).
+      let frameTop = cell.y, frameBottom = cell.y + cell.h;
+      if (mode === 'news') {
+        const fr = newsPhotoFrame(ctx, cell, pageState.cards[activeCard], pageState.showHeader);
+        frameTop = fr.top; frameBottom = fr.bottom;
+      }
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,74,173,0.9)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(cell.x + 1.5, frameTop + 1.5, cell.w - 3, frameBottom - frameTop - 3);
+      ctx.restore();
+    }
   }
 }
 
@@ -1691,7 +2146,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 function render() {
-  renderTo(ctx, 'final', activePage(), { showActiveBorder: true, interactive: true });
+  renderTo(ctx, 'final', activePage(), { showActiveBorder: true, showHeaderBorder: true, interactive: true });
   updateDownloadState();
 }
 
@@ -1736,6 +2191,7 @@ function setCardImageAt(pageIdx, i, image, fileName, source = 'manual') {
   state.offsetY = (cell.h - dh) / 2;
   if (pageIdx === activePageIndex) refreshCardThumb(i);
   render();
+  if (isLocked()) syncChrome();
 }
 function setCardImage(i, image, fileName) { setCardImageAt(activePageIndex, i, image, fileName, 'manual'); }
 
@@ -1764,30 +2220,11 @@ function buildCardUI(i) {
   fi.accept = 'image/*';
   dz.appendChild(dzThumb);
   dz.appendChild(dzText);
-  const copyPushBtn = document.createElement('button');
-  copyPushBtn.type = 'button';
-  copyPushBtn.className = 'copy-push-btn primary';
-  copyPushBtn.textContent = '複製推播連結';
-  copyPushBtn.title = '複製這一格的推播連結（後方自動加上 UTM）';
-  copyPushBtn.addEventListener('click', async e => {
-    e.stopPropagation();   // don't open the file picker
-    setActiveCard(i);
-    const link = withUtm(activePage().cards[i].url);
-    if (!link) { statusEl.show(`第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`, 'error'); return; }
-    const ok = await copyText(link);
-    if (ok) statusEl.show(`已複製第 ${i + 1} 格推播連結（含 UTM）`, 'success');
-    else statusEl.show('這個瀏覽器無法複製，請改用手動複製', 'error');
-    if (ok) {
-      copyPushBtn.textContent = '已複製 ✓';
-      setTimeout(() => { copyPushBtn.textContent = '複製推播連結'; }, 1500);
-    }
-  });
   dz.appendChild(fi);
-  // Photo drop area and the copy button are two independent halves of one row.
+  // 複製推播連結 is not offered while editing; in step 2 it floats over the hovered cell.
   const dzRow = document.createElement('div');
   dzRow.className = 'dz-row';
   dzRow.appendChild(dz);
-  dzRow.appendChild(copyPushBtn);
   box.appendChild(dzRow);
 
   function handleFile(file) {
@@ -2022,9 +2459,26 @@ function syncAllCellUI() {
   for (let i = 0; i < CELL_COUNT; i++) syncCellUIFromState(i);
 }
 
-function setActiveCard(i) {
+function setActiveCard(i, select = true) {
   activeCard = i;
+  if (select) { cellSelected = true; headerSelected = false; }
   cardEls.forEach((el, idx) => el.box.classList.toggle('active', idx === i));
+  syncChrome();
+  render();
+}
+function clearSelection() {
+  if (!cellSelected && !headerSelected) return;
+  cellSelected = false;
+  headerSelected = false;
+  syncChrome();
+  render();
+}
+// 新聞: click the yellow bar (or the 「頂部標籤」 button when the bar is off).
+function openHeaderEditor() {
+  if (mode !== 'news' || isLocked()) return;
+  cellSelected = false;
+  headerSelected = true;
+  syncChrome();
   render();
 }
 
@@ -2036,7 +2490,7 @@ function buildAllCardUI() {
   for (let i = 0; i < CELL_COUNT; i++) buildCardUI(i);
 }
 buildAllCardUI();
-setActiveCard(0);
+setActiveCard(0, false);
 
 // ---------------------------------------------------------------------------
 // Canvas drag-to-pan / wheel-to-zoom
@@ -2073,6 +2527,7 @@ function cellIndexAt(x, y) {
 
 let drag = null;
 let stickerDrag = null;
+let lockProbe = null;   // pointer pressed on a cell while locked: a drag from here shows the reminder
 let tagDrag = null;
 let collageDrag = null;
 
@@ -2219,8 +2674,21 @@ function pointerDown(evt) {
   const pos = getCanvasPos(evt);
   if (mode === 'collage' && collagePointerDown(evt, pos)) return;
   const idx = cellIndexAt(pos.x, pos.y);
-  if (idx < 0) return;
+  if (idx < 0) {
+    const onHeader = mode === 'news' && !isLocked() && activePage().showHeader &&
+      pos.x >= 0 && pos.x <= NEWS_W && pos.y >= 0 && pos.y < HEADER_H;
+    if (onHeader) openHeaderEditor(); else clearSelection();
+    return;
+  }
   const state = activePage().cards[idx];
+
+  // 步驟 2: photos, tags and stickers are locked. A click just picks the cell;
+  // dragging it shows the 「返回上一步更改」 reminder.
+  if (isLocked()) {
+    setActiveCard(idx);
+    lockProbe = { startX: pos.x, startY: pos.y };
+    return;
+  }
 
   if (mode === 'news') {
     const cell = cellRect(idx, activePage().showHeader);
@@ -2254,7 +2722,6 @@ function pointerDown(evt) {
   }
 
   setActiveCard(idx);
-  cardEls[idx].box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   if (!state.img) return;
   evt.preventDefault();
   drag = { idx, startX: pos.x, startY: pos.y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
@@ -2264,6 +2731,14 @@ function pointerDown(evt) {
 function pointerMove(evt) {
   const pos = getCanvasPos(evt);
   if (collageDrag) { collagePointerMove(evt, pos); return; }
+  if (lockProbe) {
+    if (Math.hypot(pos.x - lockProbe.startX, pos.y - lockProbe.startY) > 6) { lockProbe = null; showLockReminder(); }
+    return;
+  }
+  if (isLocked() && !drag && !tagDrag && !stickerDrag) {
+    canvas.style.cursor = cellIndexAt(pos.x, pos.y) >= 0 ? 'pointer' : 'default';
+    return;
+  }
   if (tagDrag) {
     evt.preventDefault();
     const state = activePage().cards[tagDrag.idx];
@@ -2291,7 +2766,11 @@ function pointerMove(evt) {
       if (c) { canvas.style.cursor = c; return; }
     }
     const idx = cellIndexAt(pos.x, pos.y);
-    if (idx < 0) { canvas.style.cursor = 'default'; return; }
+    if (idx < 0) {
+      const overHeader = mode === 'news' && !isLocked() && activePage().showHeader && pos.y >= 0 && pos.y < HEADER_H && pos.x >= 0 && pos.x <= NEWS_W;
+      canvas.style.cursor = overHeader ? 'pointer' : 'default';
+      return;
+    }
     const state = activePage().cards[idx];
     if (mode === 'news' && newsTagHit(ctx, cellRect(idx, activePage().showHeader), state, pos.x, pos.y)) {
       canvas.style.cursor = 'grab';
@@ -2311,6 +2790,7 @@ function pointerMove(evt) {
 
 function pointerUp() {
   if (collageDrag) collagePointerUp();
+  lockProbe = null;
   drag = null;
   stickerDrag = null;
   tagDrag = null;
@@ -2321,6 +2801,7 @@ canvas.addEventListener('mousedown', pointerDown);
 window.addEventListener('mousemove', pointerMove);
 window.addEventListener('mouseup', pointerUp);
 canvas.addEventListener('dblclick', evt => {
+  if (isLocked()) { showLockReminder(); return; }
   if (mode === 'collage' && activePage().collage.layout === 'free' && activePage().collage.editFrames) return;
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
@@ -2340,6 +2821,10 @@ canvas.addEventListener('wheel', evt => {
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
   const state = activePage().cards[idx];
+  if (isLocked()) {
+    if (state.img || state.stickers.length) { evt.preventDefault(); showLockReminder(); }
+    return;
+  }
 
   const stIdx = stickerHit(state, pos.x, pos.y);
   if (stIdx >= 0) {
@@ -2365,6 +2850,7 @@ canvas.addEventListener('wheel', evt => {
 canvas.addEventListener('dragover', evt => evt.preventDefault());
 canvas.addEventListener('drop', evt => {
   evt.preventDefault();
+  if (isLocked()) { showLockReminder(); return; }
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
@@ -2381,7 +2867,11 @@ document.addEventListener('paste', e => {
   for (const item of items) {
     if (item.type && item.type.startsWith('image/')) {
       const file = item.getAsFile();
-      if (activeCard < 0 || activeCard >= CELL_COUNT) break;
+      if (isLocked()) { showLockReminder(); break; }
+      if (!cellSelected || activeCard < 0 || activeCard >= CELL_COUNT) {
+        statusEl.show('先點預覽圖選一格，再按 Ctrl+V 貼上圖片');
+        break;
+      }
       loadImageFile(file, (image, name) => {
         setCardImage(activeCard, image, name);
         refreshCardThumb(activeCard);
@@ -2426,9 +2916,13 @@ pageTabs.forEach(btn => {
     if (idx === activePageIndex) return;
     activePageIndex = idx;
     pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === idx));
+    updateSegKnobs();
     syncTopUIFromState();
     syncAllCellUI();
-    setActiveCard(0);
+    cellSelected = false;
+    headerSelected = false;
+    if (typeof hideGapTip === 'function') hideGapTip(true);
+    setActiveCard(0, false);
   });
 });
 
@@ -2475,30 +2969,15 @@ statusToast.addEventListener('click', hideStatusToast);
 // ---------------------------------------------------------------------------
 // Export resolution / DPI
 // ---------------------------------------------------------------------------
-// Downloads must come out at each layout's exportW/H (新聞 1040×800,
-// 娛樂 1040×1040); 新聞 renders 1:1. EXPORT_JPEG_QUALITY is kept high
-// because at native size JPEG ringing is what blurs small bold text.
-// EXPORT_DPI is written into the file's own metadata (PNG pHYs chunk / JPEG
-// JFIF density field).
-const EXPORT_SCALE = 1;
-const EXPORT_JPEG_QUALITY = 0.95;
+// Downloads are lossless PNG at each layout's fixed exportW/H (新聞 1040×800, 娛樂 1040×1040,
+// 拼圖 1080 wide) — the pixel size never changes. To make those pixels as clean as possible the page
+// is drawn at SUPERSAMPLE× the size (photos are resampled once, straight from their originals; text
+// and edges get 9 samples per pixel) and then averaged down to the exact export size.
+// EXPORT_DPI is written into the file's own PNG pHYs chunk.
+const SUPERSAMPLE = 3;
+const MAX_EXPORT_AREA = 14e6;     // stay below the canvas size limit of the strictest browsers (~16.7M px)
 const EXPORT_DPI = 300;
-
-function dataUrlToBytes(dataUrl) {
-  const binary = atob(dataUrl.split(',')[1]);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-function bytesToDataUrl(bytes, mime) {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-  }
-  return `data:${mime};base64,${btoa(binary)}`;
-}
+let templateNearest = false;      // set while exporting at an exact whole-number multiple of the template
 
 const PNG_CRC_TABLE = (() => {
   const table = [];
@@ -2519,8 +2998,7 @@ function pngCrc32(bytes) {
 // Inserts a pHYs chunk (pixel density) right after the mandatory IHDR chunk
 // — PNG's own way of carrying a DPI value — since the browser's PNG encoder
 // doesn't write one on its own.
-function pngWithDpi(dataUrl, dpi) {
-  const bytes = dataUrlToBytes(dataUrl);
+function pngWithDpi(bytes, dpi) {
   const ppm = Math.round(dpi / 0.0254); // pixels per meter, PNG's native unit
   const data = new Uint8Array(9);
   const dv = new DataView(data.buffer);
@@ -2539,76 +3017,113 @@ function pngWithDpi(dataUrl, dpi) {
   out.set(bytes.subarray(0, IHDR_END), 0);
   out.set(chunk, IHDR_END);
   out.set(bytes.subarray(IHDR_END), IHDR_END + chunk.length);
-  return bytesToDataUrl(out, 'image/png');
-}
-
-// Patches the density fields of the JFIF APP0 segment that every browser's
-// JPEG encoder writes right after the SOI marker — same byte length in, same
-// byte length out, just switching "no density info" to "N dots per inch".
-function jpegWithDpi(dataUrl, dpi) {
-  const bytes = dataUrlToBytes(dataUrl);
-  if (bytes[2] === 0xFF && bytes[3] === 0xE0) {
-    const ident = String.fromCharCode(bytes[6], bytes[7], bytes[8], bytes[9]);
-    if (ident === 'JFIF') {
-      // "JFIF\0" (offsets 6-10) is followed by a 2-byte version field
-      // (11-12) before units/density start — units at 13, not 11.
-      bytes[13] = 1; // units: 1 = dots per inch
-      bytes[14] = (dpi >> 8) & 0xFF;
-      bytes[15] = dpi & 0xFF;
-      bytes[16] = (dpi >> 8) & 0xFF;
-      bytes[17] = dpi & 0xFF;
-    }
-  }
-  return bytesToDataUrl(bytes, 'image/jpeg');
+  return out;
 }
 
 // Opening this file directly as file:// (instead of via a real http/https
 // server such as GitHub Pages) makes Chrome treat the local template PNGs
 // as cross-origin, which taints the canvas and blocks toDataURL(). Catch
 // that specific failure and explain it, rather than failing silently.
-function exportCanvas(off, toDataUrlArgs, filename) {
+// The push platform only accepts files under 2 MB. A PNG of a busy photo can be bigger than that, and
+// the pixel size is locked, so when the lossless file is too big the colours are rounded a little more
+// each time (step 2, 4, 8, 16 levels — invisible at the first steps) until it fits. Returns
+// { bytes, step, size, tooBig }.
+const EXPORT_MAX_BYTES = 1990000;
+const QUANT_STEPS = [1, 2, 4, 8, 16];
+function quantizeCanvas(src, step) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const cx = c.getContext('2d');
+  const img = src.getContext('2d').getImageData(0, 0, src.width, src.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = Math.min(255, Math.round(d[i] / step) * step);
+    d[i + 1] = Math.min(255, Math.round(d[i + 1] / step) * step);
+    d[i + 2] = Math.min(255, Math.round(d[i + 2] / step) * step);
+  }
+  cx.putImageData(img, 0, 0);
+  return c;
+}
+async function encodePngUnderLimit(off) {
+  let best = null;
+  for (const step of QUANT_STEPS) {
+    const cv = step === 1 ? off : quantizeCanvas(off, step);
+    const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('PNG encode failed');
+    const bytes = pngWithDpi(new Uint8Array(await blob.arrayBuffer()), EXPORT_DPI);
+    best = { bytes, step, size: bytes.length, tooBig: bytes.length >= EXPORT_MAX_BYTES };
+    if (!best.tooBig) break;
+  }
+  return best;
+}
+
+// Opening this file directly as file:// (instead of via a real http/https
+// server such as GitHub Pages) makes Chrome treat the local template PNGs
+// as cross-origin, which taints the canvas and blocks export. Catch
+// that specific failure and explain it, rather than failing silently.
+async function exportCanvas(off, filename) {
   try {
-    const mime = toDataUrlArgs[0];
-    let dataUrl = off.toDataURL(...toDataUrlArgs);
-    dataUrl = mime === 'image/png' ? pngWithDpi(dataUrl, EXPORT_DPI) : jpegWithDpi(dataUrl, EXPORT_DPI);
-    downloadDataUrl(dataUrl, filename);
+    const res = await encodePngUnderLimit(off);
+    const url = URL.createObjectURL(new Blob([res.bytes], { type: 'image/png' }));
+    downloadDataUrl(url, filename);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return res;
   } catch (err) {
     statusEl.show('下載失敗：請改用 http(s) 方式開啟本頁（例如部署後的網址，或本機用 http-server 開啟），直接雙擊開啟 index.html 檔案（file://）無法匯出圖片。', 'error');
     throw err;
   }
 }
+const fmtMB = n => `${(n / 1048576).toFixed(2)} MB`;
+// One line after a download when the 2 MB rule had to step in (silent when the lossless PNG already fit).
+function reportExport(results) {
+  const tooBig = results.filter(r => r.tooBig);
+  const tuned = results.filter(r => r.step > 1 && !r.tooBig);
+  if (tooBig.length) statusEl.show(`已下載，但檔案仍有 ${tooBig.map(r => fmtMB(r.size)).join('、')}，超過 2MB 上限；請換掉細節很多的照片，或縮小照片放大倍率後再下載。`, 'error');
+  else if (tuned.length) statusEl.show(`已下載。為符合 2MB 上限，已微調色階（${tuned.map(r => fmtMB(r.size)).join('、')}），尺寸不變。`, 'success');
+}
 
-// When a layout's file size differs from its design size (娛樂: designed at
-// 1200, delivered at 1040), render at 2× the target and halve it with
-// high-quality smoothing — sharper text/photo edges than drawing straight at
-// the smaller size.
+// Averages a SUPERSAMPLE× canvas down to w×h (each output pixel = the mean of the f×f block it covers).
+function boxDownscale(big, w, h) {
+  const f = big.width / w;
+  const src = big.getContext('2d').getImageData(0, 0, big.width, big.height).data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d');
+  const out = octx.createImageData(w, h);
+  const dst = out.data, bw = big.width, n = f * f;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let dy = 0; dy < f; dy++) {
+        let i = ((y * f + dy) * bw + x * f) * 4;
+        for (let dx = 0; dx < f; dx++, i += 4) { r += src[i]; g += src[i + 1]; b += src[i + 2]; a += src[i + 3]; }
+      }
+      const o = (y * w + x) * 4;
+      dst[o] = Math.round(r / n); dst[o + 1] = Math.round(g / n); dst[o + 2] = Math.round(b / n); dst[o + 3] = Math.round(a / n);
+    }
+  }
+  octx.putImageData(out, 0, 0);
+  return off;
+}
+
+// Renders the page at the layout's fixed export size (see SUPERSAMPLE above). 娛樂 is designed at
+// 1200² but delivered at 1040², so its drawing scale is not a whole number; the final averaging
+// step still lands on exactly exportW×exportH.
 function renderPageToOffscreen(pageState, renderMode) {
   const exportW = L().exportW;
   const exportH = mode === 'collage' ? CANVAS_H : L().exportH;   // 拼圖 height follows the board
-  if (exportW === CANVAS_W && exportH === CANVAS_H) {
-    const off = document.createElement('canvas');
-    off.width = CANVAS_W * EXPORT_SCALE;
-    off.height = CANVAS_H * EXPORT_SCALE;
-    const octx = off.getContext('2d');
-    octx.scale(EXPORT_SCALE, EXPORT_SCALE);
-    renderTo(octx, renderMode, pageState);
-    return off;
-  }
+  let ss = SUPERSAMPLE;
+  while (ss > 1 && exportW * ss * exportH * ss > MAX_EXPORT_AREA) ss--;
   const big = document.createElement('canvas');
-  big.width = exportW * 2;
-  big.height = exportH * 2;
+  big.width = exportW * ss;
+  big.height = exportH * ss;
   const bctx = big.getContext('2d');
+  bctx.imageSmoothingEnabled = true;
   bctx.imageSmoothingQuality = 'high';
   bctx.scale(big.width / CANVAS_W, big.height / CANVAS_H);
-  renderTo(bctx, renderMode, pageState);
-  const off = document.createElement('canvas');
-  off.width = exportW;
-  off.height = exportH;
-  const octx = off.getContext('2d');
-  octx.imageSmoothingEnabled = true;
-  octx.imageSmoothingQuality = 'high';
-  octx.drawImage(big, 0, 0, exportW, exportH);
-  return off;
+  templateNearest = Number.isInteger(big.width / CANVAS_W) && big.width / CANVAS_W >= 2;
+  try { renderTo(bctx, renderMode, pageState); } finally { templateNearest = false; }
+  return ss === 1 ? big : boxDownscale(big, exportW, exportH);
 }
 
 async function ensureAssetsReady() {
@@ -2618,12 +3133,12 @@ async function ensureAssetsReady() {
   await stickersReady;
 }
 
-// e.g. 20260925新聞Line推播圖_第1頁.jpg — date is the local date at download.
+// e.g. 20260925新聞Line推播圖_第1頁.png — date is the local date at download.
 function exportFileName(pageIndex) {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  if (mode === 'collage') return `${ymd}拼圖.jpg`;
-  return `${ymd}${L().name}Line推播圖_第${pageIndex + 1}頁.jpg`;
+  if (mode === 'collage') return `${ymd}拼圖.png`;
+  return `${ymd}${L().name}Line推播圖_第${pageIndex + 1}頁.png`;
 }
 
 // 新聞／娛樂 completeness: every cell needs both headline lines and a photo.
@@ -2643,20 +3158,289 @@ function pageMissingReport(pageState) {
   });
   return rows;
 }
+// 露白: the photo shows white (or nothing) at the edge of its cell. A warning only — it can't
+// be told apart from a photo that is meant to have a white border, so it never locks downloads.
+// Only the part of the cell where the photo can actually be SEEN counts. In 新聞 the template
+// covers some of it almost solid: the yellow header bar and its shadow, the dark top edge, the
+// black text band at the bottom, and the upper row's band that spills a few pixels into the lower
+// row. A gap under those is invisible, so it is not flagged (see cardVisibleWindow).
+// Two checks, both on the cell as it will be exported:
+//   1. geometry: the photo no longer covers the visible window of the cell;
+//   2. pixels: the cell is drawn on its own and a 3px band along each edge of that window is
+//      scanned — an edge counts as white when >= 90% of its pixels are near-white (R,G,B >= 240)
+//      or see-through. This also catches photos that carry their own white / transparent border.
+const EDGE_BAND_PX = 3, EDGE_WHITE_MIN = 240, EDGE_WHITE_RATIO = 0.9;
+const OVERLAY_HIDE_ALPHA = 240;   // template pixels at least this opaque (0-255, ~94%) hide a white gap; higher = stricter
+let imgIdCounter = 0;
+const overlayAlphaCache = new Map();
+// Alpha channel of the 新聞 template for this page, or null if it can't be read.
+function overlayAlphaData(showHeader) {
+  const img = newsTemplate(showHeader);
+  if (!img) return null;
+  const key = showHeader ? 'h' : 'p';
+  if (overlayAlphaCache.has(key)) return overlayAlphaCache.get(key);
+  let data = null;
+  try {
+    const c = document.createElement('canvas');
+    c.width = NEWS_W; c.height = NEWS_H;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, NEWS_W, NEWS_H);
+    data = x.getImageData(0, 0, NEWS_W, NEWS_H).data;
+  } catch (err) { data = null; }
+  overlayAlphaCache.set(key, data);
+  return data;
+}
+// The vertical range (canvas y) of the cell where its photo is visible.
+function cardVisibleWindow(cell, showHeader) {
+  const full = { top: cell.y, bottom: cell.y + cell.h };
+  if (mode !== 'news') return full;
+  const data = overlayAlphaData(showHeader);
+  if (!data) return full;
+  const cols = [0.2, 0.5, 0.8].map(f => Math.round(cell.x + cell.w * f));
+  // A row is "hidden" only if the template is nearly opaque at all sampled columns.
+  const hidden = y => cols.every(x => data[(y * NEWS_W + x) * 4 + 3] >= OVERLAY_HIDE_ALPHA);
+  const y0 = Math.round(cell.y), y1 = Math.round(cell.y + cell.h);
+  let top = y0;
+  while (top < y1 && hidden(top)) top++;
+  let bottom = y1;
+  while (bottom > top && hidden(bottom - 1)) bottom--;
+  return { top, bottom };
+}
+// 娛樂: the photo shows through a slightly skewed hole in the template (frame, tape and the yellow
+// caption strip cover the rest), so "visible" is a mask, not a rectangle. For each photo cell:
+//   vis  = template is not (almost) opaque there,
+//   ring = visible pixels within 3px of the edge of that area (what the white-edge scan looks at),
+//   side = which edge of the cell each ring pixel belongs to (0 左, 1 上, 2 右, 3 下).
+const entMaskCache = new Map();
+let entAlphaCache = null;
+function entAlphaData() {
+  if (entAlphaCache !== null) return entAlphaCache || null;
+  if (!templateEntImg) return null;      // not loaded yet: try again later
+  entAlphaCache = false;
+  try {
+    const c = document.createElement('canvas');
+    c.width = ENT_W; c.height = ENT_H;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(templateEntImg, 0, 0, ENT_W, ENT_H);
+    entAlphaCache = x.getImageData(0, 0, ENT_W, ENT_H).data;
+  } catch (err) { entAlphaCache = false; }
+  return entAlphaCache || null;
+}
+function entCellMask(i) {
+  if (entMaskCache.has(i)) return entMaskCache.get(i);
+  const data = entAlphaData();
+  if (!data) return null;
+  const r = ENT_CELLS[i].photo;
+  const cx = Math.round(r.x), cy = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
+  const vis = new Uint8Array(w * h);
+  let count = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (data[((cy + y) * ENT_W + cx + x) * 4 + 3] < OVERLAY_HIDE_ALPHA) { vis[y * w + x] = 1; count++; }
+  }
+  // Erode by a square of radius R (pixels outside the cell count as "not visible").
+  const erode = R => {
+    const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let ok = 1;
+      for (let d = -R; d <= R && ok; d++) { const xx = x + d; if (xx < 0 || xx >= w || !vis[y * w + xx]) ok = 0; }
+      tmp[y * w + x] = ok;
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let ok = 1;
+      for (let d = -R; d <= R && ok; d++) { const yy = y + d; if (yy < 0 || yy >= h || !tmp[yy * w + x]) ok = 0; }
+      out[y * w + x] = ok;
+    }
+    return out;
+  };
+  const inner = erode(EDGE_BAND_PX), inner1 = erode(1);
+  const ring = new Uint8Array(w * h), side = new Uint8Array(w * h), edge = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const k = y * w + x;
+    if (!vis[k]) continue;
+    if (!inner1[k]) edge[k] = 1;
+    if (inner[k]) continue;
+    ring[k] = 1;
+    const d = [x, y, w - 1 - x, h - 1 - y];
+    side[k] = d.indexOf(Math.min(...d));
+  }
+  const m = { cx, cy, w, h, vis, ring, side, edge, count };
+  entMaskCache.set(i, m);
+  return m;
+}
+// On-screen picture of the visible photo area of one 娛樂 cell: a red frame along its edge. Built once per cell.
+const entOverlayCache = new Map();
+function entCheckOverlay(i) {
+  if (entOverlayCache.has(i)) return entOverlayCache.get(i);
+  const m = entCellMask(i);
+  if (!m) return null;
+  const c = document.createElement('canvas');
+  c.width = m.w; c.height = m.h;
+  const x = c.getContext('2d');
+  const img = x.createImageData(m.w, m.h);
+  for (let k = 0; k < m.w * m.h; k++) {
+    const p = k * 4;
+    if (m.ring[k]) { img.data[p] = 220; img.data[p + 1] = 38; img.data[p + 2] = 38; img.data[p + 3] = 255; }
+  }
+  x.putImageData(img, 0, 0);
+  entOverlayCache.set(i, c);
+  return c;
+}
+function entGeoGap(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return false;
+  const m = entCellMask(i);
+  if (!m) return false;
+  if (!st.img.__id) st.img.__id = ++imgIdCounter;
+  const gkey = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}`;
+  if (st._entGeo && st._entGeo.key === gkey) return st._entGeo.val;
+  const cell = cellRect(i, pageState.showHeader);
+  const { dw, dh } = cellImageSize(cell, st);
+  const x0 = st.offsetX, y0 = st.offsetY, x1 = x0 + dw, y1 = y0 + dh;
+  let outside = 0;
+  for (let y = 0; y < m.h; y++) {
+    const yIn = y + 0.5 >= y0 && y + 0.5 < y1;
+    for (let x = 0; x < m.w; x++) {
+      if (!m.vis[y * m.w + x]) continue;
+      if (!(yIn && x + 0.5 >= x0 && x + 0.5 < x1)) outside++;
+    }
+  }
+  const val = outside > m.count * 0.001;   // more than ~0.5px of visible area not covered by the photo
+  st._entGeo = { key: gkey, val };
+  return val;
+}
+function entWhiteEdges(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return [];
+  const m = entCellMask(i);
+  if (!m) return [];
+  const cell = cellRect(i, pageState.showHeader);
+  const off = document.createElement('canvas');
+  off.width = m.w; off.height = m.h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  drawCellImage(octx, { x: 0, y: 0, w: cell.w, h: cell.h }, st);
+  let data;
+  try { data = octx.getImageData(0, 0, m.w, m.h).data; } catch (err) { return []; }
+  const n = [0, 0, 0, 0], white = [0, 0, 0, 0];
+  for (let k = 0; k < m.w * m.h; k++) {
+    if (!m.ring[k]) continue;
+    const sd = m.side[k], p = k * 4;
+    n[sd]++;
+    if (data[p + 3] < 250 || (data[p] >= EDGE_WHITE_MIN && data[p + 1] >= EDGE_WHITE_MIN && data[p + 2] >= EDGE_WHITE_MIN)) white[sd]++;
+  }
+  const names = ['左', '上', '右', '下'];
+  return names.filter((_, sd) => n[sd] >= 20 && white[sd] / n[sd] >= EDGE_WHITE_RATIO);
+}
+function cardGeoGap(pageState, i) {
+  if (mode === 'ent') return entGeoGap(pageState, i);
+  const st = pageState.cards[i];
+  if (!st.img) return false;
+  const cell = cellRect(i, pageState.showHeader);
+  const win = cardVisibleWindow(cell, pageState.showHeader);
+  const { dw, dh } = cellImageSize(cell, st);
+  const e = 0.5;
+  const left = cell.x + st.offsetX, top = cell.y + st.offsetY;
+  return left > cell.x + e || left + dw < cell.x + cell.w - e || top > win.top + e || top + dh < win.bottom - e;
+}
+// Which edges of the visible part of cell i look white/see-through: a subset of ['左', '上', '右', '下'].
+function cardWhiteEdges(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return [];
+  const cell = cellRect(i, pageState.showHeader);
+  if (mode === 'ent') {
+    if (!st.img.__id) st.img.__id = ++imgIdCounter;
+    const ekey = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|ent`;
+    if (st._edgeCache && st._edgeCache.key === ekey) return st._edgeCache.sides;
+    const sides = entWhiteEdges(pageState, i);
+    st._edgeCache = { key: ekey, sides };
+    return sides;
+  }
+  const win = cardVisibleWindow(cell, pageState.showHeader);
+  if (!st.img.__id) st.img.__id = ++imgIdCounter;
+  const key = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|${cell.w}|${cell.h}|${win.top}|${win.bottom}|${mode}`;
+  if (st._edgeCache && st._edgeCache.key === key) return st._edgeCache.sides;
+  const w = Math.ceil(cell.w), h = Math.ceil(cell.h);
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  drawCellImage(octx, { x: 0, y: 0, w: cell.w, h: cell.h }, st);
+  let data;
+  try { data = octx.getImageData(0, 0, w, h).data; } catch (err) { return []; }   // tainted canvas: skip the pixel check
+  const white = (x, y) => {
+    const p = (y * w + x) * 4;
+    return data[p + 3] < 250 || (data[p] >= EDGE_WHITE_MIN && data[p + 1] >= EDGE_WHITE_MIN && data[p + 2] >= EDGE_WHITE_MIN);
+  };
+  const wy0 = clamp(Math.floor(win.top - cell.y), 0, h - 1);
+  const wy1 = clamp(Math.ceil(win.bottom - cell.y), wy0 + 1, h);
+  const band = Math.max(1, Math.min(EDGE_BAND_PX, w, wy1 - wy0));
+  const ratio = (xs, ys) => {
+    let n = 0, total = 0;
+    for (let y = ys[0]; y < ys[1]; y++) for (let x = xs[0]; x < xs[1]; x++) { total++; if (white(x, y)) n++; }
+    return total ? n / total : 0;
+  };
+  const sides = [];
+  if (ratio([0, band], [wy0, wy1]) >= EDGE_WHITE_RATIO) sides.push('左');
+  if (ratio([0, w], [wy0, wy0 + band]) >= EDGE_WHITE_RATIO) sides.push('上');
+  if (ratio([w - band, w], [wy0, wy1]) >= EDGE_WHITE_RATIO) sides.push('右');
+  if (ratio([0, w], [wy1 - band, wy1]) >= EDGE_WHITE_RATIO) sides.push('下');
+  st._edgeCache = { key, sides };
+  return sides;
+}
+function cardHasGap(pageState, i) {
+  return cardGeoGap(pageState, i) || cardWhiteEdges(pageState, i).length > 0;
+}
+// Which "!" a cell wears on the preview: 'bad' (red, something missing — step 2 only), 'warn' (yellow,
+// photo edge shows white), or null.
+function cardBadgeKind(pageState, i) {
+  if (!isLocked()) return null;   // the check and its marks belong to 步驟 2
+  if (cardMissing(pageState.cards[i]).length > 0) return 'bad';
+  return cardHasGap(pageState, i) ? 'warn' : null;
+}
+// What the hover pop-up says about a cell's "!".
+function cardBadgeText(pageState, i) {
+  const miss = cardMissing(pageState.cards[i]);
+  if (isLocked() && miss.length) return { title: '尚未完成', body: `缺${miss.join('、')}，補齊後才能「全部下載」` };
+  return { title: '疑似露白', body: cardGapReason(pageState, i) || '照片邊緣疑似露出空白' };
+}
+// Tooltip text for a cell flagged 露白.
+function cardGapReason(pageState, i) {
+  if (cardGeoGap(pageState, i)) return '照片被拖離格子，邊緣露出空白';
+  const sides = cardWhiteEdges(pageState, i);
+  return sides.length ? `照片${sides.join('、')}邊疑似白邊或透明` : '';
+}
+function pageGapCount(pageState) {
+  let n = 0;
+  for (let i = 0; i < pageState.cards.length; i++) if (cardHasGap(pageState, i)) n++;
+  return n;
+}
 function updateDownloadState() {
   const downloadAllBtn = document.getElementById('downloadAllBtn');
-  const locked = mode !== 'collage' && pages.some(pg => pageMissingReport(pg).length > 0);
+  const missing = mode === 'collage' ? 0 : pages.reduce((n, pg) => n + pageMissingReport(pg).length, 0);
+  const gaps = (mode === 'collage' || step !== 2) ? 0 : pages.reduce((n, pg) => n + pageGapCount(pg), 0);
+  const locked = missing > 0;
   downloadAllBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
   if (locked) { const c = document.getElementById('dlConfirm'); if (c) c.hidden = true; }
   downloadAllBtn.classList.toggle('is-disabled', locked);
   if (locked) downloadAllBtn.dataset.tip = '圖片製作未完成！'; else delete downloadAllBtn.dataset.tip;
+  const chip = document.getElementById('dockChip');
+  if (chip) {
+    const show = step === 2 && mode !== 'collage' && (missing || gaps);
+    chip.hidden = !show;
+    if (show) {
+      chip.className = 'dock-chip ' + (missing ? 'bad' : 'warn');
+      chip.textContent = '';
+      if (!missing) { const d = document.createElement('i'); d.className = 'warn-dot'; d.textContent = '!'; chip.appendChild(d); chip.append(` ${gaps} 格圖片疑似露白，仍可下載`); }
+      else chip.textContent = `${missing} 項待補，尚不能全部下載`;
+    }
+  }
 }
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
   if (mode !== 'collage') {
     const report = pageMissingReport(activePage());
+    const gapCells = activePage().cards.map((_, i) => i).filter(i => cardHasGap(activePage(), i));
+    if (gapCells.length) report.push(`第 ${gapCells.map(i => i + 1).join('、')} 格圖片疑似露白`);
     if (report.length) {
       const ok = await askConfirm({
-        title: '尚有未完成部分確定要下載?',
+        title: pageMissingReport(activePage()).length ? '尚有未完成部分確定要下載?' : '圖片有露白確定要下載嗎？',
         body: report.join('；'),
         okText: '仍要下載',
       });
@@ -2665,18 +3449,20 @@ document.getElementById('downloadJpgBtn').addEventListener('click', async () => 
   }
   await ensureAssetsReady();
   const off = renderPageToOffscreen(activePage(), 'final');
-  exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], exportFileName(activePageIndex));
+  reportExport([await exportCanvas(off, exportFileName(activePageIndex))]);
 });
 
 async function runDownloadAll() {
   await ensureAssetsReady();
+  const results = [];
   for (let p = 0; p < PAGE_COUNT; p++) {
     const off = renderPageToOffscreen(pages[p], 'final');
-    exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], exportFileName(p));
+    results.push(await exportCanvas(off, exportFileName(p)));
     // Small gap so the browser treats these as two distinct downloads
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
   }
+  reportExport(results);
 }
 // 全部下載 first asks for a last check (typos / white edges) in a popover at the
 // button; 確認下載 goes ahead, 再修改 (or clicking elsewhere / Esc) closes it.
@@ -2685,7 +3471,11 @@ function hideDlConfirm() { dlConfirm.hidden = true; }
 document.getElementById('downloadAllBtn').addEventListener('click', e => {
   e.stopPropagation();
   if (e.currentTarget.getAttribute('aria-disabled') === 'true') return;
+  const gapTotal = pages.reduce((n, pg) => n + pageGapCount(pg), 0);
+  dlConfirm.querySelector('.dl-confirm-text').textContent = gapTotal ? '圖片有露白確定要下載嗎？' : '已確認無錯字、圖片無露白？';
+  document.getElementById('dlConfirmOk').textContent = gapTotal ? '仍要下載' : '確認下載';
   dlConfirm.hidden = !dlConfirm.hidden;
+  if (!dlConfirm.hidden) hideStatusToast();
 });
 document.getElementById('dlConfirmBack').addEventListener('click', hideDlConfirm);
 document.getElementById('dlConfirmOk').addEventListener('click', () => { hideDlConfirm(); runDownloadAll(); });
@@ -2757,6 +3547,8 @@ async function copyText(text) {
 }
 
 function cleanUrl(u) { return u.replace(/[?!.,;:，。、）)\]】]+$/, ''); }
+// 「國際」 tags are grey, everything else the default red/blue.
+function tagColorFor(tag) { return tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0]; }
 function parseQuickFillText(text) {
   const entries = [];
   let current = null;
@@ -2774,20 +3566,38 @@ function parseQuickFillText(text) {
     let inlineUrl = '';
     line = line.replace(/https?:\/\/\S+/, m => { inlineUrl = cleanUrl(m); return ''; }).trim();
     let content = line.slice(1).trim();
-    let tag = '', tagColor = TAG_COLORS[0];
-    // Two coexisting tag syntaxes, always right after ★: bare text + bare
-    // ")" ("日本)...") or a matched "(文字)"/"（文字）" pair ("(獨家)...").
-    const frontBareMatch = content.match(/^([^()（）]+)[)）]/);
-    const frontPairMatch = !frontBareMatch && content.match(/^[(（]([^()（）]+)[)）]/);
-    const tagMatch = frontBareMatch || frontPairMatch;
-    if (tagMatch) {
-      tag = toHalfWidth(tagMatch[1].trim());
-      tagColor = tag === '國際' ? TAG_COLORS[1] : TAG_COLORS[0];
+    // Up to two tags, always right after ★, each in one of two coexisting syntaxes: bare text +
+    // bare ")" ("日本)...") or a matched "(文字)"/"（文字）" pair ("(獨家)...").
+    // e.g. "★（國際）（急集體隔離）標題..." or "★國際)急集體隔離)標題...".
+    const tags = [];
+    while (tags.length < 2) {
+      const frontBareMatch = content.match(/^([^()（）]+)[)）]/);
+      const frontPairMatch = !frontBareMatch && content.match(/^[(（]([^()（）]+)[)）]/);
+      const tagMatch = frontBareMatch || frontPairMatch;
+      if (!tagMatch) break;
+      const t = toHalfWidth(tagMatch[1].trim());
       content = content.slice(tagMatch[0].length).trim();
+      if (t) tags.push(t);
     }
     const entry = splitHeadline(toHalfWidth(content).replace(/　/g, ' '));
-    entry.tag = tag;
-    entry.tagColor = tagColor;
+    entry.tags = tags;
+    // First tag as before (kept for 娛樂, which has a single tag).
+    entry.tag = tags[0] || '';
+    entry.tagColor = tagColorFor(entry.tag);
+    entry.tag2 = '';
+    entry.tag2Color = TAG_COLORS[0];
+    if (tags.length === 2) {
+      // 新聞 shows two tags. If exactly one of them is 「國際」 or 「獨家」, that one goes to the top right
+      // (the second tag) and the other one stays at the bottom left; otherwise they keep their order:
+      // first at the bottom left, second at the top right.
+      const special = t => t === '國際' || t === '獨家';
+      const [a, b] = tags;
+      const [left, right] = (special(a) !== special(b) && special(a)) ? [b, a] : [a, b];
+      entry.newsTag = left; entry.newsTagColor = tagColorFor(left);
+      entry.tag2 = right; entry.tag2Color = tagColorFor(right);
+    } else {
+      entry.newsTag = entry.tag; entry.newsTagColor = entry.tagColor;
+    }
     entry.url = inlineUrl;
     entries.push(entry);
     current = entry;
@@ -2866,8 +3676,15 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
     const card = pages[Math.floor(idx / CELL_COUNT)].cards[idx % CELL_COUNT];
     card.line1 = entry.line1;
     card.line2 = entry.line2;
-    card.tag = entry.tag;
-    card.tagColor = entry.tagColor;
+    if (mode === 'news') {
+      card.tag = entry.newsTag;
+      card.tagColor = entry.newsTagColor;
+      card.tag2 = entry.tag2;
+      card.tag2Color = entry.tag2Color;
+    } else {
+      card.tag = entry.tag;
+      card.tagColor = entry.tagColor;
+    }
     card.url = entry.url || '';
   });
   syncAllCellUI();
@@ -2876,20 +3693,20 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
   if (entries.length) statusEl.show(baseMsg, 'success');
   else statusEl.show('沒有找到任何「★」開頭的內容可以填入', 'error');
   if (entries.length) autoFetchImages(entries, baseMsg);
-  // Once something was actually filled in, fold the box away to make room
-  // (it stays open when nothing matched, so the pasted text can be fixed).
-  if (entries.length) {
-    quickfillBody.classList.add('collapsed');
-    quickfillHeader.classList.remove('open');
-  }
+  // Once something was actually filled in, tuck the panel away (it stays open
+  // when nothing matched, so the pasted text can be fixed); 「快速填入」 on the
+  // left brings it back.
+  if (entries.length) { quickfillOpen = false; syncChrome(); }
+});
+document.getElementById('quickfillClose').addEventListener('click', () => { quickfillOpen = false; syncChrome(); });
+document.getElementById('quickfillReopen').addEventListener('click', () => {
+  quickfillOpen = true;
+  cellSelected = false;
+  headerSelected = false;
+  syncChrome();
+  render();
 });
 
-const quickfillHeader = document.getElementById('quickfillHeader');
-const quickfillBody = document.getElementById('quickfillBody');
-quickfillHeader.addEventListener('click', () => {
-  const collapsed = quickfillBody.classList.toggle('collapsed');
-  quickfillHeader.classList.toggle('open', !collapsed);
-});
 
 const CONFIRM_DEFAULTS = {
   title: '確定要清除本頁？',
@@ -2927,8 +3744,10 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
     syncCollageCount();
     buildAllCardUI();
     syncCollageUI();
-    setActiveCard(0);
   }
+  cellSelected = false;
+  headerSelected = false;
+  setActiveCard(0, false);
   syncTopUIFromState();
   syncAllCellUI();
   render();
@@ -2941,33 +3760,42 @@ helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpO
 
 // Tips popup: open on load, folds down to a round "!" button
 // after 15s with no click or scroll on it (or when ✕ is pressed); the button
-// reopens it. 新聞 shows the tips above the "詳細功能說明" button; other modes
-// show just the button (which opens the full-screen guide).
+// reopens it. Each mode shows its own quick-start tips above the "詳細功能說明" button.
 const tipToast = document.getElementById('tipToast');
 const tipFab = document.getElementById('tipFab');
-const TIP_IDLE_MS = 5000;
-let tipCollapsed = false, tipTimer = null;
+const TIP_IDLE_MS = 5000;     // folds away this long after it opens (or after the last click / scroll on it)
+const TIP_LEAVE_MS = 1000;   // ...but while the pointer is over it, it stays; this long after the pointer leaves
+let tipCollapsed = false, tipTimer = null, tipHover = false;
 function syncTipToast() {
-  const isNews = mode === 'news';
-  document.getElementById('tipNewsBlock').hidden = !isNews;
-  document.getElementById('tipHelpLead').hidden = isNews;
-  document.getElementById('tipToastTitle').textContent = isNews ? '操作提示' : '使用說明';
+  document.getElementById('tipNewsBlock').hidden = mode !== 'news';
+  document.getElementById('tipEntBlock').hidden = mode !== 'ent';
+  document.getElementById('tipCollageBlock').hidden = mode !== 'collage';
+  document.getElementById('tipToastTitle').textContent = '操作提示';
   tipToast.classList.toggle('tip-collapsed', tipCollapsed);
   tipFab.classList.toggle('show', tipCollapsed);
 }
-function armTipTimer() {
+function armTipTimer(ms = TIP_IDLE_MS) {
   clearTimeout(tipTimer);
-  if (!tipCollapsed) tipTimer = setTimeout(() => setTipCollapsed(true), TIP_IDLE_MS);
+  if (!tipCollapsed && !tipHover) tipTimer = setTimeout(() => setTipCollapsed(true), ms);
 }
 function setTipCollapsed(v) {
   tipCollapsed = v;
+  if (v) tipHover = false;
   syncTipToast();
   armTipTimer();
 }
 document.getElementById('tipToastClose').addEventListener('click', () => setTipCollapsed(true));
-tipFab.addEventListener('click', () => setTipCollapsed(false));
+// Reopened from the "!" button: the popup appears right where the pointer is, so count it as hovering
+// (the browser may not send a mouseenter until the pointer moves).
+tipFab.addEventListener('click', () => { setTipCollapsed(false); tipHover = true; clearTimeout(tipTimer); });
 ['pointerdown', 'wheel', 'scroll', 'touchmove', 'keydown'].forEach(ev =>
-  tipToast.addEventListener(ev, armTipTimer, { passive: true }));
+  tipToast.addEventListener(ev, () => armTipTimer(), { passive: true }));
+tipToast.addEventListener('mouseenter', () => { tipHover = true; clearTimeout(tipTimer); });
+tipToast.addEventListener('mouseleave', () => { tipHover = false; armTipTimer(TIP_LEAVE_MS); });
+// Fallback when the pointer leaves without a mouseleave having been seen (see above).
+document.addEventListener('mousemove', e => {
+  if (tipHover && !tipCollapsed && !tipToast.contains(e.target)) { tipHover = false; armTipTimer(TIP_LEAVE_MS); }
+});
 armTipTimer();
 
 const stickerHintShown = { news: false, ent: false };
@@ -2983,7 +3811,7 @@ STICKER_DEFS.forEach(def => {
   btn.appendChild(img);
   btn.addEventListener('click', () => {
     const idx = activeCard;
-    if (idx < 0 || idx >= CELL_COUNT) return;
+    if (!cellSelected || idx < 0 || idx >= CELL_COUNT) { statusEl.show('先點預覽圖選一格，再加貼圖'); return; }
     const state = activePage().cards[idx];
     const cell = cellRect(idx, activePage().showHeader);
     state.stickers.push({ key: def.key, x: cell.x + cell.w / 2, y: cell.y + cell.h / 2, scale: 1 });
@@ -3011,39 +3839,32 @@ function applyModeChrome() {
   canvas.height = l.H;
   canvas.style.aspectRatio = `${l.W} / ${l.H}`;
   canvas.style.maxWidth = `${l.previewMaxWidth}px`;
-  newsHeaderBox.style.display = mode === 'news' ? '' : 'none';
   const isCollage = mode === 'collage';
-  document.getElementById('quickfillBox').style.display = isCollage ? 'none' : '';
-  document.getElementById('collageBox').style.display = isCollage ? '' : 'none';
-  document.querySelector('.page-tabs').style.display = isCollage ? 'none' : '';
-  document.getElementById('downloadAllBtn').style.display = isCollage ? 'none' : '';
-  // 拼圖: 直接複製 is the highlighted (blue) button, 下載 stays white.
-  document.getElementById('copyCollageBtn').style.display = isCollage ? '' : 'none';
-  document.getElementById('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
-  document.getElementById('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
   cellsList.classList.toggle('collage', isCollage);
   modeSubEl.textContent = l.sub;
   modeTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+  updateSegKnobs();
   fitPreviewSize();
   syncTipToast();
+  syncChrome();
 }
 
-// The preview column is sticky with its own max height (viewport − 40px) and
-// scrolls internally when taller. Rather than showing a second scrollbar, the
-// canvas shrinks just enough that the whole column fits the window (never
-// below 320px wide, and never above the mode's normal preview width).
+// The preview sits in the middle of the window between the top bar and the
+// floating dock; it shrinks just enough to fit that height (never above the
+// mode's normal preview width, and never narrower than the minimum below).
 function fitPreviewSize() {
   const l = L();
-  const col = document.querySelector('.preview-col');
   canvas.style.maxWidth = `${l.previewMaxWidth}px`;
-  if (getComputedStyle(col).position !== 'sticky') return;
-  const chrome = col.scrollHeight - canvas.getBoundingClientRect().height;
-  const availH = window.innerHeight - 40 - chrome - 2;
+  if (window.innerWidth <= 900) return;
+  const tabsH = mode === 'collage' ? 0 : 46;
+  const reserve = 56 + 12 + tabsH + 10 + 58 + 124;   // top bar, gaps, page tabs, copy bar, dock
+  const availH = window.innerHeight - reserve;
   // Tall boards may go narrower than 320px so the whole thing still fits.
   const minW = Math.max(120, Math.min(320, 320 * l.W / l.H));
   const w = clamp(Math.floor(availH * l.W / l.H), minW, l.previewMaxWidth);
   canvas.style.maxWidth = `${w}px`;
+  alignFloatStack();
 }
 window.addEventListener('resize', fitPreviewSize);
 
@@ -3060,11 +3881,19 @@ function setMode(newMode) {
   if (newMode === mode) return;
   pagesByMode[mode] = pages;
   pageIndexByMode[mode] = activePageIndex;
-  quickfillByMode[mode] = { text: quickfillText.value, open: !quickfillBody.classList.contains('collapsed') };
+  quickfillByMode[mode] = { text: quickfillText.value, open: quickfillOpen };
   quickfillText.value = quickfillByMode[newMode].text;
-  quickfillBody.classList.toggle('collapsed', !quickfillByMode[newMode].open);
-  quickfillHeader.classList.toggle('open', quickfillByMode[newMode].open);
+  quickfillOpen = quickfillByMode[newMode].open;
+  if (mode !== 'collage') stepByMode[mode] = step;
+  step = newMode === 'collage' ? 1 : stepByMode[newMode];
+  cellSelected = false;
+  headerSelected = false;
+  hideDlConfirm();
+  hideLockReminder();
+  if (typeof hideGapTip === 'function') hideGapTip(true);
   drag = null;
+  tagDrag = null;
+  lockProbe = null;
   stickerDrag = null;
   collageDrag = null;
   mode = newMode;
@@ -3076,7 +3905,7 @@ function setMode(newMode) {
   buildAllCardUI();
   syncTopUIFromState();
   syncAllCellUI();
-  setActiveCard(0);
+  setActiveCard(0, false);
 }
 
 modeTabs.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
@@ -3117,7 +3946,7 @@ function collageLayoutChanged(nextActive) {
   syncAllCellUI();
   refitCollagePhotos();
   syncCollageUI();
-  setActiveCard(clamp(nextActive, 0, Math.max(0, CELL_COUNT - 1)));
+  setActiveCard(clamp(nextActive, 0, Math.max(0, CELL_COUNT - 1)), false);
 }
 
 function setCollageGrid(cols, rows) {
@@ -3267,9 +4096,372 @@ document.getElementById('copyCollageBtn').addEventListener('click', async () => 
     statusEl.show('這個瀏覽器無法直接複製圖片，請改用「下載」後再上傳到格子。', 'error');
   }
 });
+// ---------------------------------------------------------------------------
+// 兩步驟流程與浮動面板：1 編輯畫面 → 2 畫面檢查（鎖定照片、開放下載）
+// ---------------------------------------------------------------------------
+function goStep(n) {
+  if (mode === 'collage') return;
+  if (typeof hideGapTip === 'function') hideGapTip(true);
+  n = n === 2 ? 2 : 1;
+  if (n === step) return;
+  step = n;
+  stepByMode[mode] = n;
+  hideDlConfirm();
+  hideLockReminder();
+  headerSelected = false;
+  cellSelected = false;   // each step starts with nothing picked
+  drag = null; tagDrag = null; stickerDrag = null; lockProbe = null;
+  syncChrome();
+  render();
+}
+document.querySelectorAll('.step-btn').forEach(b => b.addEventListener('click', () => goStep(Number(b.dataset.step))));
+document.getElementById('nextStepBtn').addEventListener('click', () => goStep(2));
+document.getElementById('backStepBtn').addEventListener('click', () => goStep(1));
+
+// Clicking empty space (not a panel, the preview or a button) un-picks the cell.
+document.getElementById('stage').addEventListener('mousedown', e => {
+  const id = e.target.id;
+  if (id === 'stage' || id === 'centerCol' || id === 'canvasWrap') clearSelection();
+});
+
+// Dragging a photo, tag or sticker while step 2 has them locked.
+const lockToast = document.getElementById('lockToast');
+const LOCK_TOAST_MS = 3000;
+let lockToastTimer = null;
+function showLockReminder() {
+  hideStatusToast();
+  clearTimeout(lockToastTimer);
+  lockToast.hidden = false;
+  void lockToast.offsetWidth;
+  lockToast.classList.add('show');
+  lockToastTimer = setTimeout(hideLockReminder, LOCK_TOAST_MS);
+}
+function hideLockReminder() {
+  clearTimeout(lockToastTimer);
+  lockToast.classList.remove('show');
+  lockToast.hidden = true;
+}
+document.getElementById('lockToastBtn').addEventListener('click', () => { hideLockReminder(); goStep(1); });
+
+async function copyPushLink(i, btn) {
+  const link = withUtm(activePage().cards[i].url);
+  if (!link) { statusEl.show(`第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`, 'error'); return; }
+  const ok = await copyText(link);
+  if (ok) statusEl.show(`已複製第 ${i + 1} 格推播連結（含 UTM）`, 'success');
+  else statusEl.show('這個瀏覽器無法複製，請改用手動複製', 'error');
+  if (ok && btn) {
+    const old = btn.textContent;
+    btn.textContent = '已複製 ✓';
+    setTimeout(() => { btn.textContent = old === '已複製 ✓' ? '複製推播連結' : old; }, 1500);
+  }
+}
+// Step 2: clicking a cell dims it a little (see stepTwoCellRect) and shows 「複製推播連結」 in its centre.
+const cellCopyBtn = document.getElementById('cellCopyBtn');
+let copyBtnCell = -1;
+function showCellCopy(i) {
+  if (!isLocked() || mode === 'collage' || i < 0) { hideCellCopy(); return; }
+  const pg = activePage();
+  const link = withUtm(pg.cards[i].url);
+  if (copyBtnCell !== i || cellCopyBtn.hidden) {
+    copyBtnCell = i;
+    cellCopyBtn.textContent = link ? '複製推播連結' : '這格沒有連結';
+    cellCopyBtn.classList.toggle('no-link', !link);
+    // The button appears right under the click that picked the cell (often the very centre): ignore the
+    // rest of that click so it does not copy by accident.
+    cellCopyBtn.style.pointerEvents = 'none';
+    setTimeout(() => { cellCopyBtn.style.pointerEvents = ''; }, 350);
+  }
+  const rc = stepTwoCellRect(i, pg.showHeader);
+  const r = canvas.getBoundingClientRect();
+  cellCopyBtn.hidden = false;
+  cellCopyBtn.style.left = `${r.left + (rc.x + rc.w / 2) * r.width / CANVAS_W}px`;
+  cellCopyBtn.style.top = `${r.top + (rc.y + rc.h / 2) * r.height / CANVAS_H}px`;
+  void cellCopyBtn.offsetWidth;
+  cellCopyBtn.classList.add('show');
+}
+function hideCellCopy() {
+  copyBtnCell = -1;
+  cellCopyBtn.classList.remove('show');
+  cellCopyBtn.hidden = true;
+}
+window.addEventListener('resize', () => { if (copyBtnCell >= 0) requestAnimationFrame(() => showCellCopy(copyBtnCell)); });
+cellCopyBtn.addEventListener('click', () => {
+  if (copyBtnCell >= 0) copyPushLink(copyBtnCell, cellCopyBtn);
+});
+
+// Step 2's left panel: the existing completeness rules (headline lines + photo),
+// plus a 露白 warning, listed per cell of the current page.
+function renderCheckPanel() {
+  const panel = document.getElementById('checkPanel');
+  const pg = activePage();
+  let bad = 0, warn = 0;
+  const rows = pg.cards.map((st, i) => {
+    const miss = cardMissing(st);
+    const gap = cardHasGap(pg, i);
+    bad += miss.length;
+    if (gap) warn++;
+    return { st, i, miss, gap };
+  });
+  panel.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'check-head';
+  head.append('畫面檢查');
+  const sum = document.createElement('small');
+  sum.className = bad ? 'bad' : (warn ? 'warn' : 'ok');
+  sum.textContent = bad ? `${bad} 項待補` : (warn ? `${warn} 格疑似露白` : '全部通過');
+  head.appendChild(sum);
+  panel.appendChild(head);
+  rows.forEach(({ st, i, miss, gap }) => {
+    const row = document.createElement('div');
+    row.className = 'check-row' + (cellSelected && i === activeCard ? ' sel' : '');
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = String(i + 1);
+    const t = document.createElement('span'); t.className = 't';
+    const title = [st.line1, st.line2].map(x => (x || '').trim()).filter(Boolean).join(' ');
+    t.textContent = title || '尚未填入';
+    if (!title) t.classList.add('empty');
+    row.append(n, t);
+    const mark = (kind, text, title) => {
+      const slot = document.createElement('span'); slot.className = 'chip-slot';
+      const d = document.createElement('i'); d.className = `dot ${kind}`; d.textContent = text; d.title = title;
+      slot.appendChild(d); row.appendChild(slot);
+    };
+    if (miss.includes('圖片')) mark('bad', '!', '缺圖片');
+    else if (gap) mark('warn', '!', cardGapReason(pg, i) || '圖片疑似露白');
+    else mark('ok', '圖', '圖片 OK');
+    if (miss.includes('標題')) mark('bad', '!', '缺標題');
+    else mark('ok', '字', '標題 OK');
+    row.addEventListener('click', () => setActiveCard(i));
+    panel.appendChild(row);
+  });
+  const note = document.createElement('div');
+  note.className = 'check-note';
+  note.textContent = bad
+    ? '紅色「!」＝缺圖片或缺標題，補齊前不能全部下載；黃色「!」＝圖片疑似露白，仍可下載。要修改請按下方「返回編輯」。'
+    : (warn
+      ? '黃色「!」＝圖片疑似露白，仍可下載，下載前會再確認；要調整請按下方「返回編輯」。'
+      : '每格都有圖、有標題。點預覽圖的格子，格子正中間會出現「複製推播連結」。');
+  panel.appendChild(note);
+  // The other page counts too: 全部下載 needs both pages complete.
+  const otherIdx = 1 - activePageIndex;
+  const other = pages[otherIdx];
+  const ob = pageMissingReport(other).length, og = pageGapCount(other);
+  const line = document.createElement('div');
+  line.className = 'check-other';
+  line.append(`第 ${otherIdx + 1} 頁：${ob ? `${ob} 項待補` : (og ? `${og} 格疑似露白` : '全部通過')}`);
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.textContent = '前往';
+  go.addEventListener('click', () => document.querySelector(`.page-tab[data-page="${otherIdx}"]`).click());
+  line.appendChild(go);
+  panel.appendChild(line);
+}
+
+// The left panels sit right beside the preview image (a small gap away, not at the
+// window edge) and start level with the top of it.
+const PANEL_W = 300, PANEL_GAP = 18, STACK_PAD_X = 18;   // content width, gap to the preview, stack's side padding
+function alignFloatStack() {
+  const stack = document.getElementById('floatStack');
+  const stage = document.getElementById('stage');
+  if (!stack || !stage) return;
+  if (window.innerWidth <= 900) { stage.style.paddingLeft = ''; stack.style.top = ''; stack.style.left = ''; stack.style.maxHeight = ''; return; }
+  // Keep the preview centred on the window; only when there isn't room for the panel
+  // on its left does it shift right, by just enough.
+  const W = window.innerWidth, cw = canvas.getBoundingClientRect().width;
+  const need = PANEL_W + PANEL_GAP + STACK_PAD_X + 12;   // canvas left edge must be at least this far from the window edge
+  stage.style.paddingLeft = `${Math.max(20, Math.round(2 * need - W + 20 + cw))}px`;
+  const sr = stage.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  const top = Math.max(0, Math.round(cr.top - sr.top) - 8);   // 8 = the stack's own top padding
+  const left = Math.max(2, Math.round(cr.left - sr.left - PANEL_GAP - PANEL_W - STACK_PAD_X));
+  stack.style.top = `${top}px`;
+  stack.style.left = `${left}px`;
+  stack.style.maxHeight = `${Math.max(200, window.innerHeight - sr.top - top - 104)}px`;
+}
+window.addEventListener('resize', alignFloatStack);
+document.getElementById('headerOpenBtn').addEventListener('click', openHeaderEditor);
+
+document.getElementById('edgeCheckToggle').addEventListener('change', e => {
+  edgeCheckOn = e.target.checked;
+  hideGapTip(true);
+  render();
+});
+
+// Hover pop-up for the "!" marks drawn on the preview (step 2, or step 1 with the edge-check switch on).
+const gapTip = document.getElementById('gapTip');
+let gapTipCell = -1, gapTipTimer = null, gapTipHideTimer = null;
+const GAP_TIP_FADE_DELAY_MS = 1000;
+function badgeCellAt(pos) {
+  if (mode === 'collage' || !isLocked()) return -1;
+  for (let i = 0; i < CELL_COUNT; i++) {
+    if (!cardBadgeKind(activePage(), i)) continue;
+    const cell = cellRect(i, activePage().showHeader);
+    if (Math.hypot(pos.x - (cell.x + 24), pos.y - (cell.y + 24)) <= 19) return i;
+  }
+  return -1;
+}
+function showGapTip(i) {
+  clearTimeout(gapTipTimer); clearTimeout(gapTipHideTimer);
+  gapTipCell = i;
+  const t = cardBadgeText(activePage(), i);
+  gapTip.textContent = '';
+  const b = document.createElement('b'); b.textContent = `第 ${i + 1} 格　${t.title}`;
+  gapTip.append(b, t.body);
+  gapTip.hidden = false;
+  const r = canvas.getBoundingClientRect();
+  const cell = cellRect(i, activePage().showHeader);
+  const sx = r.left + (cell.x + 24) * r.width / CANVAS_W, sy = r.top + (cell.y + 24) * r.height / CANVAS_H;
+  gapTip.style.left = '0px'; gapTip.style.top = '0px';
+  const w = gapTip.offsetWidth, h = gapTip.offsetHeight;
+  gapTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, sx + 20))}px`;
+  gapTip.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, sy + 20))}px`;
+  void gapTip.offsetWidth;
+  gapTip.classList.add('show');
+}
+// Pointer left the "!": wait a second, then fade out (immediately when `now`).
+function hideGapTip(now) {
+  clearTimeout(gapTipTimer); clearTimeout(gapTipHideTimer);
+  gapTipCell = -1;
+  if (gapTip.hidden) return;
+  const fade = () => { gapTip.classList.remove('show'); gapTipHideTimer = setTimeout(() => { gapTip.hidden = true; }, 300); };
+  if (now) { gapTip.classList.remove('show'); gapTip.hidden = true; return; }
+  gapTipTimer = setTimeout(fade, GAP_TIP_FADE_DELAY_MS);
+}
+canvas.addEventListener('mousemove', evt => {
+  const i = badgeCellAt(getCanvasPos(evt));
+  if (i >= 0) { if (i !== gapTipCell || gapTip.hidden || !gapTip.classList.contains('show')) showGapTip(i); }
+  else if (gapTipCell >= 0) hideGapTip(false);
+});
+canvas.addEventListener('mouseleave', () => { if (gapTipCell >= 0) hideGapTip(false); });
+
+// One place that decides what is visible for the current mode / step / selection.
+function syncChrome() {
+  if (!chromeReady) return;
+  const $ = id => document.getElementById(id);
+  const isCollage = mode === 'collage';
+  const editing = !isCollage && step === 1;
+  const checking = !isCollage && step === 2;
+
+  $('stepper').hidden = isCollage;
+  document.querySelectorAll('.step-btn').forEach(b => {
+    const n = Number(b.dataset.step);
+    b.classList.toggle('active', n === step);
+    b.classList.toggle('done', n < step);
+    b.querySelector('i').textContent = n < step ? '✓' : String(n);
+  });
+  $('stepLine').classList.toggle('done', step === 2);
+
+  $('collageBox').hidden = !isCollage;
+  const idle = editing && !cellSelected && !headerSelected;
+  $('quickfillBox').hidden = !(idle && quickfillOpen);
+  $('quickfillReopen').hidden = !(editing && !quickfillOpen);
+  $('newsHeaderBox').hidden = !(mode === 'news' && editing && headerSelected);
+  // Both buttons live in the top bar, right of the mode tabs. The yellow bar can be
+  // unticked away; its button is then the way back in.
+  $('headerOpenBtn').hidden = !(mode === 'news' && editing && !activePage().showHeader);
+  $('tbTools').hidden = $('quickfillReopen').hidden && $('headerOpenBtn').hidden;
+  $('cellsList').hidden = !(cellSelected && !checking);
+  $('checkPanel').hidden = !checking;
+  if (checking) renderCheckPanel();
+
+  document.querySelector('.page-tabs').hidden = isCollage;
+  document.querySelectorAll('.page-tab').forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+  updateSegKnobs();
+
+  if (checking && cellSelected) showCellCopy(activeCard); else hideCellCopy();
+
+  $('edgeSwitch').hidden = !editing;
+  $('dockStickers').hidden = checking;
+  $('dockSep').hidden = checking;
+  $('resetAllBtn').hidden = checking;
+  $('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
+  $('nextStepBtn').hidden = !editing;
+  $('backStepBtn').hidden = !checking;
+  $('downloadJpgBtn').hidden = !(checking || isCollage);
+  $('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
+  $('downloadAllBtn').hidden = !checking;
+  $('copyCollageBtn').hidden = !isCollage;
+  updateDownloadState();
+  alignFloatStack();
+}
+
+// ---- sliding knob for the 新聞/娛樂/拼圖 and 頁數 capsules (also draggable) ----------------
+function segKnobOf(track) {
+  let k = track.querySelector(':scope > .seg-knob');
+  if (!k) { k = document.createElement('span'); k.className = 'seg-knob'; track.prepend(k); }
+  return k;
+}
+function placeSegKnob(track, btn) {
+  btn = btn || track.querySelector(':scope > button.active');
+  if (!btn || !btn.offsetWidth) return;
+  const k = segKnobOf(track);
+  k.style.width = `${btn.offsetWidth}px`;
+  k.style.transform = `translateX(${btn.offsetLeft}px)`;
+  if (!track.classList.contains('ready')) { void k.offsetWidth; requestAnimationFrame(() => track.classList.add('ready')); }
+}
+function updateSegKnobs() {
+  document.querySelectorAll('.seg-track').forEach(t => { if (!t.classList.contains('dragging')) placeSegKnob(t); });
+}
+document.querySelectorAll('.mode-tabs, .page-tabs').forEach(track => {
+  track.classList.add('seg-track');
+  segKnobOf(track);
+  if (window.ResizeObserver) new ResizeObserver(updateSegKnobs).observe(track);
+  const btns = () => Array.from(track.querySelectorAll(':scope > button'));
+  let down = null, moved = false;
+  track.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const cur = track.querySelector(':scope > button.active');
+    if (!cur) return;
+    down = { x: e.clientX, id: e.pointerId, left: cur.offsetLeft, w: cur.offsetWidth };
+    moved = false;
+  });
+  const nearest = cx => {   // the button whose centre is closest to knob-centre cx (track coordinates)
+    let best = null, bd = Infinity;
+    btns().forEach(b => { const d = Math.abs(b.offsetLeft + b.offsetWidth / 2 - cx); if (d < bd) { bd = d; best = b; } });
+    return best;
+  };
+  track.addEventListener('pointermove', e => {
+    if (!down || e.pointerId !== down.id) return;
+    const dx = e.clientX - down.x;
+    if (!moved) {
+      if (Math.abs(dx) < 5) return;
+      moved = true;
+      track.classList.add('dragging');
+      try { track.setPointerCapture(e.pointerId); } catch (err) { /* fine without capture */ }
+    }
+    const bs = btns();
+    const min = bs[0].offsetLeft, max = bs[bs.length - 1].offsetLeft + bs[bs.length - 1].offsetWidth - down.w;
+    const left = Math.max(min, Math.min(max, down.left + dx));
+    segKnobOf(track).style.transform = `translateX(${left}px)`;
+    const hot = nearest(left + down.w / 2);
+    bs.forEach(b => b.classList.toggle('hot', b === hot));
+  });
+  const end = e => {
+    if (!down || (e && e.pointerId !== down.id)) return;
+    const wasDrag = moved;
+    down = null; moved = false;
+    if (!wasDrag) return;
+    const hot = track.querySelector(':scope > button.hot');
+    track.classList.remove('dragging');
+    btns().forEach(b => b.classList.remove('hot'));
+    if (hot && !hot.classList.contains('active')) hot.click();
+    placeSegKnob(track);
+    // the click that follows a drag must not re-trigger a button
+    const stop = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    track.addEventListener('click', stop, { capture: true, once: true });
+    setTimeout(() => track.removeEventListener('click', stop, { capture: true }), 0);
+  };
+  track.addEventListener('pointerup', end);
+  track.addEventListener('pointercancel', end);
+});
+updateSegKnobs();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateSegKnobs);
+window.addEventListener('resize', updateSegKnobs);
+
+chromeReady = true;
 applyModeChrome();
 if (imageProxyUrl()) {
   document.getElementById('tipAutoImg').hidden = false;
+  document.querySelectorAll('.tip-ent-auto').forEach(e => { e.hidden = false; });
   document.getElementById('helpAutoImg').hidden = false;
   quickfillText.placeholder = '★標題第一行 標題第二行\n整段過審推播新聞貼入即可\n標題含有空格或驚嘆號、問號，就會自動換行\n（連結會自動抓文章第一張圖）';
 }
