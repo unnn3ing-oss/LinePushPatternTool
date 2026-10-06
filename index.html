@@ -1166,7 +1166,7 @@
       <div class="s8-page">兩張圖（先下載，再連同指令一起貼給 Claude）</div>
       <div class="s8-imgs" id="s8Imgs"></div>
       <ul class="s8-errs" id="s8Errs"></ul>
-      <div class="s8-page">直接建立草稿（由 Worker 執行）</div>
+      <div class="s8-page">傳送資料給S8</div>
       <p class="hint" style="margin:0 0 8px">需要先在右上角「S8」視窗升級授權。流程：① 上傳圖片並產生 S8 預覽（先看預覽）→ ② 輸入下面顯示的人數確認 → 建立。建立時 Worker 一律先以「當下 + 24 小時」排程（時間由 Worker 決定，不能自訂）。預設<b>立刻暫停成草稿</b>；你也可以明確選「保留為 +1 天排程」，那麼這筆群發<b>不會暫停</b>，會在排程時間<b>實際發送</b>給全部 LINE 顧客。<b>不會立即發送</b>。S8 的建立工具沒有群發名稱欄位，建立後請到 Console 把草稿改名成上面的群發名稱。</p>
       <div class="btn-row" style="margin-top:0"><button type="button" id="s8PrepBtn">① 上傳圖片並產生預覽</button></div>
       <div id="s8PrepOut" class="s8c-out" hidden></div>
@@ -4945,7 +4945,7 @@ document.getElementById('s8DownloadBtn').addEventListener('click', () => {
   s8State.images.forEach((im, i) => setTimeout(() => downloadDataUrl(im.url, `${nm}_第${i + 1}頁.png`), i * 250));
 });
 
-// ---- 直接建立草稿（階段三）：上傳＋預覽 → 輸入人數確認 → Worker 建立並立刻暫停成草稿 ----
+// ---- 傳送資料給S8（階段三）：上傳＋預覽 → 輸入人數確認 → Worker 建立群發（預設立刻暫停成草稿，或明確選擇保留 +1 天排程）----
 let s8Prepared = null;   // { prepareToken, total, org }
 const s8Out = (id, text, bad) => { const o = document.getElementById(id); o.hidden = !text; o.textContent = text || ''; o.style.color = bad ? '#b91c1c' : ''; };
 function s8ResetCreate() {
