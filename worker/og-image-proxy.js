@@ -570,7 +570,7 @@ async function handleS8Prepare(request, env) {
       const bytes = Uint8Array.from(atob(String(images[i] || '')), c => c.charCodeAt(0));
       if (!bytes.length || bytes.length >= S8_MAX_IMAGE_BYTES) return jsonError(400, `第 ${i + 1} 張圖片大小不符（必須小於 2MB）`, request, env);
       if (!(bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)) return jsonError(400, `第 ${i + 1} 張不是 PNG`, request, env);
-      const up = await mcp.call('media_upload_url', { orgId: org.id, filename: `${String(body.name || 'push').replace(/[^\w一-鿿-]/g, '').slice(0, 40) || 'push'}_p${i + 1}.png`, contentType: 'image/png', purpose: 'imagemap' });
+      const up = await mcp.call('media_upload_url', { orgId: org.id, filename: `${String(body.name || 'push').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'push'}_p${i + 1}.png`, contentType: 'image/png', purpose: 'imagemap' });
       if (up.isError) throw new Error(`取得上傳網址失敗：${toolText(up)}`);
       const info = pickUploadInfo(up.data, !!(env && env.ALLOW_HTTP === '1'));   // 正式環境只收 https（ALLOW_HTTP 只給本機測試）
       if (!info) throw new Error(`看不懂 media_upload_url 的回應，請把這段貼給維護者：${toolText(up)}`);
