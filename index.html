@@ -387,7 +387,7 @@
   .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
   /* ---- Copy bar under the preview (step 2, one cell picked) ---- */
   /* Step 2: floats over the cell the pointer is on; no fixed spot under the preview. */
-  .cell-copy { position: fixed; z-index: 60; transform: translateX(-50%); padding: 8px 18px; border-radius: 99px; font-size: 14px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .15s ease; }
+  .cell-copy { position: fixed; z-index: 60; transform: translate(-50%, -100%); padding: 8px 18px; border-radius: 99px; font-size: 14px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .15s ease; }
   .cell-copy.show { opacity: 1; }
   .cell-copy[hidden] { display: none; }
   .cell-copy.no-link { background: #8a8f98; border-color: #8a8f98; cursor: default; }
@@ -939,7 +939,7 @@
           <div class="help-marks"><i class="dot ok">圖</i><i class="dot ok">字</i> 綠色圓圈＝這項沒問題　<i class="dot warn">!</i> 黃色＝圖片疑似露白　<i class="dot bad">!</i> 紅色＝缺圖片或缺標題</div>
           <span class="help-note">預覽圖有問題的格子左上角也會標同樣的圓圈，滑鼠移上去會顯示原因，移開後約 1 秒淡出。底部的提示會統計兩頁的狀況。</span></li>
         <li><b>疑似露白怎麼判斷</b>：只看照片「看得到」的範圍（被範本遮住的部分不算）。照片沒蓋滿這個範圍（例如被拖離格子），或照片邊緣本身接近白色／透明（任一邊有 90% 以上），就會標黃色「!」。這只是提醒，<b>不鎖定下載</b>。</li>
-        <li><b>複製推播連結</b>：在步驟 2 把游標移到預覽圖的格子上，格子上方會浮出「複製推播連結」按鈕（編輯畫面時不會出現），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
+        <li><b>複製推播連結</b>：在步驟 2 把游標移到預覽圖的格子上，格子的第一行標題正上方會浮出「複製推播連結」按鈕（編輯畫面時不會出現），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
         <li><b>下載</b>：
           <ul>
             <li>「下載本頁」存目前這頁；若還有缺漏或疑似露白，會先問你。</li>
@@ -4024,6 +4024,20 @@ async function copyPushLink(i, btn) {
 // Step 2: a 「複製推播連結」 button floats over the cell the pointer is on.
 const cellCopyBtn = document.getElementById('cellCopyBtn');
 let copyBtnCell = -1, copyBtnTimer = null;
+// Canvas point just above the cell's first headline line (the button's bottom-centre).
+function copyBtnAnchor(i) {
+  const st = activePage().cards[i];
+  const has1 = !!(st.line1 || '').trim(), has2 = !!(st.line2 || '').trim();
+  if (mode === 'ent') {
+    const c = ENT_CELLS[i];
+    const y = has1 && has2 ? c.y1 : (c.y1 + c.y2) / 2;
+    return { x: c.cx, y: y + ENT_INK_DY - ENT_BASE_FONT_SIZE * 0.5 };
+  }
+  const cell = cellRect(i, activePage().showHeader);
+  const bottomAnchor = cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5;
+  const baseY = has1 ? bottomAnchor - (has2 ? BASE_FONT_SIZE * 1.18 : 0) : bottomAnchor;
+  return { x: cell.x + cell.w / 2, y: baseY - BASE_FONT_SIZE * 0.5 };
+}
 function showCellCopy(i) {
   clearTimeout(copyBtnTimer);
   if (!isLocked() || mode === 'collage' || i < 0) { hideCellCopy(true); return; }
@@ -4034,12 +4048,11 @@ function showCellCopy(i) {
     cellCopyBtn.textContent = link ? '複製推播連結' : '這格沒有連結';
     cellCopyBtn.classList.toggle('no-link', !link);
   }
-  const cell = cellRect(i, pg.showHeader);
-  const top = mode === 'news' ? cardVisibleWindow(cell, pg.showHeader).top : cell.y;
+  const a = copyBtnAnchor(i);
   const r = canvas.getBoundingClientRect();
   cellCopyBtn.hidden = false;
-  cellCopyBtn.style.left = `${r.left + (cell.x + cell.w / 2) * r.width / CANVAS_W}px`;
-  cellCopyBtn.style.top = `${r.top + (top + 16) * r.height / CANVAS_H}px`;
+  cellCopyBtn.style.left = `${r.left + a.x * r.width / CANVAS_W}px`;
+  cellCopyBtn.style.top = `${r.top + (a.y - 6) * r.height / CANVAS_H}px`;
   void cellCopyBtn.offsetWidth;
   cellCopyBtn.classList.add('show');
 }
