@@ -2879,29 +2879,70 @@ function pageMissingReport(pageState) {
 }
 // 露白: the photo shows white (or nothing) at the edge of its cell. A warning only — it can't
 // be told apart from a photo that is meant to have a white border, so it never locks downloads.
+// Only the part of the cell where the photo can actually be SEEN counts. In 新聞 the template
+// covers some of it almost solid: the yellow header bar and its shadow, the dark top edge, the
+// black text band at the bottom, and the upper row's band that spills a few pixels into the lower
+// row. A gap under those is invisible, so it is not flagged (see cardVisibleWindow).
 // Two checks, both on the cell as it will be exported:
-//   1. geometry: the photo no longer covers the whole cell (it was dragged inward);
-//   2. pixels: the cell is drawn on its own and a 3px band along each edge is scanned — an edge
-//      counts as white when >= 90% of its pixels are near-white (R,G,B >= 240) or see-through.
-//      This also catches photos that carry their own white / transparent border.
-// 新聞's bottom edge is skipped for the pixel scan: the template's black gradient covers it.
+//   1. geometry: the photo no longer covers the visible window of the cell;
+//   2. pixels: the cell is drawn on its own and a 3px band along each edge of that window is
+//      scanned — an edge counts as white when >= 90% of its pixels are near-white (R,G,B >= 240)
+//      or see-through. This also catches photos that carry their own white / transparent border.
 const EDGE_BAND_PX = 3, EDGE_WHITE_MIN = 240, EDGE_WHITE_RATIO = 0.9;
+const OVERLAY_HIDE_ALPHA = 200;   // template pixels at least this opaque (0-255) hide a white gap
 let imgIdCounter = 0;
+const overlayAlphaCache = new Map();
+// Alpha channel of the 新聞 template for this page, or null if it can't be read.
+function overlayAlphaData(showHeader) {
+  const img = showHeader ? templateHeaderImg : templatePlainImg;
+  if (!img) return null;
+  const key = showHeader ? 'h' : 'p';
+  if (overlayAlphaCache.has(key)) return overlayAlphaCache.get(key);
+  let data = null;
+  try {
+    const c = document.createElement('canvas');
+    c.width = NEWS_W; c.height = NEWS_H;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, NEWS_W, NEWS_H);
+    data = x.getImageData(0, 0, NEWS_W, NEWS_H).data;
+  } catch (err) { data = null; }
+  overlayAlphaCache.set(key, data);
+  return data;
+}
+// The vertical range (canvas y) of the cell where its photo is visible.
+function cardVisibleWindow(cell, showHeader) {
+  const full = { top: cell.y, bottom: cell.y + cell.h };
+  if (mode !== 'news') return full;
+  const data = overlayAlphaData(showHeader);
+  if (!data) return full;
+  const cols = [0.2, 0.5, 0.8].map(f => Math.round(cell.x + cell.w * f));
+  // A row is "hidden" only if the template is nearly opaque at all sampled columns.
+  const hidden = y => cols.every(x => data[(y * NEWS_W + x) * 4 + 3] >= OVERLAY_HIDE_ALPHA);
+  const y0 = Math.round(cell.y), y1 = Math.round(cell.y + cell.h);
+  let top = y0;
+  while (top < y1 && hidden(top)) top++;
+  let bottom = y1;
+  while (bottom > top && hidden(bottom - 1)) bottom--;
+  return { top, bottom };
+}
 function cardGeoGap(pageState, i) {
   const st = pageState.cards[i];
   if (!st.img) return false;
   const cell = cellRect(i, pageState.showHeader);
+  const win = cardVisibleWindow(cell, pageState.showHeader);
   const { dw, dh } = cellImageSize(cell, st);
   const e = 0.5;
-  return st.offsetX > e || st.offsetY > e || st.offsetX + dw < cell.w - e || st.offsetY + dh < cell.h - e;
+  const left = cell.x + st.offsetX, top = cell.y + st.offsetY;
+  return left > cell.x + e || left + dw < cell.x + cell.w - e || top > win.top + e || top + dh < win.bottom - e;
 }
-// Which edges of cell i look white/see-through: a subset of ['左', '上', '右', '下'].
+// Which edges of the visible part of cell i look white/see-through: a subset of ['左', '上', '右', '下'].
 function cardWhiteEdges(pageState, i) {
   const st = pageState.cards[i];
   if (!st.img) return [];
   const cell = cellRect(i, pageState.showHeader);
+  const win = cardVisibleWindow(cell, pageState.showHeader);
   if (!st.img.__id) st.img.__id = ++imgIdCounter;
-  const key = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|${cell.w}|${cell.h}|${mode}`;
+  const key = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|${cell.w}|${cell.h}|${win.top}|${win.bottom}|${mode}`;
   if (st._edgeCache && st._edgeCache.key === key) return st._edgeCache.sides;
   const w = Math.ceil(cell.w), h = Math.ceil(cell.h);
   const off = document.createElement('canvas');
@@ -2914,17 +2955,19 @@ function cardWhiteEdges(pageState, i) {
     const p = (y * w + x) * 4;
     return data[p + 3] < 250 || (data[p] >= EDGE_WHITE_MIN && data[p + 1] >= EDGE_WHITE_MIN && data[p + 2] >= EDGE_WHITE_MIN);
   };
-  const band = Math.min(EDGE_BAND_PX, w, h);
+  const wy0 = clamp(Math.floor(win.top - cell.y), 0, h - 1);
+  const wy1 = clamp(Math.ceil(win.bottom - cell.y), wy0 + 1, h);
+  const band = Math.max(1, Math.min(EDGE_BAND_PX, w, wy1 - wy0));
   const ratio = (xs, ys) => {
     let n = 0, total = 0;
     for (let y = ys[0]; y < ys[1]; y++) for (let x = xs[0]; x < xs[1]; x++) { total++; if (white(x, y)) n++; }
     return total ? n / total : 0;
   };
   const sides = [];
-  if (ratio([0, band], [0, h]) >= EDGE_WHITE_RATIO) sides.push('左');
-  if (ratio([0, w], [0, band]) >= EDGE_WHITE_RATIO) sides.push('上');
-  if (ratio([w - band, w], [0, h]) >= EDGE_WHITE_RATIO) sides.push('右');
-  if (mode !== 'news' && ratio([0, w], [h - band, h]) >= EDGE_WHITE_RATIO) sides.push('下');
+  if (ratio([0, band], [wy0, wy1]) >= EDGE_WHITE_RATIO) sides.push('左');
+  if (ratio([0, w], [wy0, wy0 + band]) >= EDGE_WHITE_RATIO) sides.push('上');
+  if (ratio([w - band, w], [wy0, wy1]) >= EDGE_WHITE_RATIO) sides.push('右');
+  if (ratio([0, w], [wy1 - band, wy1]) >= EDGE_WHITE_RATIO) sides.push('下');
   st._edgeCache = { key, sides };
   return sides;
 }
