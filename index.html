@@ -231,7 +231,7 @@
   .dock-chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
   .dock-chip[hidden] { display: none; }
   .dock-chip.bad { background: #fee2e2; color: #b91c1c; }
-  .dock-chip.warn { background: #fef3c7; color: #92400e; }
+  .dock-chip.warn { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 2px; }
   /* 全部下載 asks "typos checked, no photo showing white?" in a small popover above the button. */
   .dl-confirm {
     position: absolute;
@@ -334,6 +334,8 @@
   .chip.ok { background: #dcfce7; color: #15803d; }
   .chip.bad { background: #fee2e2; color: #b91c1c; }
   .chip.warn { background: #fef3c7; color: #92400e; }
+  /* 露白 reminder: a yellow circled "!". */
+  .warn-dot { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #facc15; color: #1f2328; font-size: 13px; font-weight: 800; line-height: 1; font-style: normal; cursor: help; }
   .check-note { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.6; }
   .check-other { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
   .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
@@ -803,7 +805,7 @@
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
         <li><b>遮擋人物（選用）</b>：先選格子，再點畫面底部「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題、露白；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
+        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題，圖片疑似露白的格子會標黃色圓圈「!」（仍可下載，但下載前會再問一次）；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
       </ol>
 
       <h3>拼圖</h3>
@@ -1762,6 +1764,22 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
   if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
+  // 步驟 2: a yellow circled "!" on every cell whose photo shows white (on-screen only).
+  if (opts.interactive && isLocked()) {
+    for (let i = 0; i < CELL_COUNT; i++) {
+      if (!cardHasGap(pageState, i)) continue;
+      const cell = cellRect(i, pageState.showHeader);
+      const bx = cell.x + 24, by = cell.y + 24;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(bx, by, 15, 0, Math.PI * 2);
+      ctx.fillStyle = '#facc15'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#1f2328'; ctx.stroke();
+      ctx.fillStyle = '#1f2328'; ctx.font = `800 20px ${FONT_STACK}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('!', bx, by + 1);
+      ctx.restore();
+    }
+  }
 
   if (opts.showHeaderBorder && headerSelected && pageState.showHeader) {
     ctx.save();
@@ -2853,16 +2871,20 @@ function updateDownloadState() {
     chip.hidden = !show;
     if (show) {
       chip.className = 'dock-chip ' + (missing ? 'bad' : 'warn');
-      chip.textContent = missing ? `${missing} 項待補，尚不能全部下載` : `${gaps} 格圖片疑似露白，請確認`;
+      chip.textContent = '';
+      if (!missing) { const d = document.createElement('i'); d.className = 'warn-dot'; d.textContent = '!'; chip.appendChild(d); chip.append(` ${gaps} 格圖片疑似露白，仍可下載`); }
+      else chip.textContent = `${missing} 項待補，尚不能全部下載`;
     }
   }
 }
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
   if (mode !== 'collage') {
     const report = pageMissingReport(activePage());
+    const gapCells = activePage().cards.map((_, i) => i).filter(i => cardHasGap(activePage(), i));
+    if (gapCells.length) report.push(`第 ${gapCells.map(i => i + 1).join('、')} 格圖片疑似露白`);
     if (report.length) {
       const ok = await askConfirm({
-        title: '尚有未完成部分確定要下載?',
+        title: pageMissingReport(activePage()).length ? '尚有未完成部分確定要下載?' : '圖片有露白確定要下載嗎？',
         body: report.join('；'),
         okText: '仍要下載',
       });
@@ -2891,6 +2913,9 @@ function hideDlConfirm() { dlConfirm.hidden = true; }
 document.getElementById('downloadAllBtn').addEventListener('click', e => {
   e.stopPropagation();
   if (e.currentTarget.getAttribute('aria-disabled') === 'true') return;
+  const gapTotal = pages.reduce((n, pg) => n + pageGapCount(pg), 0);
+  dlConfirm.querySelector('.dl-confirm-text').textContent = gapTotal ? '圖片有露白確定要下載嗎？' : '已確認無錯字、圖片無露白？';
+  document.getElementById('dlConfirmOk').textContent = gapTotal ? '仍要下載' : '確認下載';
   dlConfirm.hidden = !dlConfirm.hidden;
   if (!dlConfirm.hidden) hideStatusToast();
 });
@@ -3560,16 +3585,20 @@ function renderCheckPanel() {
     if (!title) t.classList.add('empty');
     row.append(n, t);
     const chip = (text, kind) => { const c = document.createElement('span'); c.className = `chip ${kind}`; c.textContent = text; row.appendChild(c); };
-    if (miss.includes('圖片')) chip('缺圖片', 'bad'); else if (gap) chip('露白', 'warn'); else chip('圖', 'ok');
+    if (miss.includes('圖片')) chip('缺圖片', 'bad');
+    else if (gap) { const d = document.createElement('i'); d.className = 'warn-dot'; d.textContent = '!'; d.title = '圖片疑似露白'; row.appendChild(d); }
+    else chip('圖', 'ok');
     if (miss.includes('標題')) chip('缺標題', 'bad'); else chip('字', 'ok');
     row.addEventListener('click', () => setActiveCard(i));
     panel.appendChild(row);
   });
   const note = document.createElement('div');
   note.className = 'check-note';
-  note.textContent = (bad || warn)
+  note.textContent = bad
     ? '要補圖、改字或調整照片，請按下方「返回編輯」；點上面任一格可選取該格。'
-    : '每格都有圖、有標題。點預覽圖上的格子，可複製該格推播連結。';
+    : (warn
+      ? '黃色「!」＝圖片疑似露白，仍可下載，下載前會再確認；要調整請按下方「返回編輯」。'
+      : '每格都有圖、有標題。點預覽圖上的格子，可複製該格推播連結。');
   panel.appendChild(note);
   // The other page counts too: 全部下載 needs both pages complete.
   const otherIdx = 1 - activePageIndex;
