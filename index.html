@@ -89,7 +89,21 @@
   .seg-track.dragging { cursor: grabbing; }
   /* Step progress is plain (no track): numbered circles, and only the current step shows its name. */
   .stepper { display: flex; align-items: center; gap: 4px; justify-self: center; }
-  @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr; } .stepper { justify-self: end; } }
+  @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr auto; } .stepper { justify-self: end; } }
+  /* ---- 試驗功能：右上角切換 + 第二套介面（試驗版）---- */
+  .tb-right { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+  .lab-toggle { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; border: none; border-radius: 99px; padding: 7px 16px 7px 12px; background: var(--track); color: var(--muted); font-size: 14px; font-weight: 700; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); }
+  .lab-toggle::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; }
+  .lab-toggle:hover { color: var(--text); }
+  .lab-toggle[aria-pressed="true"] { background: #fef3c7; color: #92400e; box-shadow: inset 0 1px 2px rgba(146, 64, 14, .2); }
+  .lab-toggle[aria-pressed="true"]::before { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .25); }
+  .lab-badge { display: inline-block; margin-left: 8px; padding: 2px 10px; border-radius: 99px; background: #f59e0b; color: #fff; font-size: 12px; font-weight: 800; vertical-align: middle; }
+  .lab-badge[hidden] { display: none; }
+  body.lab-on .topbar { box-shadow: inset 0 -3px 0 #f59e0b; }
+  .lab-pass { width: 100%; margin-top: 4px; }
+  .lab-msg { margin: 8px 0 0; min-height: 20px; font-size: 13px; color: #b91c1c; }
+  #pushTitleInput { width: 100%; }
+  #pushTitleApply { width: 100%; font-weight: 700; padding: 10px; }
   .stepper[hidden] { display: none; }
   .step-btn {
     white-space: nowrap;
@@ -153,7 +167,7 @@
     padding: 18px;
   }
   label { display: block; font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-  input[type="text"], textarea {
+  input[type="text"], input[type="password"], textarea {
     width: 100%;
     font-family: inherit;
     font-size: 14px;
@@ -370,7 +384,7 @@
   .float-stack > [hidden] { display: none; }
   .panel-x { position: absolute; top: 8px; right: 8px; border: none; background: transparent; color: var(--muted); padding: 2px 8px; font-size: 16px; line-height: 1; }
   .panel-x:hover { background: var(--bg); color: var(--text); }
-  #quickfillBox { position: relative; }
+  #quickfillBox, #pushTitleBox { position: relative; }
   #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
   /* 快速填入 / 頂部標籤 re-open buttons: their own little group right of the mode tabs. */
   .tb-tools { gap: 10px; }
@@ -689,7 +703,7 @@
 <body>
 <header class="topbar">
   <div class="tb-left">
-    <h1>Line推播套版產生器</h1>
+    <h1>Line推播套版產生器<span class="lab-badge" id="labBadge" hidden>試驗版</span></h1>
     <div class="mode-tabs">
       <button type="button" class="mode-tab active" data-mode="news">新聞</button>
       <button type="button" class="mode-tab" data-mode="ent">娛樂</button>
@@ -698,6 +712,7 @@
     <div class="tb-tools" id="tbTools" hidden>
       <button type="button" id="quickfillReopen" hidden>快速填入</button>
       <button type="button" id="headerOpenBtn" hidden>頂部標籤</button>
+      <button type="button" id="pushTitleReopen" hidden>推播標題</button>
     </div>
   </div>
   <nav class="stepper" id="stepper" aria-label="製作步驟">
@@ -706,6 +721,9 @@
     <button type="button" class="step-btn" data-step="2" title="畫面檢查" aria-label="步驟 2：畫面檢查"><i>2</i><span class="step-label">畫面檢查</span></button>
   </nav>
   <p class="sub" id="modeSub" hidden></p>
+  <div class="tb-right">
+    <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false" title="試驗功能（第二套介面，需要密碼）">試驗功能</button>
+  </div>
 </header>
 
 <main class="stage" id="stage">
@@ -761,6 +779,14 @@
           <button type="button" class="primary" id="quickfillBtn">快速填入</button>
         </div>
       </div>
+    </div>
+
+    <div class="top-label-box" id="pushTitleBox" hidden>
+      <button type="button" class="panel-x" id="pushTitleClose" aria-label="收起推播標題" title="收起">✕</button>
+      <div class="quickfill-header"><span class="quickfill-title">推播標題</span></div>
+      <input type="text" id="pushTitleInput" placeholder="LINE 推播通知會顯示的文字" autocomplete="off">
+      <div class="hint">之後排入 S8 時，會填在「推播通知」。</div>
+      <div class="btn-row"><button type="button" class="primary" id="pushTitleApply">填入推播標題</button></div>
     </div>
 
     <div class="top-label-box" id="newsHeaderBox">
@@ -1039,6 +1065,24 @@
 <button type="button" class="tip-fab" id="tipFab" aria-label="開啟操作提示" title="操作提示">!</button>
 
 
+<div class="modal-overlay" id="labOverlay">
+  <div class="modal" style="max-width:380px" role="dialog" aria-labelledby="labTitle">
+    <div class="modal-head">
+      <h2 id="labTitle">試驗功能</h2>
+      <button type="button" id="labCloseBtn" class="modal-close" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px">輸入密碼，進入試驗功能（第二套介面）。</p>
+      <input type="password" id="labPass" class="lab-pass" placeholder="密碼" autocomplete="off">
+      <p class="lab-msg" id="labMsg" role="alert"></p>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:12px">
+        <button type="button" id="labCancelBtn">取消</button>
+        <button type="button" id="labEnterBtn" class="primary">進入</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="confirmOverlay">
   <div class="modal" style="max-width:360px">
     <div class="modal-head">
@@ -1157,6 +1201,8 @@ let cellSelected = false;
 // (opens the 頂部標籤 editor on the left).
 let headerSelected = false;
 let quickfillOpen = true;
+let labOn = false;            // 試驗功能: the second (lab) interface is switched on
+let pushTitleOpen = true;     // 試驗功能: the 推播標題 card is open (else it sits in the top bar)
 // 步驟 1 option: show the photo-edge check right on the preview (check range + yellow "!").
 let edgeCheckOn = false;
 let chromeReady = false;     // syncChrome() waits until every element it touches exists
@@ -3894,6 +3940,10 @@ function setMode(newMode) {
   quickfillByMode[mode] = { text: quickfillText.value, open: quickfillOpen };
   quickfillText.value = quickfillByMode[newMode].text;
   quickfillOpen = quickfillByMode[newMode].open;
+  // 試驗功能: each mode keeps its own 推播標題 and whether its card is open
+  pushTitleByMode[mode] = { text: pushTitleInput.value, open: pushTitleOpen };
+  pushTitleInput.value = pushTitleByMode[newMode].text;
+  pushTitleOpen = pushTitleByMode[newMode].open;
   if (mode !== 'collage') stepByMode[mode] = step;
   step = newMode === 'collage' ? 1 : stepByMode[newMode];
   cellSelected = false;
@@ -4368,7 +4418,11 @@ function syncChrome() {
   // Both buttons live in the top bar, right of the mode tabs. The yellow bar can be
   // unticked away; its button is then the way back in.
   $('headerOpenBtn').hidden = !(mode === 'news' && editing && !activePage().showHeader);
-  $('tbTools').hidden = $('quickfillReopen').hidden && $('headerOpenBtn').hidden;
+  // 試驗功能: the 推播標題 card sits under 快速填入 and tucks away into the top bar the same way.
+  const labPush = labOn && editing;
+  $('pushTitleBox').hidden = !(labPush && idle && pushTitleOpen);
+  $('pushTitleReopen').hidden = !(labPush && !pushTitleOpen);
+  $('tbTools').hidden = $('quickfillReopen').hidden && $('headerOpenBtn').hidden && $('pushTitleReopen').hidden;
   $('cellsList').hidden = !(cellSelected && !checking);
   $('checkPanel').hidden = !checking;
   if (checking) renderCheckPanel();
@@ -4468,8 +4522,102 @@ updateSegKnobs();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateSegKnobs);
 window.addEventListener('resize', updateSegKnobs);
 
+// ---------------------------------------------------------------------------
+// 試驗功能（第二套介面）：右上角切換、密碼在 Worker 驗證、推播標題
+// ---------------------------------------------------------------------------
+// The password is checked by the Worker (worker/README.md), never in this page. A correct password
+// returns a short-lived signed token that is kept for this browser tab only (sessionStorage); the page
+// itself has no password to find. The token is what later lab features present to the Worker.
+const LAB_SESSION_KEY = 'labAuth';
+const labToggle = document.getElementById('labToggle');
+const labOverlay = document.getElementById('labOverlay');
+const labPass = document.getElementById('labPass');
+const labMsg = document.getElementById('labMsg');
+const labEnterBtn = document.getElementById('labEnterBtn');
+function readLabAuth() {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(LAB_SESSION_KEY) || 'null');
+    return o && o.token && o.expiresAt > Date.now() ? o : null;
+  } catch (e) { return null; }
+}
+function setLab(on) {
+  labOn = on;
+  document.body.classList.toggle('lab-on', on);
+  document.getElementById('labBadge').hidden = !on;
+  labToggle.setAttribute('aria-pressed', String(on));
+  labToggle.title = on ? '離開試驗功能，回到標準介面' : '試驗功能（第二套介面，需要密碼）';
+  try { sessionStorage.setItem('labOn', on ? '1' : '0'); } catch (e) { /* tab-only convenience */ }
+  cellSelected = false; headerSelected = false;
+  syncChrome();
+  render();
+}
+function openLabLogin() {
+  labPass.value = ''; labMsg.textContent = ''; labEnterBtn.disabled = false;
+  labOverlay.classList.add('open');
+  setTimeout(() => labPass.focus(), 0);
+}
+function closeLabLogin() { labOverlay.classList.remove('open'); labPass.value = ''; }
+async function submitLabLogin() {
+  const password = labPass.value;
+  if (!password) { labMsg.textContent = '請輸入密碼'; return; }
+  labEnterBtn.disabled = true; labMsg.textContent = '驗證中…';
+  try {
+    const res = await fetch(`${imageProxyUrl()}/lab-auth`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
+    if (res.ok && data.token) {
+      try { sessionStorage.setItem(LAB_SESSION_KEY, JSON.stringify({ token: data.token, expiresAt: data.expiresAt })); } catch (e) { /* ok */ }
+      closeLabLogin();
+      setLab(true);
+      statusEl.show('已進入試驗功能（試驗版介面）', 'success');
+      return;
+    }
+    if (res.status === 401) labMsg.textContent = '密碼不正確';
+    else if (res.status === 503) labMsg.textContent = 'Worker 還沒設定試驗功能密碼（LAB_PASSWORD）';
+    else if (res.status === 404 || res.status === 405) labMsg.textContent = 'Worker 還是舊版，尚未支援試驗功能，請重新部署 Worker';
+    else labMsg.textContent = data.error || `驗證失敗（${res.status}）`;
+  } catch (e) {
+    labMsg.textContent = '連不到驗證服務（Worker），請檢查網路或 Worker 網址';
+  }
+  labEnterBtn.disabled = false;
+}
+labToggle.addEventListener('click', () => {
+  if (labOn) { setLab(false); return; }
+  if (readLabAuth()) { setLab(true); return; }
+  openLabLogin();
+});
+labEnterBtn.addEventListener('click', submitLabLogin);
+labPass.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitLabLogin(); } });
+document.getElementById('labCancelBtn').addEventListener('click', closeLabLogin);
+document.getElementById('labCloseBtn').addEventListener('click', closeLabLogin);
+labOverlay.addEventListener('mousedown', e => { if (e.target === labOverlay) closeLabLogin(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && labOverlay.classList.contains('open')) closeLabLogin(); });
+
+// 推播標題: its own card under 快速填入; once filled it tucks into the top bar like 快速填入 does.
+const pushTitleInput = document.getElementById('pushTitleInput');
+const pushTitleByMode = { news: { text: '', open: true }, ent: { text: '', open: true }, collage: { text: '', open: true } };
+function applyPushTitle() {
+  if (!pushTitleInput.value.trim()) { statusEl.show('請先輸入推播標題', 'error'); pushTitleInput.focus(); return; }
+  pushTitleOpen = false;
+  statusEl.show('已填入推播標題', 'success');
+  syncChrome();
+}
+document.getElementById('pushTitleApply').addEventListener('click', applyPushTitle);
+pushTitleInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyPushTitle(); } });
+document.getElementById('pushTitleClose').addEventListener('click', () => { pushTitleOpen = false; syncChrome(); });
+document.getElementById('pushTitleReopen').addEventListener('click', () => {
+  pushTitleOpen = true;
+  cellSelected = false; headerSelected = false;
+  syncChrome();
+  render();
+  setTimeout(() => pushTitleInput.focus(), 0);
+});
+
 chromeReady = true;
 applyModeChrome();
+try { if (sessionStorage.getItem('labOn') === '1' && readLabAuth()) setLab(true); } catch (e) { /* no storage */ }
 if (imageProxyUrl()) {
   document.getElementById('tipAutoImg').hidden = false;
   document.querySelectorAll('.tip-ent-auto').forEach(e => { e.hidden = false; });

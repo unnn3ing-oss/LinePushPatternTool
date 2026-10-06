@@ -12,6 +12,11 @@
 //
 // 若圖片放在別的網域（回應會寫「圖片網域不在允許名單」並列出網域），把它加進
 // ALLOWED_HOST_SUFFIXES 後重新部署即可。
+//
+// 另有「試驗功能」的密碼驗證（見 worker/README.md 的「試驗功能密碼」）：
+//   POST /lab-auth   body {"password":"..."} → 密碼對時回傳 {token, expiresAt}，否則 401
+//   GET  /lab-ping   帶 Authorization: Bearer <token> → token 有效回 {ok:true}
+// 密碼只放在 Worker 的環境變數 LAB_PASSWORD（Secret），網頁原始碼裡沒有；沒設定時一律拒絕。
 
 const ALLOWED_HOST_SUFFIXES = ['tvbs.com.tw'];
 const ALLOWED_ORIGINS = [
@@ -35,7 +40,8 @@ function corsHeaders(request, env) {
   const allowed = env && env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : ALLOWED_ORIGINS;
   const h = {
     'Vary': 'Origin',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Expose-Headers': 'X-Image-Url',
   };
   if (origin && allowed.includes(origin)) h['Access-Control-Allow-Origin'] = origin;
@@ -74,9 +80,88 @@ export function extractFirstImage(html, baseUrl) {
   return '';
 }
 
+// ---- 試驗功能：密碼驗證與簽章 token -------------------------------------------
+// token = "<到期時間(毫秒)>.<HMAC-SHA256(到期時間)>"。簽章金鑰用 LAB_SIGNING_KEY（沒設就用 LAB_PASSWORD，
+// 這樣改密碼後舊 token 自動失效）。之後要擋下的功能（例如排入 S8）一律先呼叫 verifyLabToken。
+const LAB_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+const LAB_FAIL_DELAY_MS = 600;   // 密碼錯誤時多等一下，拖慢連續猜密碼
+const textEncoder = new TextEncoder();
+
+function toBase64Url(bytes) {
+  let bin = '';
+  for (const b of new Uint8Array(bytes)) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function hmacBytes(key, data) {
+  const k = await crypto.subtle.importKey('raw', textEncoder.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', k, textEncoder.encode(data)));
+}
+
+// 比對兩個字串但不因長度或第一個不同字元提早結束：各自用隨機金鑰做 HMAC 後逐 byte 比對。
+async function safeEqual(a, b) {
+  const key = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+  const [ha, hb] = await Promise.all([hmacBytes(key, a), hmacBytes(key, b)]);
+  let diff = 0;
+  for (let i = 0; i < ha.length; i++) diff |= ha[i] ^ hb[i];
+  return diff === 0;
+}
+
+function labSigningKey(env) { return (env && (env.LAB_SIGNING_KEY || env.LAB_PASSWORD)) || ''; }
+
+export async function makeLabToken(env, now = Date.now()) {
+  const exp = String(now + LAB_TOKEN_TTL_MS);
+  return { token: `${exp}.${toBase64Url(await hmacBytes(labSigningKey(env), exp))}`, expiresAt: Number(exp) };
+}
+
+export async function verifyLabToken(request, env, now = Date.now()) {
+  if (!labSigningKey(env)) return false;
+  const m = (request.headers.get('Authorization') || '').match(/^Bearer\s+(\S+)$/i);
+  if (!m) return false;
+  const [exp, sig] = m[1].split('.');
+  if (!exp || !sig || !/^\d+$/.test(exp) || Number(exp) < now) return false;
+  return safeEqual(sig, toBase64Url(await hmacBytes(labSigningKey(env), exp)));
+}
+
+async function handleLabAuth(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  if (!env || !env.LAB_PASSWORD) return jsonError(503, '尚未設定試驗功能密碼（Worker 缺少 LAB_PASSWORD）', request, env);
+  const origin = request.headers.get('Origin');
+  const allowed = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : ALLOWED_ORIGINS;
+  if (!origin || !allowed.includes(origin)) return jsonError(403, '來源不被允許', request, env);
+  let password = '';
+  try {
+    const raw = await request.text();
+    if (raw.length > 1024) return jsonError(413, '內容太長', request, env);
+    const body = JSON.parse(raw);
+    password = typeof body.password === 'string' ? body.password : '';
+  } catch { return jsonError(400, '格式不正確', request, env); }
+  if (!password || !(await safeEqual(password, env.LAB_PASSWORD))) {
+    await new Promise(r => setTimeout(r, LAB_FAIL_DELAY_MS));
+    return jsonError(401, '密碼不正確', request, env);
+  }
+  const { token, expiresAt } = await makeLabToken(env);
+  return new Response(JSON.stringify({ token, expiresAt }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(request, env) },
+  });
+}
+
+async function handleLabPing(request, env) {
+  if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
+  if (!(await verifyLabToken(request, env))) return jsonError(401, 'token 無效或已過期', request, env);
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(request, env) },
+  });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+    const path = new URL(request.url).pathname;
+    if (path === '/lab-auth') return handleLabAuth(request, env);
+    if (path === '/lab-ping') return handleLabPing(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 
     const articleParam = new URL(request.url).searchParams.get('url');
