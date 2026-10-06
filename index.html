@@ -259,7 +259,7 @@
   .gap-tip b { display: block; font-size: 14px; margin-bottom: 2px; }
   /* Same size as the buttons beside it in the dock. */
   .dock-chip { box-sizing: border-box; font-size: 14px; font-weight: 700; padding: 9px 18px; border: 1px solid transparent; border-radius: 99px; white-space: nowrap; }
-  .dock-chip[hidden] { display: none; }
+  .dock-chip[hidden] { display: none !important; }
   .dock-chip.bad { background: #fee2e2; color: #b91c1c; }
   .dock-chip .warn-dot { width: 18px; height: 18px; font-size: 12px; }
   .dock-chip.warn { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 6px; }
@@ -1684,6 +1684,15 @@ function newsTagLimitBottom(cell, f) {
   return topLineBaseline - topLineFontSize * 0.5 - TAG_GAP;
 }
 
+// The part of a 新聞 cell that shows the photo, as drawn by both the blue selection frame and the red
+// 「檢查照片邊緣」 frame: from where the photo starts to show (below the header bar / the upper row's black
+// text band) down to the top of the first headline line (the small tag's lower edge).
+function newsPhotoFrame(ctx, cell, state, showHeader) {
+  const top = cardVisibleWindow(cell, showHeader).top;
+  const f = computeCardFit(ctx, cell, state);
+  return { top, bottom: clamp(newsTagLimitBottom(cell, f), top + 24, cell.y + cell.h) };
+}
+
 // Topmost tag under the point (tag 2 is drawn last, so it wins).
 function newsTagHit(ctx, cell, state, x, y) {
   for (const n of [2, 1]) {
@@ -1830,10 +1839,10 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     } else {
       for (let i = 0; i < CELL_COUNT; i++) {
         const cell = cellRect(i, pageState.showHeader);
-        const win = cardVisibleWindow(cell, pageState.showHeader);
+        const fr = newsPhotoFrame(ctx, cell, pageState.cards[i], pageState.showHeader);
         ctx.save();
         ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 3;
-        ctx.strokeRect(cell.x + 1.5, win.top + 1.5, cell.w - 3, win.bottom - win.top - 3);
+        ctx.strokeRect(cell.x + 1.5, fr.top + 1.5, cell.w - 3, fr.bottom - fr.top - 3);
         ctx.restore();
       }
     }
@@ -1865,15 +1874,11 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
-    // 新聞: the frame marks the photo you can see, not the text area. Bottom = top of the first
-    // headline line (the small tag's lower edge). Top = the very top of the cell for the upper row;
-    // for the lower row it is where the upper row's black text band really ends — that band runs a
-    // little past the grid line, which is what TAG_TOP_LIMITS already encodes (434 / 416).
+    // 新聞: the frame marks the photo you can see, not the text area (same range as the red edge-check frame).
     let frameTop = cell.y, frameBottom = cell.y + cell.h;
     if (mode === 'news') {
-      const f = computeCardFit(ctx, cell, pageState.cards[activeCard]);
-      if (cell.y > NEWS_H * 0.4) frameTop = newsTagLimitTop(cell);
-      frameBottom = clamp(newsTagLimitBottom(cell, f), frameTop + 24, cell.y + cell.h);
+      const fr = newsPhotoFrame(ctx, cell, pageState.cards[activeCard], pageState.showHeader);
+      frameTop = fr.top; frameBottom = fr.bottom;
     }
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
