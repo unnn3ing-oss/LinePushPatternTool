@@ -97,6 +97,11 @@
   .lab-toggle:hover { color: var(--text); }
   .lab-toggle[aria-pressed="true"] { background: #fef3c7; color: #92400e; box-shadow: inset 0 1px 2px rgba(146, 64, 14, .2); }
   .lab-toggle[aria-pressed="true"]::before { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .25); }
+  .s8-link { display: none; }
+  body.lab-on .s8-link { display: inline-flex; }
+  .s8-link[data-state="on"]::before { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, .25); }
+  .s8c-state { margin: 0 0 10px; font-size: 14px; font-weight: 700; }
+  .s8c-out { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--track); font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; }
   .lab-badge { display: inline-block; margin-left: 8px; padding: 2px 10px; border-radius: 99px; background: #f59e0b; color: #fff; font-size: 12px; font-weight: 800; vertical-align: middle; }
   .lab-badge[hidden] { display: none; }
   body.lab-on .topbar { box-shadow: inset 0 -3px 0 #f59e0b; }
@@ -739,6 +744,7 @@
   </nav>
   <p class="sub" id="modeSub" hidden></p>
   <div class="tb-right">
+    <button type="button" class="lab-toggle s8-link" id="s8Link" data-state="off" title="連結 SUPER 8 Studio（OAuth）">S8 未連結</button>
     <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false" title="試驗功能（第二套介面，需要密碼）">試驗功能</button>
   </div>
 </header>
@@ -1096,6 +1102,25 @@
         <button type="button" id="labCancelBtn">取消</button>
         <button type="button" id="labEnterBtn" class="primary">進入</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="s8ConnOverlay">
+  <div class="modal" style="max-width:460px" role="dialog" aria-labelledby="s8cTitle">
+    <div class="modal-head">
+      <h2 id="s8cTitle">連結 SUPER 8 Studio</h2>
+      <button type="button" id="s8cCloseBtn" class="modal-close" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="s8c-state" id="s8cState">尚未連結</p>
+      <p class="hint" style="margin:0 0 12px">按「連結 S8」會開啟 S8 的登入與授權視窗。目前只請求<b>唯讀</b>權限（insightark-mcp:read），不能建立、發送或排程任何東西。授權資料只以加密形式保存，這個網頁看不到內容。要撤銷授權：S8 Console → 使用者資訊 → Connected Apps。</p>
+      <div class="btn-row" style="margin-top:0">
+        <button type="button" class="primary" id="s8cConnect">連結 S8</button>
+        <button type="button" id="s8cCheck">重新檢查</button>
+        <button type="button" id="s8cDisconnect">中斷連線</button>
+      </div>
+      <pre class="s8c-out" id="s8cOut" hidden></pre>
     </div>
   </div>
 </div>
@@ -4596,6 +4621,7 @@ function setLab(on) {
   labToggle.title = on ? '離開試驗功能，回到標準介面' : '試驗功能（第二套介面，需要密碼）';
   try { sessionStorage.setItem('labOn', on ? '1' : '0'); } catch (e) { /* tab-only convenience */ }
   cellSelected = false; headerSelected = false;
+  s8UpdatePill();
   syncChrome();
   render();
 }
@@ -4850,6 +4876,90 @@ document.getElementById('s8CopyBtn').addEventListener('click', async () => {
   statusEl.show(ok ? '已複製給 Claude 的指令；請連同兩張圖貼到已安裝 SUPER 8 外掛的對話' : '這個瀏覽器無法複製，請改用「查看完整指令」手動複製', ok ? 'success' : 'error');
 });
 
+// ---- 試驗功能：連結 S8（OAuth，階段一：只讀）----
+// The Worker does the OAuth work and keeps the S8 credentials sealed; this page only holds an opaque string
+// (sessionStorage) and asks the Worker to use it. Only read access is requested at this stage.
+const s8Link = document.getElementById('s8Link');
+const s8cOverlay = document.getElementById('s8ConnOverlay');
+const workerBase = () => imageProxyUrl();
+const S8_SESSION_KEY = 's8Session';
+const s8ClientKey = () => `s8Client:${workerBase()}`;
+const s8Get = k => { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } };
+const s8Set = (k, v) => { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) { /* tab-only */ } };
+const s8ClientGet = () => { try { return localStorage.getItem(s8ClientKey()) || ''; } catch (e) { return ''; } };
+const s8ClientSet = v => { try { if (v) localStorage.setItem(s8ClientKey(), v); else localStorage.removeItem(s8ClientKey()); } catch (e) { /* ok */ } };
+function s8UpdatePill(extra) {
+  const on = !!s8Get(S8_SESSION_KEY);
+  s8Link.dataset.state = on ? 'on' : 'off';
+  s8Link.textContent = on ? 'S8 已連結' : 'S8 未連結';
+  document.getElementById('s8cState').textContent = extra || (on ? '已連結（唯讀）' : '尚未連結');
+}
+async function s8Api(path, body, headers = {}) {
+  const lab = readLabAuth();
+  if (!lab) { setLab(false); throw new Error('試驗功能憑證已過期，請重新輸入密碼'); }
+  const res = await fetch(`${workerBase()}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${lab.token}`, ...headers }, body: JSON.stringify(body || {}),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) { /* not JSON */ }
+  if (res.status === 401 && /試驗功能/.test(data.error || '')) { try { sessionStorage.removeItem(LAB_SESSION_KEY); } catch (e) { /* ok */ } setLab(false); }
+  if (!res.ok) throw new Error(data.error || `失敗（${res.status}）`);
+  return data;
+}
+function s8ShowOut(text) { const o = document.getElementById('s8cOut'); o.hidden = !text; o.textContent = text || ''; }
+async function s8Check() {
+  if (!s8Get(S8_SESSION_KEY)) { s8UpdatePill(); s8ShowOut(''); return; }
+  s8UpdatePill('檢查中…');
+  try {
+    const d = await s8Api('/s8/status', {}, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
+    if (d.session) s8Set(S8_SESSION_KEY, d.session);
+    const me = d.me && d.me.data, orgs = d.organizations && d.organizations.data;
+    const orgNames = Array.isArray(orgs) ? orgs.map(o => o.name || o.id).join('、') : JSON.stringify(orgs);
+    s8UpdatePill('已連結（唯讀）');
+    s8ShowOut(`身分：${me && (me.name || me.email) ? (me.name || '') + (me.email ? `（${me.email}）` : '') : JSON.stringify(me)}\n可管理的組織：${orgNames}\n授權範圍：${d.scope}\n\n原始回應：\n${JSON.stringify({ me: d.me, organizations: d.organizations }, null, 2)}`);
+  } catch (e) {
+    s8UpdatePill('連結失敗');
+    s8ShowOut(e.message);
+    if (/重新連結|尚未連結/.test(e.message)) { s8Set(S8_SESSION_KEY, ''); s8UpdatePill(`${e.message}`); }
+  }
+}
+async function s8Connect() {
+  s8ShowOut('');
+  try {
+    s8UpdatePill('準備授權…');
+    const d = await s8Api('/s8/login-start', { returnUrl: location.href.split('#')[0], clientId: s8ClientGet() });
+    s8ClientSet(d.clientId);
+    const w = window.open(d.authorizeUrl, 's8auth', 'width=520,height=720');
+    if (!w) { s8UpdatePill('瀏覽器擋住了彈出視窗'); s8ShowOut('請允許這個網頁的彈出視窗後，再按一次「連結 S8」。'); return; }
+    s8UpdatePill('請在彈出視窗完成登入與授權…');
+  } catch (e) { s8UpdatePill('無法開始連結'); s8ShowOut(e.message); }
+}
+window.addEventListener('message', ev => {
+  let base; try { base = new URL(workerBase()).origin; } catch (e) { return; }
+  if (ev.origin !== base || !ev.data || typeof ev.data !== 'object') return;
+  if (ev.data.type === 's8-session' && typeof ev.data.session === 'string') {
+    s8Set(S8_SESSION_KEY, ev.data.session); if (ev.data.clientId) s8ClientSet(ev.data.clientId);
+    s8Check();
+  } else if (ev.data.type === 's8-error') { s8UpdatePill('連結失敗'); s8ShowOut(String(ev.data.error || '').slice(0, 300)); }
+});
+function openS8Conn() { s8cOverlay.classList.add('open'); s8UpdatePill(); s8Check(); }
+s8Link.addEventListener('click', openS8Conn);
+document.getElementById('s8cConnect').addEventListener('click', s8Connect);
+document.getElementById('s8cCheck').addEventListener('click', s8Check);
+document.getElementById('s8cDisconnect').addEventListener('click', () => { s8Set(S8_SESSION_KEY, ''); s8ShowOut(''); s8UpdatePill(); });
+document.getElementById('s8cCloseBtn').addEventListener('click', () => s8cOverlay.classList.remove('open'));
+s8cOverlay.addEventListener('mousedown', e => { if (e.target === s8cOverlay) s8cOverlay.classList.remove('open'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') s8cOverlay.classList.remove('open'); });
+// Popup lost its opener (some sign-in pages cut it): the Worker then sends the whole tab back with the result in the #hash.
+(function s8ReadHash() {
+  const h = location.hash;
+  if (!/s8=|s8error=/.test(h)) return;
+  const q = new URLSearchParams(h.slice(1));
+  history.replaceState(null, '', location.pathname + location.search);
+  if (q.get('s8')) { s8Set(S8_SESSION_KEY, q.get('s8')); if (q.get('s8client')) s8ClientSet(q.get('s8client')); }
+  window.__s8Pending = q.get('s8error') ? { error: q.get('s8error') } : { check: true };
+})();
+
 // 推播標題: its own card under 快速填入; once filled it tucks into the top bar like 快速填入 does.
 const pushTitleInput = document.getElementById('pushTitleInput');
 const pushTitleByMode = { news: { text: '', open: true }, ent: { text: '', open: true }, collage: { text: '', open: true } };
@@ -4873,6 +4983,8 @@ document.getElementById('pushTitleReopen').addEventListener('click', () => {
 chromeReady = true;
 applyModeChrome();
 try { if (sessionStorage.getItem('labOn') === '1' && readLabAuth()) setLab(true); } catch (e) { /* no storage */ }
+s8UpdatePill();
+if (window.__s8Pending && labOn) { openS8Conn(); if (window.__s8Pending.error) { s8UpdatePill('連結失敗'); s8ShowOut(window.__s8Pending.error); } }
 if (imageProxyUrl()) {
   document.getElementById('tipAutoImg').hidden = false;
   document.querySelectorAll('.tip-ent-auto').forEach(e => { e.hidden = false; });

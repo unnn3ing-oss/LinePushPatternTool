@@ -34,6 +34,20 @@
 
 > 之後做「排入 S8」時，Worker 會先檢查這個憑證才處理，並且只允許建立「草稿」。
 
+## 連結 SUPER 8 Studio（OAuth，階段一：只讀）
+
+試驗版右上角的「S8 未連結／已連結」按鈕，會跳到 S8 的登入與授權頁，讓這個 Worker 取得**唯讀**權限。更新 Worker 程式後即可使用，**不需要新增任何變數或儲存空間**（沿用 `LAB_PASSWORD` 衍生的金鑰加密）。
+
+| 項目 | 說明 |
+|---|---|
+| 流程 | 網頁 → `POST /s8/login-start`（需試驗功能憑證）→ 彈出視窗登入並按「允許」→ S8 跳回 `GET /s8/callback` → Worker 用 PKCE 換憑證 → 加密後交給網頁 → `POST /s8/status` 呼叫 `auth_me`、`auth_organizations` |
+| 授權範圍 | 只請求 `insightark-mcp:read`；程式內只允許這兩個唯讀工具，**沒有任何建立、發送、排程的程式路徑** |
+| 憑證保存 | 網頁只存一串加密字串（分頁關閉就消失）；解密只有 Worker 能做；改 `LAB_PASSWORD` 後舊字串全部失效 |
+| 用戶端註冊 | 第一次連結時 Worker 向 S8 動態註冊（公開用戶端、跳轉位址 `https://<worker網址>/s8/callback`），之後瀏覽器記住 client id，不重複註冊 |
+| 撤銷授權 | S8 Console → 使用者資訊 → Connected Apps；網頁上的「中斷連線」只會清掉這個分頁的連結資料 |
+
+> 若 S8 不接受 `workers.dev` 當跳轉位址，視窗會顯示 S8 回報的原因，請把那段文字貼給維護者。
+
 ## 快速自我檢查
 
 瀏覽器直接開 `https://<worker網址>/?url=<一篇 TVBS 文章網址>`：看到文章首圖就代表 Worker 正常（直接用網址列開不會帶 `Origin`，所以只是檢查抓圖，不涉及網頁授權）。

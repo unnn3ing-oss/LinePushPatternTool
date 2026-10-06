@@ -17,6 +17,12 @@
 //   POST /lab-auth   body {"password":"..."} → 密碼對時回傳 {token, expiresAt}，否則 401
 //   GET  /lab-ping   帶 Authorization: Bearer <token> → token 有效回 {ok:true}
 // 密碼只放在 Worker 的環境變數 LAB_PASSWORD（Secret），網頁原始碼裡沒有；沒設定時一律拒絕。
+//
+// 另有「S8 OAuth」（階段一：只讀，見 worker/README.md 的「連結 SUPER 8 Studio」）：
+//   POST /s8/login-start  → 取得 S8 授權頁網址（只請求 insightark-mcp:read 範圍）
+//   GET  /s8/callback     → S8 授權完成後跳回這裡，換取憑證、加密後交還網頁
+//   POST /s8/status       → 用憑證呼叫 auth_me、auth_organizations（唯讀）
+// S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
 
 const ALLOWED_HOST_SUFFIXES = ['tvbs.com.tw'];
 const ALLOWED_ORIGINS = [
@@ -41,7 +47,7 @@ function corsHeaders(request, env) {
   const h = {
     'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-S8-Session',
     'Access-Control-Expose-Headers': 'X-Image-Url',
   };
   if (origin && allowed.includes(origin)) h['Access-Control-Allow-Origin'] = origin;
@@ -156,12 +162,235 @@ async function handleLabPing(request, env) {
   });
 }
 
+// ---- S8 OAuth（階段一：只讀）----------------------------------------------------
+// 流程：網頁（已通過試驗功能密碼）→ /s8/login-start 取得授權網址 → 在彈出視窗登入並按「允許」→ S8 跳回 /s8/callback
+// → Worker 用 PKCE 換憑證、加密成 session 字串交給網頁 → 之後網頁帶著 session 呼叫 /s8/status。
+// 這個階段只請求 read 範圍，且只允許呼叫 S8_READ_TOOLS 內的工具，所以 Worker 無法寫入、發送或排程任何東西。
+const S8_BASE_DEFAULT = 'https://api-next.no8.io';
+const S8_SCOPE_READ = 'insightark-mcp:read';
+const S8_READ_TOOLS = new Set(['auth_me', 'auth_organizations']);   // 階段一唯一允許的 MCP 工具
+const S8_STATE_TTL_MS = 10 * 60 * 1000;
+const S8_CLIENT_NAME = 'Line推播套版產生器';
+
+const s8Base = env => ((env && env.S8_BASE) || S8_BASE_DEFAULT).replace(/\/+$/, '');
+const s8McpUrl = env => `${s8Base(env)}/mcp`;
+const textDecoder = new TextDecoder();
+
+function fromBase64Url(str) {
+  const b = atob(str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4));
+  return Uint8Array.from(b, c => c.charCodeAt(0));
+}
+
+// AES-GCM 加密 JSON（金鑰由 LAB_SIGNING_KEY 或 LAB_PASSWORD 衍生，沒設就拒絕）。
+async function s8Key(env) {
+  const secret = labSigningKey(env);
+  if (!secret) throw new Error('未設定 LAB_PASSWORD');
+  const raw = await crypto.subtle.digest('SHA-256', textEncoder.encode(`s8-session|${secret}`));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function s8Seal(env, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await s8Key(env), textEncoder.encode(JSON.stringify(obj))));
+  const out = new Uint8Array(iv.length + ct.length); out.set(iv); out.set(ct, iv.length);
+  return toBase64Url(out);
+}
+async function s8Open(env, sealed) {
+  try {
+    const all = fromBase64Url(String(sealed || ''));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.slice(0, 12) }, await s8Key(env), all.slice(12));
+    return JSON.parse(textDecoder.decode(pt));
+  } catch { return null; }
+}
+const randomB64Url = n => toBase64Url(crypto.getRandomValues(new Uint8Array(n)));
+async function pkceChallenge(verifier) { return toBase64Url(await crypto.subtle.digest('SHA-256', textEncoder.encode(verifier))); }
+
+async function s8Metadata(env) {
+  const base = s8Base(env);
+  try {
+    const r = await fetch(`${base}/.well-known/oauth-authorization-server`);
+    if (r.ok) { const m = await r.json(); if (m.authorization_endpoint && m.token_endpoint) return m; }
+  } catch { /* fall back */ }
+  return { issuer: base, authorization_endpoint: `${base}/mcp/oauth/authorize`, token_endpoint: `${base}/mcp/oauth/token`, registration_endpoint: `${base}/mcp/oauth/register` };
+}
+
+async function s8Register(env, meta, redirectUri) {
+  const r = await fetch(meta.registration_endpoint, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_name: S8_CLIENT_NAME, redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'], token_endpoint_auth_method: 'none', scope: S8_SCOPE_READ,
+    }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.client_id) throw new Error(`S8 不接受註冊（${r.status}）：${data.error_description || data.error || '未知原因'}`);
+  return data.client_id;
+}
+
+async function s8TokenRequest(env, meta, params) {
+  const r = await fetch(meta.token_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: new URLSearchParams(params).toString() });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.access_token) throw new Error(`換取憑證失敗（${r.status}）：${data.error_description || data.error || '未知原因'}`);
+  return data;
+}
+
+function s8SessionFrom(data, clientId, prev) {
+  return {
+    a: data.access_token,
+    r: data.refresh_token || (prev && prev.r) || '',
+    e: Date.now() + (Number(data.expires_in) > 0 ? Number(data.expires_in) * 1000 : 3600 * 1000),
+    c: clientId,
+    s: data.scope || (prev && prev.s) || S8_SCOPE_READ,
+  };
+}
+
+function originAllowed(url, env) {
+  try {
+    const allowed = env && env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(x => x.trim()) : ALLOWED_ORIGINS;
+    return allowed.includes(new URL(url).origin);
+  } catch { return false; }
+}
+
+async function requireLab(request, env) {
+  const origin = request.headers.get('Origin');
+  const allowed = env && env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map(x => x.trim()) : ALLOWED_ORIGINS;
+  if (!origin || !allowed.includes(origin)) return jsonError(403, '來源不被允許', request, env);
+  if (!(await verifyLabToken(request, env))) return jsonError(401, '試驗功能憑證無效或已過期，請重新輸入密碼', request, env);
+  return null;
+}
+
+function jsonOk(body, request, env, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(request, env) } });
+}
+
+async function handleS8LoginStart(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  let body = {};
+  try { body = JSON.parse((await request.text()) || '{}'); } catch { return jsonError(400, '格式不正確', request, env); }
+  const returnUrl = typeof body.returnUrl === 'string' ? body.returnUrl : '';
+  if (!originAllowed(returnUrl, env)) return jsonError(400, 'returnUrl 的來源不被允許', request, env);
+  const redirectUri = `${new URL(request.url).origin}/s8/callback`;
+  try {
+    const meta = await s8Metadata(env);
+    let clientId = typeof body.clientId === 'string' && /^[\w.~-]{1,200}$/.test(body.clientId) ? body.clientId : '';
+    let registered = false;
+    if (!clientId) { clientId = await s8Register(env, meta, redirectUri); registered = true; }
+    const verifier = randomB64Url(48);
+    const state = await s8Seal(env, { v: verifier, c: clientId, u: returnUrl, ru: redirectUri, x: Date.now() + S8_STATE_TTL_MS });
+    const url = new URL(meta.authorization_endpoint);
+    url.search = new URLSearchParams({
+      response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: S8_SCOPE_READ, state,
+      code_challenge: await pkceChallenge(verifier), code_challenge_method: 'S256', resource: s8McpUrl(env),
+    }).toString();
+    return jsonOk({ authorizeUrl: url.href, clientId, registered, scope: S8_SCOPE_READ }, request, env);
+  } catch (e) {
+    return jsonError(502, e.message || '無法連到 S8', request, env);
+  }
+}
+
+const htmlEsc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function callbackPage(payload, returnUrl, message) {
+  const data = JSON.stringify(payload).replace(/</g, '\\u003c');
+  const origin = (() => { try { return new URL(returnUrl).origin; } catch { return ''; } })();
+  const back = returnUrl ? `${returnUrl.split('#')[0]}#s8=${encodeURIComponent(payload.session || '')}${payload.error ? '&s8error=' + encodeURIComponent(payload.error) : ''}&s8client=${encodeURIComponent(payload.clientId || '')}` : '';
+  const html = `<!doctype html><meta charset="utf-8"><title>S8 連結</title><body style="font:16px sans-serif;padding:32px"><p>${htmlEsc(message)}</p><script>
+(function(){var d=${data},o=${JSON.stringify(origin)},back=${JSON.stringify(back)};
+try{if(window.opener&&o){window.opener.postMessage(d,o);window.close();return;}}catch(e){}
+if(back){location.replace(back);}
+})();</script>`;
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
+}
+
+async function handleS8Callback(request, env) {
+  const url = new URL(request.url);
+  const state = await s8Open(env, url.searchParams.get('state'));
+  if (!state || !state.x || state.x < Date.now()) return callbackPage({ type: 's8-error', error: '授權逾時或無效，請回網頁重新連結' }, state && state.u, '授權逾時或無效，請回到網頁重新連結。');
+  const err = url.searchParams.get('error');
+  if (err) return callbackPage({ type: 's8-error', error: `S8 回報：${err}` }, state.u, `S8 沒有完成授權（${err}）。可以關閉這個視窗。`);
+  const code = url.searchParams.get('code');
+  if (!code) return callbackPage({ type: 's8-error', error: '缺少授權碼' }, state.u, '缺少授權碼。');
+  try {
+    const meta = await s8Metadata(env);
+    const data = await s8TokenRequest(env, meta, {
+      grant_type: 'authorization_code', code, redirect_uri: state.ru, client_id: state.c, code_verifier: state.v, resource: s8McpUrl(env),
+    });
+    const session = await s8Seal(env, s8SessionFrom(data, state.c));
+    return callbackPage({ type: 's8-session', session, clientId: state.c }, state.u, '已連結 SUPER 8 Studio，可以關閉這個視窗。');
+  } catch (e) {
+    return callbackPage({ type: 's8-error', error: e.message }, state.u, e.message);
+  }
+}
+
+// ---- MCP（Streamable HTTP）呼叫，只允許白名單工具 ----
+function parseMcpBody(text, contentType) {
+  if ((contentType || '').includes('text/event-stream')) {
+    const msgs = text.split(/\r?\n\r?\n/).map(chunk => chunk.split(/\r?\n/).filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n')).filter(Boolean);
+    for (const m of msgs.reverse()) { try { const j = JSON.parse(m); if (j && (j.result !== undefined || j.error)) return j; } catch { /* next */ } }
+    return null;
+  }
+  try { return JSON.parse(text); } catch { return null; }
+}
+async function mcpRpc(env, token, sessionId, id, method, params) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: `Bearer ${token}` };
+  if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+  const r = await fetch(s8McpUrl(env), { method: 'POST', headers, body: JSON.stringify(id === null ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id, method, params }) });
+  if (r.status === 401) { const e = new Error('unauthorized'); e.status = 401; throw e; }
+  const text = await r.text();
+  return { status: r.status, sid: r.headers.get('Mcp-Session-Id') || sessionId, body: parseMcpBody(text, r.headers.get('Content-Type')), raw: text.slice(0, 300) };
+}
+async function mcpCallTools(env, token, calls) {
+  for (const c of calls) if (!S8_READ_TOOLS.has(c.name)) throw new Error(`工具 ${c.name} 不在允許名單內`);
+  const init = await mcpRpc(env, token, '', 1, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'line-push-pattern-tool', version: '1' } });
+  if (!init.body || init.body.error) throw new Error(`MCP 初始化失敗：${(init.body && init.body.error && init.body.error.message) || init.status}`);
+  let sid = init.sid;
+  await mcpRpc(env, token, sid, null, 'notifications/initialized', {}).catch(() => {});
+  const out = {};
+  let n = 2;
+  for (const c of calls) {
+    const r = await mcpRpc(env, token, sid, n++, 'tools/call', { name: c.name, arguments: c.args || {} });
+    if (!r.body || r.body.error) throw new Error(`${c.name} 失敗：${(r.body && r.body.error && r.body.error.message) || r.status}`);
+    const res = r.body.result || {};
+    const text = (res.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
+    let parsed = res.structuredContent;
+    if (parsed === undefined) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
+    out[c.name] = { isError: !!res.isError, data: parsed };
+  }
+  return out;
+}
+
+async function handleS8Status(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  let sess = await s8Open(env, request.headers.get('X-S8-Session'));
+  if (!sess || !sess.a) return jsonError(401, '尚未連結 S8（或連結資料無效），請重新連結', request, env);
+  let refreshed = null;
+  const refresh = async () => {
+    if (!sess.r) throw new Error('憑證已過期且沒有更新用憑證，請重新連結');
+    const meta = await s8Metadata(env);
+    const data = await s8TokenRequest(env, meta, { grant_type: 'refresh_token', refresh_token: sess.r, client_id: sess.c, resource: s8McpUrl(env) });
+    sess = s8SessionFrom(data, sess.c, sess);
+    refreshed = await s8Seal(env, sess);
+  };
+  try {
+    if (sess.e < Date.now() + 60 * 1000) await refresh();
+    let results;
+    try { results = await mcpCallTools(env, sess.a, [{ name: 'auth_me' }, { name: 'auth_organizations' }]); }
+    catch (e) { if (e.status === 401 && !refreshed) { await refresh(); results = await mcpCallTools(env, sess.a, [{ name: 'auth_me' }, { name: 'auth_organizations' }]); } else throw e; }
+    return jsonOk({ ok: true, scope: sess.s, me: results.auth_me, organizations: results.auth_organizations, session: refreshed }, request, env);
+  } catch (e) {
+    return jsonError(e.status === 401 ? 401 : 502, e.message || '無法呼叫 S8', request, env);
+  }
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
     const path = new URL(request.url).pathname;
     if (path === '/lab-auth') return handleLabAuth(request, env);
     if (path === '/lab-ping') return handleLabPing(request, env);
+    if (path === '/s8/login-start') return handleS8LoginStart(request, env);
+    if (path === '/s8/callback') return handleS8Callback(request, env);
+    if (path === '/s8/status') return handleS8Status(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 
     const articleParam = new URL(request.url).searchParams.get('url');
