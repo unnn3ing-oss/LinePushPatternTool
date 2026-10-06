@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(worker/og-image-proxy.js)",
+      "Edit(index.html)",
+      "Edit(README.md)",
+      "Edit(worker/README.md)"
+    ]
+  }
+}
