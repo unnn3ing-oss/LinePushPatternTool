@@ -121,7 +121,7 @@
   .s8-banner .t { font-size: 17px; font-weight: 800; }
   .s8-banner.paused { background: #166534; }
   .s8-banner button { margin-top: 8px; background: #fff; color: #991b1b; border: 0; font-weight: 700; }
-  #s8RetryRow[hidden], #s8ConfirmRow[hidden] { display: none; }
+  #s8RetryRow[hidden], .s8-status[hidden], #s8PreviewBtn[hidden], .s8-when[hidden], #s8CreateOut[hidden] { display: none; }
   .s8-note { margin: 0 0 14px; padding: 10px 14px; border-radius: 14px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; }
   .s8-grid { display: grid; grid-template-columns: 112px 1fr; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
   .s8-grid label { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
@@ -136,6 +136,48 @@
   .s8-imgs figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all; }
   .s8-errs { margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; color: #b91c1c; }
   .s8-prompt { width: 100%; height: 220px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; margin-top: 8px; }
+  /* 預覽（頁籤＋可點格子＋完整連結字框）*/
+  .s8-prev { display: flex; flex-direction: column; gap: 10px; }
+  .s8-ptabs { display: flex; gap: 4px; justify-content: center; }
+  .s8-ptab { background: transparent; border: none; border-radius: 99px; padding: 6px 20px; color: var(--muted); font-weight: 600; font-size: 15px; }
+  .s8-ptab:hover { color: var(--text); }
+  .s8-ptab.active, .s8-ptab.active:hover { color: var(--accent); }
+  .s8-stage { position: relative; width: 100%; max-width: 520px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: var(--track); min-height: 100px; display: grid; place-items: center; }
+  .s8-stage .s8-wrap { position: relative; width: 100%; }
+  .s8-stage img { display: block; width: 100%; margin: 0; }
+  .s8-ph { font-size: 13px; color: var(--muted); padding: 30px 0; }
+  .s8-cell { position: absolute; box-sizing: border-box; cursor: pointer; border: 2px solid transparent; background: transparent; padding: 0; border-radius: 0; }
+  .s8-cell:hover { background: rgba(0, 0, 0, .10); }
+  .s8-cell.sel { background: rgba(0, 0, 0, .12); border-color: var(--accent); }
+  .s8-cell.bad { border-color: #dc2626; border-style: dashed; }
+  .s8-linkrow { display: grid; gap: 4px; max-width: 520px; width: 100%; margin: 0 auto; }
+  .s8-linklbl { font-size: 13px; color: var(--muted); }
+  .s8-linkrow input { width: 100%; }
+  /* 傳送資料給 S8：五個步驟（圓圈數字與頁面上方的步驟列同一套）*/
+  .s8-steps { display: grid; gap: 14px; }
+  .s8-step { display: flex; gap: 10px; align-items: flex-start; }
+  .s8-step[hidden] { display: none; }
+  .s8-step > i { flex: none; width: 24px; height: 24px; margin-top: 6px; border-radius: 50%; background: rgba(0, 0, 0, .12); color: var(--muted); display: inline-grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; }
+  .s8-step.on > i { background: var(--accent); color: #fff; }
+  .s8-step.done > i { background: var(--success); color: #fff; }
+  .s8-sbody { flex: 1; min-width: 0; }
+  .s8-go { background: var(--success); border-color: transparent; color: #fff; font-weight: 700; }
+  .s8-go:hover { filter: brightness(.95); }
+  .s8-status { margin-top: 8px; font-size: 13px; line-height: 1.6; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .s8-status.bad { color: #b91c1c; }
+  .s8-pair { display: flex; gap: 12px; flex-wrap: wrap; }
+  .s8-pair button.sel { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 700; }
+  .s8-when { margin-top: 10px; }
+  .s8-whenrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+  .s8-whenrow select { width: auto; min-width: 64px; margin: 0; }
+  .s8-whenrow select#s8Yy { min-width: 78px; }
+  .s8-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .s8-whenmsg.bad { color: #b91c1c; font-weight: 600; }
+  .s8-lbl { font-size: 14px; font-weight: 700; margin: 4px 0 6px; }
+  input[type="text"].s8-pill { width: 100%; max-width: 280px; border-radius: 99px; padding: 8px 16px; }
+  .s8-copymsg { font-size: 13px; color: var(--muted); margin-left: 6px; }
+  .s8-tip { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .s8-tip:empty { display: none; }
 
   #pushTitleApply { width: 100%; font-weight: 700; padding: 10px; }
   .stepper[hidden] { display: none; }
@@ -757,7 +799,7 @@
   <p class="sub" id="modeSub" hidden></p>
   <div class="tb-right">
     <button type="button" class="lab-toggle s8-link" id="s8Link" data-state="off" title="連結 SUPER 8 Studio（OAuth）">S8 未連結</button>
-    <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false" title="試驗功能（第二套介面，需要密碼）">試驗功能</button>
+    <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false" title="S8串接測試">試驗功能</button>
   </div>
 </header>
 
@@ -1143,11 +1185,11 @@
 <div class="modal-overlay" id="s8Overlay">
   <div class="modal s8-modal" role="dialog" aria-labelledby="s8Title">
     <div class="modal-head">
-      <h2 id="s8Title">排入 S8（建立群發草稿）</h2>
+      <h2 id="s8Title">排入 S8</h2>
       <button type="button" id="s8CloseBtn" class="modal-close" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body">
-      <p class="s8-note"><b>這個畫面不會自動送出任何東西。</b>確認後按「複製給 Claude 的指令」，把指令和下面兩張圖貼到已安裝 SUPER 8 外掛的 Claude 對話，由它建立。規則：<b>絕不立即發送</b>；排程時間＝建立當下＋1 天；建立後立刻暫停成草稿。</p>
+      <p class="s8-note" hidden><b>這個畫面不會自動送出任何東西。</b>確認後按「複製給 Claude 的指令」，把指令和下面兩張圖貼到已安裝 SUPER 8 外掛的 Claude 對話，由它建立。規則：<b>絕不立即發送</b>；排程時間＝建立當下＋1 天；建立後立刻暫停成草稿。</p>
       <div class="s8-grid">
         <label for="s8Name">群發名稱</label><input type="text" id="s8Name" autocomplete="off">
         <label>組織／帳號</label><div class="s8-fixed" id="s8Account"></div>
@@ -1163,22 +1205,67 @@
         </div>
         <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="必填：來自「推播標題」">
       </div>
-      <div id="s8Pages"></div>
-      <div class="s8-page">兩張圖（先下載，再連同指令一起貼給 Claude）</div>
-      <div class="s8-imgs" id="s8Imgs"></div>
+      <div class="s8-page">連結預覽（點圖上的格子，下方會顯示該格的完整連結）</div>
+      <div class="s8-prev">
+        <div class="s8-ptabs" id="s8Ptabs">
+          <button type="button" class="s8-ptab active" data-sp="0">第 1 頁</button>
+          <button type="button" class="s8-ptab" data-sp="1">第 2 頁</button>
+        </div>
+        <div class="s8-stage" id="s8Stage"><span class="s8-ph" id="s8StagePh">圖片產生中…</span></div>
+        <div class="s8-linkrow">
+          <span class="s8-linklbl" id="s8LinkLbl">點上面圖片的格子，這裡會顯示該格的完整連結</span>
+          <input type="text" id="s8CellUrl" autocomplete="off" disabled>
+        </div>
+      </div>
       <ul class="s8-errs" id="s8Errs"></ul>
       <div class="s8-page">傳送資料給S8</div>
-      <p class="hint" style="margin:0 0 8px">需要先在右上角「S8」視窗升級授權。流程：① 上傳圖片並產生 S8 預覽（先看預覽）→ ② 輸入下面顯示的人數確認 → 建立。建立時 Worker 一律先以「當下 + 24 小時」排程（時間由 Worker 決定，不能自訂）。預設<b>立刻暫停成草稿</b>；你也可以明確選「保留為 +1 天排程」，那麼這筆群發<b>不會暫停</b>，會在排程時間<b>實際發送</b>給全部 LINE 顧客。<b>不會立即發送</b>。S8 的建立工具沒有群發名稱欄位，建立後請到 Console 把草稿改名成上面的群發名稱。</p>
-      <div class="btn-row" style="margin-top:0"><button type="button" id="s8PrepBtn">① 上傳圖片並產生預覽</button></div>
-      <div id="s8PrepOut" class="s8c-out" hidden></div>
-      <div id="s8ConfirmRow" hidden style="margin-top:10px">
-        <div class="s8-modes" role="radiogroup" aria-label="建立後的處理方式">
-          <label class="s8-mode"><input type="radio" name="s8Mode" id="s8ModeDraft" value="draft" checked><span><b>建立後暫停成草稿</b>（預設）<br><small>不會發送，除非有人在 Console 手動 resume</small></span></label>
-          <label class="s8-mode warn"><input type="radio" name="s8Mode" id="s8ModeSchedule" value="schedule"><span><b>保留為 +1 天排程</b><br><small>不暫停，時間到會實際發送給全部 LINE 顧客</small></span></label>
+      <div class="s8-steps">
+        <div class="s8-step on" id="s8Step1">
+          <i>1</i>
+          <div class="s8-sbody">
+            <div><button type="button" class="s8-go" id="s8PrepBtn">傳送資料</button></div>
+            <div class="s8-status" id="s8PrepOut" hidden><span id="s8PrepMsg"></span><button type="button" id="s8PreviewBtn" hidden>開啟S8預覽</button></div>
+          </div>
         </div>
-        <p class="s8-sched-warn" id="s8SchedWarn" hidden></p>
-        <div class="s8-grid" style="margin-bottom:6px"><label for="s8ConfirmTotal">確認人數</label><input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入上面顯示的「可發送人數」"></div>
-        <div class="btn-row" style="margin-top:0"><button type="button" class="primary" id="s8CreateBtn" disabled>② 建立草稿（建立後立刻暫停）</button></div>
+        <div class="s8-step" id="s8Step2" hidden>
+          <i>2</i>
+          <div class="s8-sbody">
+            <div class="s8-pair">
+              <button type="button" id="s8PickDraft">存成草稿</button>
+              <button type="button" id="s8PickSched">設定排程時間</button>
+            </div>
+            <div class="s8-when" id="s8When" hidden>
+              <div class="s8-whenrow">
+                <select id="s8Yy" aria-label="年"></select><span>年</span>
+                <select id="s8Mo" aria-label="月"></select><span>月</span>
+                <select id="s8Dd" aria-label="日"></select><span>日</span>
+                <select id="s8Hh" aria-label="時"></select><span>時</span>
+                <select id="s8Mi" aria-label="分"></select><span>分</span>
+              </div>
+              <div class="s8-whenmsg" id="s8WhenMsg"></div>
+            </div>
+          </div>
+        </div>
+        <div class="s8-step" id="s8Step3" hidden>
+          <i>3</i>
+          <div class="s8-sbody">
+            <div class="s8-lbl">確認人數</div>
+            <input type="text" class="s8-pill" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入上面顯示的可發送人數">
+          </div>
+        </div>
+        <div class="s8-step" id="s8Step4" hidden>
+          <i>4</i>
+          <div class="s8-sbody">
+            <div><button type="button" id="s8CopyName">複製排程名稱</button> <span class="s8-copymsg" id="s8CopyMsg"></span></div>
+          </div>
+        </div>
+        <div class="s8-step" id="s8Step5" hidden>
+          <i>5</i>
+          <div class="s8-sbody">
+            <div><button type="button" class="primary" id="s8CreateBtn">建立草稿</button></div>
+            <p class="s8-tip" id="s8Tip"></p>
+          </div>
+        </div>
       </div>
       <div id="s8CreateOut" class="s8c-out" hidden></div>
       <div id="s8SchedBanners"></div>
@@ -1414,10 +1501,31 @@ function loadImage(src) {
     img.src = src;
   });
 }
+// The exported 新聞 template PNGs leave their outermost pixel columns thinner than the rest (the plain one
+// has a fully clear left column and a ~85% second column, and a ~25% last column), so the photo shows through
+// as a light strip at the page's left edge. Fill the two outer columns on each side from the nearest full
+// column so the black gradient / band reaches the very edge.
+function fillTemplateEdges(img) {
+  if (!img) return img;
+  const w = img.naturalWidth, h = img.naturalHeight, E = 2;
+  if (w < E * 2 + 4) return img;
+  try {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0);
+    const data = x.getImageData(0, 0, w, h), px = data.data;
+    const copy = (from, to, y) => { const f = (y * w + from) * 4, t = (y * w + to) * 4; px[t] = px[f]; px[t + 1] = px[f + 1]; px[t + 2] = px[f + 2]; px[t + 3] = px[f + 3]; };
+    for (let y = 0; y < h; y++) {
+      for (let i = 0; i < E; i++) { copy(E, i, y); copy(w - 1 - E, w - 1 - i, y); }
+    }
+    x.putImageData(data, 0, 0);
+    return c;
+  } catch (e) { return img; }   // e.g. opened from file:// (tainted canvas): keep the original artwork
+}
 let templateHeaderImg = null, templatePlainImg = null, templateEntImg = null;
 const templatesReady = Promise.all([
-  loadImage('assets/template-header.png').then(img => { templateHeaderImg = img; }),
-  loadImage('assets/template-plain.png').then(img => { templatePlainImg = img; }),
+  loadImage('assets/template-header.png').then(img => { templateHeaderImg = fillTemplateEdges(img); }),
+  loadImage('assets/template-plain.png').then(img => { templatePlainImg = fillTemplateEdges(img); }),
   loadImage('assets/template-ent.png').then(img => { templateEntImg = img; }),
 ]);
 
@@ -4657,7 +4765,7 @@ function setLab(on) {
   document.body.classList.toggle('lab-on', on);
   document.getElementById('labBadge').hidden = !on;
   labToggle.setAttribute('aria-pressed', String(on));
-  labToggle.title = on ? '離開試驗功能，回到標準介面' : '試驗功能（第二套介面，需要密碼）';
+  labToggle.title = 'S8串接測試';
   try { sessionStorage.setItem('labOn', on ? '1' : '0'); } catch (e) { /* tab-only convenience */ }
   cellSelected = false; headerSelected = false;
   s8UpdatePill();
@@ -4809,7 +4917,58 @@ function buildS8Prompt(d) {
 }
 
 const s8Overlay = document.getElementById('s8Overlay');
-let s8State = null;     // { urls:[[...],[...]], images:[{file, blob, url, size, tooBig}] }
+let s8State = null;     // { regions, urls:[[...],[...]], images:[{blob, url, size, tooBig}], sp: 目前頁, cell: 選取的格 }
+// ---- 預覽：頁籤切換、點格子看完整連結 ----
+function s8RenderStage() {
+  const stage = document.getElementById('s8Stage');
+  stage.textContent = '';
+  if (!s8State) return;
+  const p = s8State.sp, im = s8State.images[p];
+  if (!im) { const ph = document.createElement('span'); ph.className = 's8-ph'; ph.id = 's8StagePh'; ph.textContent = s8State.imgFailed ? '圖片產生失敗，請關閉後重試' : '圖片產生中…'; stage.appendChild(ph); return; }
+  const wrap = document.createElement('div'); wrap.className = 's8-wrap';
+  const img = document.createElement('img'); img.src = im.url; img.alt = `第 ${p + 1} 頁`;
+  wrap.appendChild(img);
+  (s8State.regions[p] || []).forEach((r, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 's8-cell'; b.dataset.i = i;
+    b.style.left = `${r.pct.x}%`; b.style.top = `${r.pct.y}%`; b.style.width = `${r.pct.width}%`; b.style.height = `${r.pct.height}%`;
+    b.title = `項目${i + 1}（${S8_CELL_LABELS[mode][i]}）`;
+    b.addEventListener('click', () => s8SelectCell(i));
+    wrap.appendChild(b);
+  });
+  stage.appendChild(wrap);
+  s8MarkCells();
+}
+function s8MarkCells() {
+  if (!s8State) return;
+  document.querySelectorAll('#s8Stage .s8-cell').forEach(b => {
+    const i = Number(b.dataset.i);
+    b.classList.toggle('sel', i === s8State.cell);
+    b.classList.toggle('bad', !String((s8State.urls[s8State.sp] || [])[i] || '').trim());
+  });
+}
+function s8SelectCell(i) {
+  if (!s8State) return;
+  s8State.cell = i;
+  const inp = document.getElementById('s8CellUrl');
+  inp.disabled = false;
+  inp.value = (s8State.urls[s8State.sp] || [])[i] || '';
+  document.getElementById('s8LinkLbl').textContent = `第 ${s8State.sp + 1} 頁　項目${i + 1}（${S8_CELL_LABELS[mode][i]}）的完整連結`;
+  s8MarkCells();
+}
+function s8ShowPage(p) {
+  if (!s8State) return;
+  s8State.sp = p; s8State.cell = -1;
+  document.querySelectorAll('.s8-ptab').forEach(b => b.classList.toggle('active', Number(b.dataset.sp) === p));
+  const inp = document.getElementById('s8CellUrl'); inp.value = ''; inp.disabled = true;
+  document.getElementById('s8LinkLbl').textContent = '點上面圖片的格子，這裡會顯示該格的完整連結';
+  s8RenderStage();
+}
+document.querySelectorAll('.s8-ptab').forEach(b => b.addEventListener('click', () => s8ShowPage(Number(b.dataset.sp))));
+document.getElementById('s8CellUrl').addEventListener('input', e => {
+  if (!s8State || s8State.cell < 0) return;
+  s8State.urls[s8State.sp][s8State.cell] = e.target.value;
+  s8Refresh();
+});
 function s8Collect() {
   const d = {
     account: S8_ACCOUNT[mode],
@@ -4825,7 +4984,7 @@ function s8Collect() {
       file: `${d.name}_第${p + 1}頁.png`,
       cells: regs.map((r, i) => ({
         n: i + 1, label: S8_CELL_LABELS[mode][i], ...r,
-        url: (document.querySelector(`.s8-url[data-p="${p}"][data-i="${i}"]`) || {}).value?.trim() || '',
+        url: String((s8State.urls[p] || [])[i] || '').trim(),
       })),
     });
   });
@@ -4851,14 +5010,10 @@ function s8Refresh() {
   const errs = s8Validate(d);
   document.getElementById('s8Errs').innerHTML = '';
   errs.forEach(e => { const li = document.createElement('li'); li.textContent = e; document.getElementById('s8Errs').appendChild(li); });
-  document.querySelectorAll('.s8-url').forEach(inp => inp.classList.toggle('bad', !inp.value.trim()));
+  s8MarkCells();
   document.getElementById('s8Tag').disabled = d.target !== 'tag';
   ['s8Name', 's8Alt'].forEach(id => document.getElementById(id).classList.toggle('bad', !document.getElementById(id).value.trim()));
   document.getElementById('s8Tag').classList.toggle('bad', d.target === 'tag' && !d.tag);
-  document.querySelectorAll('.s8-cap').forEach((cap, p) => {
-    const im = s8State.images[p];
-    if (im) cap.textContent = `${d.name || '（未命名）'}_第${p + 1}頁.png（${(im.size / 1048576).toFixed(2)} MB）`;
-  });
   document.getElementById('s8CopyBtn').disabled = errs.length > 0;
   document.getElementById('s8Prompt').value = errs.length ? '' : buildS8Prompt(d);
 }
@@ -4871,23 +5026,9 @@ async function openS8Dialog() {
   document.getElementById('s8Tag').value = '';
   document.getElementById('s8TargetAll').checked = true;
   document.getElementById('s8Alt').value = pushTitleInput.value.trim();
-  s8State = { regions: pages.map(pg => s8Regions(pg)), images: [] };
-  const host = document.getElementById('s8Pages');
-  host.textContent = '';
-  pages.forEach((pg, p) => {
-    const h = document.createElement('div'); h.className = 's8-page'; h.textContent = `第 ${p + 1} 則圖文訊息（套圖第 ${p + 1} 頁）的 ${CELL_COUNT} 個連結`; host.appendChild(h);
-    const g = document.createElement('div'); g.className = 's8-cells';
-    pg.cards.forEach((st, i) => {
-      const pos = document.createElement('span'); pos.className = 's8-pos'; pos.textContent = `項目${i + 1}（${S8_CELL_LABELS[mode][i]}）`;
-      const inp = document.createElement('input'); inp.type = 'text'; inp.className = 's8-url'; inp.dataset.p = p; inp.dataset.i = i;
-      inp.value = withUtm(st.url) || ''; inp.autocomplete = 'off'; inp.addEventListener('input', s8Refresh);
-      g.append(pos, inp);
-    });
-    host.appendChild(g);
-  });
-  document.getElementById('s8Imgs').textContent = '圖片產生中…';
+  s8State = { regions: pages.map(pg => s8Regions(pg)), images: [], urls: pages.map(pg => pg.cards.map(st => withUtm(st.url) || '')), sp: 0, cell: -1 };
+  s8ShowPage(0);
   s8ResetCreate();
-  document.getElementById('s8ModeDraft').checked = true;          // 每次開啟都回到預設「暫停成草稿」
   document.getElementById('s8SchedBanners').textContent = '';
   s8Overlay.classList.add('open');
   s8Refresh();
@@ -4903,16 +5044,10 @@ async function openS8Dialog() {
     }
     if (s8State !== mine) { imgs.forEach(im => URL.revokeObjectURL(im.url)); return; }
     s8State.images = imgs;
-    const box = document.getElementById('s8Imgs'); box.textContent = '';
-    imgs.forEach(im => {
-      const fig = document.createElement('figure');
-      const img = document.createElement('img'); img.src = im.url;
-      const cap = document.createElement('figcaption'); cap.className = 's8-cap';
-      fig.append(img, cap); box.appendChild(fig);
-    });
   } catch (e) {
-    document.getElementById('s8Imgs').textContent = '圖片產生失敗，請關閉後重試';
+    if (s8State === mine) s8State.imgFailed = true;
   }
+  s8RenderStage();
   s8Refresh();
 }
 function closeS8Dialog() {
@@ -4965,16 +5100,31 @@ document.getElementById('s8DownloadBtn').addEventListener('click', () => {
   s8State.images.forEach((im, i) => setTimeout(() => downloadDataUrl(im.url, `${nm}_第${i + 1}頁.png`), i * 250));
 });
 
-// ---- 傳送資料給S8（階段三）：上傳＋預覽 → 輸入人數確認 → Worker 建立群發（預設立刻暫停成草稿，或明確選擇保留 +1 天排程）----
+// ---- 傳送資料給S8（階段三）：五個步驟（圓圈數字與頁面上方的步驟列同一套）----
+// ① 傳送資料（上傳圖片＋S8 預覽）→ ② 選「存成草稿」或「設定排程時間」→ ③ 輸入確認人數 → ④ 複製排程名稱 → ⑤ 建立
+// 存成草稿：Worker 先排「當下 + 24 小時」再立刻暫停成草稿；設定排程時間：照你選的時間排程（Worker 強制 +30 分鐘 ～ +7 天，沒有立即發送）。
 let s8Prepared = null;   // { prepareToken, total, org }
+let s8Flow = { choice: '', copied: false };   // choice: '' | 'draft' | 'schedule'
 const s8Out = (id, text, bad) => { const o = document.getElementById(id); o.hidden = !text; o.textContent = text || ''; o.style.color = bad ? '#b91c1c' : ''; };
+const $s8 = id => document.getElementById(id);
+const pad2 = n => String(n).padStart(2, '0');
+const S8_MIN_LEAD_MIN = 30, S8_MAX_LEAD_DAYS = 7;   // 與 Worker 的限制一致（Worker 才是最後把關）
+function s8PrepSet(text, bad, previewUrl) {
+  const box = $s8('s8PrepOut');
+  box.hidden = !text; box.classList.toggle('bad', !!bad);
+  $s8('s8PrepMsg').textContent = text || '';
+  const b = $s8('s8PreviewBtn');
+  b.hidden = !previewUrl; b.dataset.url = previewUrl || '';
+}
 function s8ResetCreate() {
   s8Prepared = null;
-  document.getElementById('s8ConfirmRow').hidden = true;
-  document.getElementById('s8CreateBtn').disabled = true;
-  document.getElementById('s8ConfirmTotal').value = '';
-  document.getElementById('s8RetryRow').hidden = true;
-  s8Out('s8PrepOut', ''); s8Out('s8CreateOut', '');
+  s8Flow = { choice: '', copied: false };
+  $s8('s8ConfirmTotal').value = '';
+  $s8('s8CopyMsg').textContent = '';
+  $s8('s8RetryRow').hidden = true;
+  s8PrepSet('');
+  s8Out('s8CreateOut', '');
+  s8UpdateSteps();
 }
 async function blobToBase64(blob) {
   const buf = new Uint8Array(await blob.arrayBuffer());
@@ -4983,39 +5133,92 @@ async function blobToBase64(blob) {
   return btoa(bin);
 }
 const s8Digits = v => Number(String(v || '').replace(/[,\s]/g, ''));
-// 建立後的處理方式：預設「暫停成草稿」；只有使用者明確選「保留為 +1 天排程」才會送 mode:'schedule'。
-const s8CreateMode = () => (document.getElementById('s8ModeSchedule').checked ? 'schedule' : 'draft');
-const pad2 = n => String(n).padStart(2, '0');
-// 預計發送時間（台北時間，到分鐘）：建立當下 + 24 小時。實際時間由 Worker 決定，建立成功後以橫幅為準。
-function s8PlannedSendText() {
-  const t = new Date(Date.now() + 24 * 3600 * 1000 + 8 * 3600 * 1000);
-  return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())} ${pad2(t.getUTCHours())}:${pad2(t.getUTCMinutes())}`;
-}
+// ---- 排程時間（台北時間，YYYY MM DD HH mm 五個下拉選單）----
+const taipeiParts = ms => { const x = new Date(ms + 8 * 3600e3); return { y: x.getUTCFullYear(), mo: x.getUTCMonth() + 1, d: x.getUTCDate(), h: x.getUTCHours(), mi: x.getUTCMinutes() }; };
+const fromTaipei = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600e3;
+const s8FmtParts = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)} ${pad2(p.h)}:${pad2(p.mi)}`;
 const s8FmtScheduleAt = iso => String(iso || '').replace('T', ' ').slice(0, 16);   // 2026-10-07T21:30:00+08:00 → 2026-10-07 21:30
-function s8UpdateModeUi() {
-  const btn = document.getElementById('s8CreateBtn'), warn = document.getElementById('s8SchedWarn');
-  if (!s8Prepared) return;
-  if (s8CreateMode() === 'schedule') {
-    const msg = `將在 ${s8PlannedSendText()} 實際發送給 ${s8Prepared.total.toLocaleString()} 人`;
-    btn.textContent = `② 建立並保留排程（${msg}）`;
-    warn.hidden = false;
-    warn.textContent = `⚠ ${msg}（全部 LINE 顧客）。這筆群發建立後不會暫停，時間到就會發出；建立後仍可按「暫停成草稿」。實際時間由 Worker 於建立當下 +24 小時決定，成功後會以紅字橫幅顯示確切時間。`;
+function s8FillSelect(id, from, to, suffixPad) {
+  const sel = $s8(id); sel.textContent = '';
+  for (let v = from; v <= to; v++) { const o = document.createElement('option'); o.value = String(v); o.textContent = suffixPad ? pad2(v) : String(v); sel.appendChild(o); }
+}
+function s8InitWhen() {
+  const y = taipeiParts(Date.now()).y;
+  s8FillSelect('s8Yy', y, y + 1, false); s8FillSelect('s8Mo', 1, 12, true); s8FillSelect('s8Dd', 1, 31, true);
+  s8FillSelect('s8Hh', 0, 23, true); s8FillSelect('s8Mi', 0, 59, true);
+  ['s8Yy', 's8Mo', 's8Dd', 's8Hh', 's8Mi'].forEach(id => $s8(id).addEventListener('change', () => { s8Flow.copied = false; s8UpdateSteps(); }));
+}
+function s8SetWhen(ms) {
+  const p = taipeiParts(ms);
+  $s8('s8Yy').value = String(p.y); $s8('s8Mo').value = String(p.mo); $s8('s8Dd').value = String(p.d); $s8('s8Hh').value = String(p.h); $s8('s8Mi').value = String(p.mi);
+}
+// 讀目前選的時間：回傳 { ms, iso, text, err }。err 有值就不能建立。
+function s8WhenValue() {
+  const y = Number($s8('s8Yy').value), mo = Number($s8('s8Mo').value), d = Number($s8('s8Dd').value), h = Number($s8('s8Hh').value), mi = Number($s8('s8Mi').value);
+  const ms = fromTaipei(y, mo, d, h, mi);
+  const p = taipeiParts(ms);
+  const out = { ms, iso: `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}:00+08:00`, text: `${y}-${pad2(mo)}-${pad2(d)} ${pad2(h)}:${pad2(mi)}`, err: '' };
+  const now = Date.now();
+  if (p.y !== y || p.mo !== mo || p.d !== d) out.err = `${y} 年 ${mo} 月沒有 ${d} 日，請重選`;
+  else if (ms < now + S8_MIN_LEAD_MIN * 60e3) out.err = `排程時間要在 ${S8_MIN_LEAD_MIN} 分鐘之後（最早 ${s8FmtParts(taipeiParts(Math.ceil((now + S8_MIN_LEAD_MIN * 60e3) / 60e3) * 60e3))}）`;
+  else if (ms > now + S8_MAX_LEAD_DAYS * 86400e3) out.err = `排程時間最晚只能設在 ${S8_MAX_LEAD_DAYS} 天之內（最晚 ${s8FmtParts(taipeiParts(now + S8_MAX_LEAD_DAYS * 86400e3))}）`;
+  return out;
+}
+// ---- 步驟顯示：依目前進度決定哪些步驟出現、哪些打勾 ----
+function s8UpdateSteps() {
+  const prepared = !!s8Prepared, choice = s8Flow.choice;
+  const when = choice === 'schedule' ? s8WhenValue() : null;
+  const timeOk = choice === 'draft' || (!!when && !when.err);
+  const confirmOk = prepared && !!choice && s8Digits($s8('s8ConfirmTotal').value) === s8Prepared.total;
+  const ready = confirmOk && timeOk;
+  if (!ready) s8Flow.copied = false;
+  const show = (id, on) => { $s8(id).hidden = !on; };
+  show('s8Step2', prepared); show('s8Step3', prepared && !!choice); show('s8Step4', ready); show('s8Step5', ready && s8Flow.copied);
+  const mark = (id, done, on) => { const el = $s8(id); el.classList.toggle('done', !!done); el.classList.toggle('on', !done && !!on); };
+  mark('s8Step1', prepared, !prepared);
+  mark('s8Step2', prepared && !!choice && timeOk, prepared);
+  mark('s8Step3', confirmOk, prepared && !!choice);
+  mark('s8Step4', ready && s8Flow.copied, ready);
+  mark('s8Step5', false, ready && s8Flow.copied);
+  $s8('s8PickDraft').classList.toggle('sel', choice === 'draft');
+  $s8('s8PickSched').classList.toggle('sel', choice === 'schedule');
+  $s8('s8When').hidden = choice !== 'schedule';
+  const wm = $s8('s8WhenMsg');
+  if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || `將在 ${when.text}（台北時間）實際發送。可選範圍：${S8_MIN_LEAD_MIN} 分鐘後 ～ ${S8_MAX_LEAD_DAYS} 天內。`; }
+  const name = $s8('s8Name').value.trim();
+  const btn = $s8('s8CreateBtn'), tip = $s8('s8Tip');
+  if (choice === 'schedule' && when && !when.err && prepared) {
+    btn.textContent = `建立排程（${when.text} 發送）`;
+    tip.textContent = `⚠ 這筆群發不會暫停，將在 ${when.text} 實際發送給 ${s8Prepared.total.toLocaleString()} 人（全部 LINE 顧客）。\n建立後請到 S8 Console，貼上剛剛複製的「${name}」，手動為這筆群發命名（S8 的建立工具沒有名稱欄位）。`;
   } else {
-    btn.textContent = '② 建立草稿（建立後立刻暫停）';
-    warn.hidden = true; warn.textContent = '';
+    btn.textContent = '建立草稿';
+    tip.textContent = `建立後請到 S8 Console，貼上剛剛複製的「${name}」，手動為這筆群發命名（S8 的建立工具沒有名稱欄位）。`;
   }
 }
-document.querySelectorAll('input[name="s8Mode"]').forEach(r => r.addEventListener('change', s8UpdateModeUi));
-setInterval(() => { if (s8Prepared && s8CreateMode() === 'schedule') s8UpdateModeUi(); }, 15000);   // 預計時間隨時間更新
-document.getElementById('s8PrepBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('s8PrepBtn');
+s8InitWhen();
+$s8('s8PickDraft').addEventListener('click', () => { s8Flow.choice = 'draft'; s8Flow.copied = false; s8UpdateSteps(); });
+$s8('s8PickSched').addEventListener('click', () => {
+  if (s8Flow.choice !== 'schedule') s8SetWhen(Math.ceil((Date.now() + 24 * 3600e3) / (5 * 60e3)) * 5 * 60e3);   // 預設 24 小時後（進位到 5 分鐘）
+  s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps();
+});
+$s8('s8ConfirmTotal').addEventListener('input', () => { s8Flow.copied = false; s8UpdateSteps(); });
+$s8('s8PreviewBtn').addEventListener('click', () => { const u = $s8('s8PreviewBtn').dataset.url; if (/^https:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); });
+$s8('s8CopyName').addEventListener('click', async () => {
+  const name = $s8('s8Name').value.trim();
+  const ok = await copyText(name);
+  s8Flow.copied = true;
+  $s8('s8CopyMsg').textContent = ok ? `✓ 已複製「${name}」` : `這個瀏覽器無法自動複製，請手動記下：${name}`;
+  s8UpdateSteps();
+});
+$s8('s8PrepBtn').addEventListener('click', async () => {
+  const btn = $s8('s8PrepBtn');
   const d = s8Collect();
   const errs = s8Validate(d);
   s8ResetCreate();
-  if (errs.length) { s8Out('s8PrepOut', `請先處理上面的問題：\n${errs.join('\n')}`, true); return; }
-  if (d.target !== 'all') { s8Out('s8PrepOut', '直接建立目前只支援「全部 LINE 顧客」。指定標籤請用「複製給 Claude 的指令」。', true); return; }
-  if (!s8Get(S8_SESSION_KEY) || !s8CanWrite()) { s8Out('s8PrepOut', '需要先在右上角「S8」視窗按「升級為可建立草稿」並完成授權。', true); return; }
-  btn.disabled = true; s8Out('s8PrepOut', '上傳圖片並向 S8 產生預覽中…（約數秒）');
+  if (errs.length) { s8PrepSet(`✗ 還不能傳送：${errs.join('；')}`, true); return; }
+  if (d.target !== 'all') { s8PrepSet('✗ 傳送目前只支援「全部 LINE 顧客」。指定標籤請用「複製給 Claude 的指令」。', true); return; }
+  if (!s8Get(S8_SESSION_KEY) || !s8CanWrite()) { s8PrepSet('✗ 需要先在右上角「S8」視窗按「升級為可建立草稿」並完成授權。', true); return; }
+  btn.disabled = true; s8PrepSet('傳送中…（約數秒）');
   try {
     const body = {
       org: mode, name: d.name, altText: d.alt,
@@ -5029,35 +5232,27 @@ document.getElementById('s8PrepBtn').addEventListener('click', async () => {
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
     s8Prepared = { prepareToken: r.prepareToken, total: r.total, org: r.org.name };
     const url = r.preview && (r.preview.previewUrl || r.preview.url);
-    s8Out('s8PrepOut', `組織：${r.org.name}\n可發送人數（S8 試算，已排除封鎖者）：${r.total.toLocaleString()} 人\n預覽網址：${url || JSON.stringify(r.preview)}\n（預覽 ${r.expiresInMinutes} 分鐘內有效；請點開預覽網址，確認圖片、六個區塊與推播通知「${d.alt}」都正確）`);
-    document.getElementById('s8ConfirmRow').hidden = false;
-    document.getElementById('s8ConfirmTotal').placeholder = `輸入「${r.total}」確認`;
-    s8UpdateModeUi();
-    s8CheckConfirm();
-  } catch (e) { s8Out('s8PrepOut', e.message, true); }
+    s8PrepSet(`✓ 傳送完成　${r.org.name}　可發送 ${r.total.toLocaleString()} 人（已排除封鎖者）${url ? `　預覽 ${r.expiresInMinutes || 20} 分鐘內有效` : ''}`, false, typeof url === 'string' ? url : '');
+    s8UpdateSteps();
+  } catch (e) { s8PrepSet(`✗ 傳送失敗：${String(e.message || e).slice(0, 240)}`, true); }
   btn.disabled = false;
 });
-function s8CheckConfirm() {
-  const ok = s8Prepared && s8Digits(document.getElementById('s8ConfirmTotal').value) === s8Prepared.total;
-  document.getElementById('s8CreateBtn').disabled = !ok;
-}
-document.getElementById('s8ConfirmTotal').addEventListener('input', s8CheckConfirm);
 // 暫停一筆群發（現有 /s8/pause，只會 pause）。回傳 Worker 的結果。
 async function s8PauseTask(org, taskId) {
   const r = await s8Api('/s8/pause', { org, taskId }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
   if (r.session) s8Set(S8_SESSION_KEY, r.session);
   return r;
 }
-// 保留排程成功後的紅字橫幅：寫出確切發送時間，並提供「暫停成草稿」。
-function s8AddScheduleBanner(r, org) {
-  const box = document.getElementById('s8SchedBanners');
+// 排程建立成功後的紅字橫幅：寫出確切發送時間，並提供「暫停成草稿」。
+function s8AddScheduleBanner(r, org, name) {
+  const box = $s8('s8SchedBanners');
   const el = document.createElement('div');
   el.className = 's8-banner'; el.dataset.live = '1'; el.dataset.taskId = r.taskId;
   const head = document.createElement('div'); head.className = 't';
   const body = document.createElement('div');
   const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = '暫停成草稿';
   head.textContent = `⚠ 將在 ${s8FmtScheduleAt(r.scheduleAt)} 實際發送給 ${Number(r.total).toLocaleString()} 人`;
-  body.textContent = `已保留 +1 天排程，不會暫停。狀態：${r.status || r.phase || '（未知）'}　taskId：${r.taskId}\n可用動作：${(r.allowedActions || []).join('、') || '（無）'}\n要取消請按下方「暫停成草稿」，或到 Super 8 Console 處理。名稱請到 Console 改成「${document.getElementById('s8Name').value.trim()}」。`;
+  body.textContent = `已建立排程，不會暫停。狀態：${r.status || r.phase || '（未知）'}　taskId：${r.taskId}\n可用動作：${(r.allowedActions || []).join('、') || '（無）'}\n要取消請按下方「暫停成草稿」，或到 Super 8 Console 處理。\n請到 Console 貼上剛剛複製的名稱「${name}」，手動為這筆群發命名。`;
   body.style.whiteSpace = 'pre-wrap';
   // 只有 S8 明確回報了非空的可用動作、而且沒有 pause，才停用按鈕；清單空白或讀不到時仍讓你試（Worker 會嘗試 pause）
   const acts = r.allowedActions || [];
@@ -5077,40 +5272,48 @@ function s8AddScheduleBanner(r, org) {
   el.append(head, body, btn);
   box.appendChild(el);
 }
-document.getElementById('s8CreateBtn').addEventListener('click', async () => {
-  if (!s8Prepared) return;
-  const btn = document.getElementById('s8CreateBtn');
-  const cmode = s8CreateMode(), org = mode, total = s8Prepared.total;
+$s8('s8CreateBtn').addEventListener('click', async () => {
+  if (!s8Prepared || !s8Flow.choice || !s8Flow.copied) return;
+  const btn = $s8('s8CreateBtn');
+  const cmode = s8Flow.choice, org = mode, total = s8Prepared.total, name = $s8('s8Name').value.trim();
+  let scheduleAt;
   if (cmode === 'schedule') {
-    const when = s8PlannedSendText();
-    if (!window.confirm(`這筆群發「不會暫停」。\n\n將在 ${when} 實際發送給 ${total.toLocaleString()} 人（全部 LINE 顧客）。\n\n確定要建立並保留排程嗎？（建立後仍可按「暫停成草稿」）`)) return;
+    const w = s8WhenValue();
+    if (w.err) { s8UpdateSteps(); return; }
+    scheduleAt = w.iso;
+    if (!window.confirm(`這筆群發「不會暫停」。\n\n將在 ${w.text}（台北時間）實際發送給 ${total.toLocaleString()} 人（全部 LINE 顧客）。\n\n確定要建立排程嗎？（建立後仍可按「暫停成草稿」）`)) return;
   }
-  btn.disabled = true; document.getElementById('s8RetryRow').hidden = true;
-  s8Out('s8CreateOut', cmode === 'schedule' ? '建立中，並保留 +1 天排程…' : '建立中，並立刻暫停成草稿…');
+  btn.disabled = true; $s8('s8RetryRow').hidden = true;
+  s8Out('s8CreateOut', cmode === 'schedule' ? '建立排程中…' : '建立草稿中…（建立後立刻暫停）');
   const prepared = s8Prepared;
   try {
-    const r = await s8Api('/s8/create', { prepareToken: prepared.prepareToken, confirmTotal: s8Digits(document.getElementById('s8ConfirmTotal').value), mode: cmode }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
+    const body = { prepareToken: prepared.prepareToken, confirmTotal: s8Digits($s8('s8ConfirmTotal').value), mode: cmode };
+    if (cmode === 'schedule') body.scheduleAt = scheduleAt;
+    const r = await s8Api('/s8/create', body, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
-    s8Prepared = null;   // one preview → one broadcast; start again for another
-    document.getElementById('s8ConfirmRow').hidden = true;
+    // 一次預覽只建立一筆群發；要再建立請重新「傳送資料」
+    s8Prepared = null; s8Flow = { choice: '', copied: false };
+    $s8('s8ConfirmTotal').value = ''; $s8('s8CopyMsg').textContent = ''; s8PrepSet('');
+    s8UpdateSteps();
     if (r.ok && r.mode === 'schedule') {
       s8Out('s8CreateOut', '');
-      s8AddScheduleBanner(r, org);
+      s8AddScheduleBanner(r, org, name);
     } else if (r.ok) {
-      s8Out('s8CreateOut', `✓ 草稿已建立並確認狀態為 ${r.status || 'draft'}\ntaskId：${r.taskId}\n可發送人數：${r.total.toLocaleString()} 人\n不會發送，除非有人在 Console 手動 resume。\n請到 Super 8 Console 把這筆草稿的名稱改成「${document.getElementById('s8Name').value.trim()}」並檢查內容。`);
+      s8Out('s8CreateOut', `✓ 草稿已建立並確認狀態為 ${r.status || 'draft'}\ntaskId：${r.taskId}\n可發送人數：${r.total.toLocaleString()} 人\n不會發送，除非有人在 Console 手動 resume。\n請到 Super 8 Console 貼上剛剛複製的名稱「${name}」，手動為這筆草稿命名。`);
     } else {
       s8Out('s8CreateOut', `⚠ ${r.warning}${r.taskId ? `\ntaskId：${r.taskId}` : ''}`, true);
-      if (r.taskId) { document.getElementById('s8RetryRow').hidden = false; document.getElementById('s8RetryRow').dataset.taskId = r.taskId; }
+      if (r.taskId) { $s8('s8RetryRow').hidden = false; $s8('s8RetryRow').dataset.taskId = r.taskId; }
     }
   } catch (e) { s8Out('s8CreateOut', e.message, true); btn.disabled = false; }
+  btn.disabled = false;
 });
-document.getElementById('s8RetryPause').addEventListener('click', async () => {
-  const taskId = document.getElementById('s8RetryRow').dataset.taskId;
+$s8('s8RetryPause').addEventListener('click', async () => {
+  const taskId = $s8('s8RetryRow').dataset.taskId;
   if (!taskId) return;
   s8Out('s8CreateOut', '重試暫停中…');
   try {
     const r = await s8PauseTask(mode, taskId);
-    if (r.ok) { document.getElementById('s8RetryRow').hidden = true; s8Out('s8CreateOut', `✓ 已暫停成草稿（${r.status || 'draft'}）。taskId：${taskId}`); }
+    if (r.ok) { $s8('s8RetryRow').hidden = true; s8Out('s8CreateOut', `✓ 已暫停成草稿（${r.status || 'draft'}）。taskId：${taskId}`); }
     else s8Out('s8CreateOut', `⚠ 仍沒有暫停：${r.why || r.status}。請立即到 Super 8 Console 處理。taskId：${taskId}`, true);
   } catch (e) { s8Out('s8CreateOut', `${e.message}。請立即到 Super 8 Console 處理。taskId：${taskId}`, true); }
 });

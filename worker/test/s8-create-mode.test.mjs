@@ -67,9 +67,12 @@ async function post(path, body, extra = {}) {
   const res = await worker.fetch(req, ENV);
   return { status: res.status, json: await res.json() };
 }
+// 台北時間、到分鐘（秒固定 00）的 RFC 3339 字串：現在 + ms
+const atIn = ms => new Date(Math.floor((Date.now() + ms) / 60000) * 60000 + 8 * 3600e3).toISOString().slice(0, 19).replace(/:\d{2}$/, ':00') + '+08:00';
 async function createBody(extra = {}) {
   const prepareToken = await seal({ t: 'prepare', org: 'news', orgId: ORG_ID, messages: MESSAGES, x: Date.now() + 600e3 });
-  return { prepareToken, confirmTotal: 1234, ...extra };
+  const sched = extra.mode === 'schedule' && !('scheduleAt' in extra) ? { scheduleAt: atIn(24 * 3600e3) } : {};
+  return { prepareToken, confirmTotal: 1234, ...sched, ...extra };
 }
 const names = calls => calls.map(c => c.name);
 const FORBIDDEN = /resume|send_?now|sendNow|send$/i;
@@ -111,8 +114,8 @@ for (const bad of ['Schedule', 'SCHEDULE', 'send', 'sendNow', 'resume', 'immedia
 test("mode:'schedule' → 不呼叫 broadcast_update，改用 broadcast_get 確認，回傳完整欄位", async () => {
   const s8 = installFakeS8();
   try {
-    const before = Date.now();
-    const { status, json } = await post('/s8/create', await createBody({ mode: 'schedule' }));
+    const want = atIn(3 * 3600e3);
+    const { status, json } = await post('/s8/create', await createBody({ mode: 'schedule', scheduleAt: want }));
     assert.equal(status, 200);
     assert.equal(json.ok, true);
     assert.equal(json.mode, 'schedule');
@@ -125,25 +128,84 @@ test("mode:'schedule' → 不呼叫 broadcast_update，改用 broadcast_get 確�
     assert.equal(names(s8.calls).includes('broadcast_update'), false, 'schedule 模式不得呼叫 broadcast_update');
     assert.deepEqual(names(s8.calls).filter(n => n.startsWith('broadcast_') && n !== 'broadcast_audience_preview'), ['broadcast_create', 'broadcast_get']);
     assert.deepEqual(s8.calls.find(c => c.name === 'broadcast_get').args, { orgId: ORG_ID, taskId: TASK_ID });
-    // scheduleAt：台北時間 RFC 3339，且在建立當下 +23 小時之後（正常約 +24 小時）
-    assert.match(json.scheduleAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/);
-    assert.ok(Date.parse(json.scheduleAt) >= before + 23 * 3600e3, 'scheduleAt 必須在 +23 小時之後');
-    assert.ok(Date.parse(json.scheduleAt) <= Date.now() + 24 * 3600e3 + 1000, 'scheduleAt 不應晚於 +24 小時');
+    // scheduleAt：原樣用使用者指定的台北時間（到分鐘）
+    assert.equal(json.scheduleAt, want);
+    assert.equal(s8.calls.find(c => c.name === 'broadcast_create').args.scheduleAt, want);
   } finally { s8.restore(); }
 });
 
-test("schedule 模式：送給 broadcast_create 的參數仍固定（全部 LINE 顧客、必帶 scheduleAt ≥ +23h）", async () => {
+test("schedule 模式：送給 broadcast_create 的參數仍固定（全部 LINE 顧客，recipients 不接受自訂）", async () => {
   const s8 = installFakeS8();
   try {
-    const before = Date.now();
-    await post('/s8/create', await createBody({ mode: 'schedule', scheduleAt: '2020-01-01T00:00:00+08:00', recipients: { where: { tags: ['x'] } } }));
+    const want = atIn(2 * 3600e3);
+    await post('/s8/create', await createBody({ mode: 'schedule', scheduleAt: want, recipients: { where: { tags: ['x'] } }, platform: 'facebook', sendNow: true }));
     const c = s8.calls.find(x => x.name === 'broadcast_create');
     assert.deepEqual(Object.keys(c.args).sort(), ['messages', 'orgId', 'platform', 'previewRef', 'recipients', 'scheduleAt']);
     assert.deepEqual(c.args.recipients, { where: { platforms: ['line'] } });
     assert.equal(c.args.platform, 'line');
-    assert.ok(Date.parse(c.args.scheduleAt) >= before + 23 * 3600e3, '自訂的 scheduleAt 必須被忽略');
+    assert.equal(c.args.scheduleAt, want);
   } finally { s8.restore(); }
 });
+
+test('draft 模式：scheduleAt 固定為建立當下 +24 小時，且不接受自訂 scheduleAt（400，沒有呼叫 S8）', async () => {
+  const s8 = installFakeS8();
+  try {
+    const before = Date.now();
+    const ok = await post('/s8/create', await createBody({ mode: 'draft' }));
+    assert.equal(ok.json.ok, true);
+    const at = Date.parse(s8.calls.find(x => x.name === 'broadcast_create').args.scheduleAt);
+    assert.ok(at >= before + 23.9 * 3600e3 && at <= Date.now() + 24 * 3600e3 + 1000, 'draft 的 scheduleAt 約等於 +24 小時');
+    s8.calls.length = 0;
+    const bad = await post('/s8/create', await createBody({ mode: 'draft', scheduleAt: atIn(2 * 3600e3) }));
+    assert.equal(bad.status, 400);
+    assert.match(bad.json.error, /scheduleAt/);
+    assert.equal(s8.calls.length, 0);
+  } finally { s8.restore(); }
+});
+
+// 排程時間的範圍與格式：Worker 強制 +30 分鐘 ～ +7 天；不合格一律 400 且完全沒有呼叫 S8
+const BAD_TIMES = {
+  '缺少 scheduleAt': () => undefined,
+  '現在（立即發送）': () => atIn(0),
+  '過去': () => atIn(-3600e3),
+  '+10 分鐘': () => atIn(10 * 60e3),
+  '+29 分鐘': () => atIn(29 * 60e3),
+  '+7 天又 2 小時': () => atIn(7 * 24 * 3600e3 + 2 * 3600e3),
+  '+30 天': () => atIn(30 * 24 * 3600e3),
+  '不存在的日期 2 月 31 日': () => '2099-02-31T10:00:00+08:00',
+  '帶秒數': () => atIn(3 * 3600e3).replace(':00+08:00', ':30+08:00'),
+  '不是台北時區': () => atIn(3 * 3600e3).replace('+08:00', 'Z'),
+  '非字串': () => 1234567890,
+  '空字串': () => '',
+};
+for (const [label, make] of Object.entries(BAD_TIMES)) {
+  test(`排程時間不合格（${label}）→ 400，完全沒有呼叫 S8`, async () => {
+    const s8 = installFakeS8();
+    try {
+      const body = await createBody({ mode: 'schedule' });
+      const v = make();
+      if (v === undefined) delete body.scheduleAt; else body.scheduleAt = v;
+      const { status, json } = await post('/s8/create', body);
+      assert.equal(status, 400);
+      assert.match(json.error, /沒有建立任何東西/);
+      assert.equal(s8.calls.length, 0);
+    } finally { s8.restore(); }
+  });
+}
+
+for (const [label, ms] of [['+31 分鐘（下限內）', 31 * 60e3], ['+3 小時', 3 * 3600e3], ['+6 天 23 小時（上限內）', 6 * 24 * 3600e3 + 23 * 3600e3]]) {
+  test(`排程時間合格（${label}）→ 照指定時間建立，不暫停`, async () => {
+    const s8 = installFakeS8();
+    try {
+      const want = atIn(ms);
+      const { status, json } = await post('/s8/create', await createBody({ mode: 'schedule', scheduleAt: want }));
+      assert.equal(status, 200);
+      assert.equal(json.ok, true);
+      assert.equal(json.scheduleAt, want);
+      assert.equal(names(s8.calls).includes('broadcast_update'), false);
+    } finally { s8.restore(); }
+  });
+}
 
 test('任何模式都沒有 resume／sendNow，且 broadcast_update 只會是 pause', async () => {
   for (const mode of [undefined, 'draft', 'schedule']) {

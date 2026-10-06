@@ -355,10 +355,14 @@ async function mcpRpc(env, token, sessionId, id, method, params) {
 // ---- 工具白名單與參數把關（階段三：只建立草稿）----
 // 唯讀工具任何時候都可呼叫；其餘工具只有在「有 write 授權」且參數通過下面的把關時才會送出。
 // 程式裡沒有任何路徑能呼叫 resume、sendNow，也沒有省略 scheduleAt 的建立。
-// 「保留 +1 天排程」只是 /s8/create 在 mode:'schedule' 時不呼叫 pause；scheduleAt 仍固定為建立當下 +24 小時，上面的把關完全沒有放寬。
+// 排程時間：draft 模式固定為建立當下 +24 小時（建立後立刻暫停）；schedule 模式由使用者指定（台北時間，到分鐘），
+// 但 Worker 強制必須落在「建立當下 +30 分鐘 ～ +7 天」之間；任何情況都不可能立即發送，也沒有 resume／sendNow。
 const S8_STAGE3_TOOLS = new Set(['media_upload_url', 'messaging_message_preview', 'broadcast_create', 'broadcast_get', 'broadcast_update']);
 const S8_FIXED_RECIPIENTS = { where: { platforms: ['line'] } };   // 全部 LINE 顧客，不加任何其他條件
-const S8_MIN_LEAD_MS = 23 * 60 * 60 * 1000;                       // scheduleAt 至少要在 23 小時之後（正常是 24 小時）
+const S8_USER_MIN_MS = 30 * 60 * 1000;                            // 使用者指定的排程時間：至少在 30 分鐘之後
+const S8_USER_MAX_MS = 7 * 24 * 60 * 60 * 1000;                   // 使用者指定的排程時間：最多 7 天之內
+const S8_MIN_LEAD_MS = 25 * 60 * 1000;                            // 把關層的下限（比上面稍寬，容許建立過程中的幾分鐘延遲）
+const S8_MAX_LEAD_MS = S8_USER_MAX_MS + 60 * 60 * 1000;           // 把關層的上限
 const keysOf = o => Object.keys(o || {}).sort().join(',');
 function s8Guard(name, args, canWrite, now = Date.now()) {
   if (S8_READ_TOOLS.has(name)) return;
@@ -380,7 +384,9 @@ function s8Guard(name, args, canWrite, now = Date.now()) {
     if (JSON.stringify(a.recipients) !== JSON.stringify(S8_FIXED_RECIPIENTS)) fail('發送對象只能是全部 LINE 顧客（不加條件）');
     if (typeof a.previewRef !== 'string' || !a.previewRef) fail('缺少 previewRef');
     if (typeof a.scheduleAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/.test(a.scheduleAt)) fail('scheduleAt 必須是台北時間（+08:00）的 RFC 3339 格式，且不可省略');
-    if (!(Date.parse(a.scheduleAt) >= now + S8_MIN_LEAD_MS)) fail('scheduleAt 必須在 23 小時之後（不得立即發送）');
+    const at = Date.parse(a.scheduleAt);
+    if (!(at >= now + S8_MIN_LEAD_MS)) fail('scheduleAt 必須在 25 分鐘之後（不得立即發送）');
+    if (!(at <= now + S8_MAX_LEAD_MS)) fail('scheduleAt 不可超過 7 天');
     s8CheckMessages(a.messages, fail);
   }
 }
@@ -616,7 +622,16 @@ async function pauseToDraft(mcp, orgId, taskId) {
   return { ok, why: ok ? undefined : `已送出暫停，但狀態仍是 ${status || phase || '（未知）'}（S8 回傳：${snippet(g2.data)}）`, status, phase, get: g2.data };
 }
 
-const S8_CREATE_MODES = new Set(['draft', 'schedule']);   // draft（預設）：建立後立刻暫停成草稿；schedule：使用者明確選擇保留 +1 天排程
+const S8_CREATE_MODES = new Set(['draft', 'schedule']);   // draft（預設）：建立後立刻暫停成草稿；schedule：使用者明確選擇並指定時間，保留排程
+// 檢查使用者指定的排程時間，回傳錯誤文字（沒問題回空字串）：格式、日期真的存在、+30 分鐘 ～ +7 天
+function checkUserScheduleAt(v, now = Date.now()) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\+08:00$/.test(v)) return '排程時間格式必須是 YYYY-MM-DDTHH:mm:00+08:00（台北時間，到分鐘）';
+  const t = Date.parse(v);
+  if (!Number.isFinite(t) || taipeiIso(t) !== v) return '排程時間不是有效的日期';
+  if (t < now + S8_USER_MIN_MS) return '排程時間必須在 30 分鐘之後（不得立即發送）';
+  if (t > now + S8_USER_MAX_MS) return '排程時間最多只能設在 7 天之內';
+  return '';
+}
 async function handleS8Create(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
@@ -625,6 +640,13 @@ async function handleS8Create(request, env) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return jsonError(400, '格式不正確', request, env);
   const mode = body.mode === undefined ? 'draft' : body.mode;
   if (typeof mode !== 'string' || !S8_CREATE_MODES.has(mode)) return jsonError(400, "mode 只能是 'draft' 或 'schedule'。沒有建立任何東西。", request, env);
+  // schedule 模式的排程時間由使用者指定（台北時間 YYYY-MM-DDTHH:mm:00+08:00，到分鐘）；draft 模式不接受 scheduleAt（固定 +24 小時後立刻暫停）
+  let userAt = '';
+  if (mode === 'schedule') {
+    const bad = checkUserScheduleAt(body.scheduleAt);
+    if (bad) return jsonError(400, `${bad}。沒有建立任何東西。`, request, env);
+    userAt = body.scheduleAt;
+  } else if (body.scheduleAt !== undefined) return jsonError(400, "只有 mode:'schedule' 才能指定 scheduleAt。沒有建立任何東西。", request, env);
   const prep = await s8Open(env, body.prepareToken);
   if (!prep || prep.t !== 'prepare' || !prep.x || prep.x < Date.now()) return jsonError(400, '預覽已過期或無效，請重新「上傳並產生預覽」', request, env);
   let created = null;
@@ -639,8 +661,10 @@ async function handleS8Create(request, env) {
     if (!Number.isFinite(typed) || Math.abs(typed - total) > Math.max(5, Math.round(total * 0.01))) {
       return jsonError(409, `確認人數不符：S8 現在試算是 ${total} 人，你輸入的是 ${body.confirmTotal}。沒有建立任何東西。`, request, env);
     }
-    // 排程時間由 Worker 決定：建立當下 + 24 小時（台北時間），不接受自訂。draft 模式建立後馬上暫停成草稿；schedule 模式保留排程。
-    const scheduleAt = taipeiIso(Date.now() + 24 * 3600 * 1000);
+    // draft：建立當下 + 24 小時（台北時間），建立後馬上暫停成草稿；schedule：使用者指定的時間（上面已驗證在 +30 分鐘 ～ +7 天），建立後保留排程。
+    // 驗證過後經過了 S8 人數試算的時間，這裡再確認一次下限，避免剛好卡在邊界。
+    if (mode === 'schedule' && Date.parse(userAt) < Date.now() + S8_MIN_LEAD_MS) return jsonError(409, '排程時間已經太接近現在，請重新設定時間。沒有建立任何東西。', request, env);
+    const scheduleAt = mode === 'schedule' ? userAt : taipeiIso(Date.now() + 24 * 3600 * 1000);
     created = await mcp.call('broadcast_create', { orgId: prep.orgId, platform: 'line', recipients: S8_FIXED_RECIPIENTS, previewRef, messages: prep.messages, scheduleAt });
     if (created.isError) throw new Error(`建立失敗：${toolText(created)}`);
     const taskId = pickTaskId(created.data);
