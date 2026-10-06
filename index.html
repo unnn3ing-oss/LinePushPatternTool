@@ -3263,6 +3263,7 @@ function fitPreviewSize() {
   const minW = Math.max(120, Math.min(320, 320 * l.W / l.H));
   const w = clamp(Math.floor(availH * l.W / l.H), minW, l.previewMaxWidth);
   canvas.style.maxWidth = `${w}px`;
+  alignFloatStack();
 }
 window.addEventListener('resize', fitPreviewSize);
 
@@ -3615,16 +3616,26 @@ function renderCheckPanel() {
   panel.appendChild(line);
 }
 
-// The left panels start level with the top of the preview image.
+// The left panels sit right beside the preview image (a small gap away, not at the
+// window edge) and start level with the top of it.
+const PANEL_W = 300, PANEL_GAP = 18, STACK_PAD_X = 18;   // content width, gap to the preview, stack's side padding
 function alignFloatStack() {
   const stack = document.getElementById('floatStack');
   const stage = document.getElementById('stage');
   if (!stack || !stage) return;
-  if (window.innerWidth <= 900) { stack.style.top = ''; stack.style.maxHeight = ''; return; }
-  const stageTop = stage.getBoundingClientRect().top;
-  const top = Math.max(0, Math.round(canvas.getBoundingClientRect().top - stageTop) - 8);   // 8 = the stack's own top padding
+  if (window.innerWidth <= 900) { stage.style.paddingLeft = ''; stack.style.top = ''; stack.style.left = ''; stack.style.maxHeight = ''; return; }
+  // Keep the preview centred on the window; only when there isn't room for the panel
+  // on its left does it shift right, by just enough.
+  const W = window.innerWidth, cw = canvas.getBoundingClientRect().width;
+  const need = PANEL_W + PANEL_GAP + STACK_PAD_X + 12;   // canvas left edge must be at least this far from the window edge
+  stage.style.paddingLeft = `${Math.max(20, Math.round(2 * need - W + 20 + cw))}px`;
+  const sr = stage.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  const top = Math.max(0, Math.round(cr.top - sr.top) - 8);   // 8 = the stack's own top padding
+  const left = Math.max(2, Math.round(cr.left - sr.left - PANEL_GAP - PANEL_W - STACK_PAD_X));
   stack.style.top = `${top}px`;
-  stack.style.maxHeight = `${Math.max(200, window.innerHeight - stageTop - top - 104)}px`;
+  stack.style.left = `${left}px`;
+  stack.style.maxHeight = `${Math.max(200, window.innerHeight - sr.top - top - 104)}px`;
 }
 window.addEventListener('resize', alignFloatStack);
 document.getElementById('headerOpenBtn').addEventListener('click', openHeaderEditor);
