@@ -88,6 +88,13 @@ await page.locator('#s8Stage .s8-cell').nth(1).click();
 check((await page.inputValue('#s8CellUrl')) === 'https://example.com/p1/n2?utm_source=x', '點第 1 頁第 2 格：下方顯示該格完整連結');
 check((await page.locator('#s8Stage .s8-cell.sel').count()) === 1, '被點的格子有選取標示');
 check((await page.textContent('#s8LinkLbl')).includes('第 1 頁') && (await page.textContent('#s8LinkLbl')).includes('項目2'), '字框上方標出「第 1 頁 項目2」');
+// 每格名稱：快速填入的標題（沒填才退回「項目N」）
+await page.evaluate(() => { pages[0].cards[1].line1 = '降溫恐"跌破20度"!'; pages[0].cards[1].line2 = '北部再爆大雨'; });
+await page.locator('#s8Stage .s8-cell').nth(1).click();
+const expectTitle = '★降溫恐"跌破20度"! 北部再爆大雨';
+check((await page.textContent('#s8LinkLbl')).includes(expectTitle), `字框上方標出該格標題：${expectTitle}`);
+check((await page.locator('#s8Stage .s8-cell').nth(1).getAttribute('title')) === expectTitle, '格子的滑過提示也是該格標題');
+check((await page.locator('#s8Stage .s8-cell').nth(0).getAttribute('title')).startsWith('項目1'), '還沒填標題的格子退回「項目1（位置）」');
 await page.click('.s8-ptab[data-sp="1"]');
 check((await page.textContent('.s8-ptab.active')) === '第 2 頁', '切到第 2 頁');
 check(await page.isDisabled('#s8CellUrl') && (await page.inputValue('#s8CellUrl')) === '', '換頁後選取清空');
@@ -125,6 +132,7 @@ check((await page.textContent('#s8PrepMsg')).includes('1,234 人'), '成功：�
 check(await page.isVisible('#s8PreviewBtn') && (await page.textContent('#s8PreviewBtn')) === '開啟S8預覽', '成功：出現「開啟S8預覽」按鈕');
 await page.click('#s8PreviewBtn');
 check((await page.evaluate(() => window.__opened)).includes('https://s8.example/preview/abc'), '按「開啟S8預覽」會開啟 S8 預覽網址');
+check(reqs.prepare[1].pages[0].buttons[1].title === expectTitle && reqs.prepare[1].pages[0].buttons[0].title.startsWith('項目1'), '傳給 S8 的區塊名稱：有標題的格子用「★標題」，沒標題的退回「項目N」');
 check(reqs.prepare.length === 2 && reqs.prepare[1].pages.length === 2 && reqs.prepare[1].pages[0].buttons.length === 6 && reqs.prepare[1].pages[0].buttons[1].url === 'https://example.com/p1/n2?utm_source=x', '傳送內容：兩頁、每頁 6 格、連結用目前字框的值');
 check(await vis('#s8Step2') && !(await vis('#s8Step3')), '成功後出現步驟 2，步驟 3 還沒出現');
 await page.waitForTimeout(600);

@@ -4878,7 +4878,7 @@ function s8RenderStage() {
   (s8State.regions[p] || []).forEach((r, i) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 's8-cell'; b.dataset.i = i;
     b.style.left = `${r.pct.x}%`; b.style.top = `${r.pct.y}%`; b.style.width = `${r.pct.width}%`; b.style.height = `${r.pct.height}%`;
-    b.title = `項目${i + 1}（${S8_CELL_LABELS[mode][i]}）`;
+    b.title = s8CellTitle(p, i);
     b.addEventListener('click', () => s8SelectCell(i));
     wrap.appendChild(b);
   });
@@ -4889,6 +4889,7 @@ function s8MarkCells() {
   if (!s8State) return;
   document.querySelectorAll('#s8Stage .s8-cell').forEach(b => {
     const i = Number(b.dataset.i);
+    b.title = s8CellTitle(s8State.sp, i);
     b.classList.toggle('sel', i === s8State.cell);
     b.classList.toggle('bad', !String((s8State.urls[s8State.sp] || [])[i] || '').trim());
   });
@@ -4899,8 +4900,15 @@ function s8SelectCell(i) {
   const inp = document.getElementById('s8CellUrl');
   inp.disabled = false;
   inp.value = (s8State.urls[s8State.sp] || [])[i] || '';
-  document.getElementById('s8LinkLbl').textContent = `第 ${s8State.sp + 1} 頁　項目${i + 1}（${S8_CELL_LABELS[mode][i]}）的完整連結`;
+  document.getElementById('s8LinkLbl').textContent = `第 ${s8State.sp + 1} 頁　${s8CellTitle(s8State.sp, i)}　的完整連結`;
   s8MarkCells();
+}
+// 每格的名稱：快速填入時的標題（兩行以空格相接，前面加 ★），例如「★降溫恐"跌破20度"! 北部再爆大雨」；還沒填標題才退回「項目N（位置）」。
+// S8 的圖文訊息每個點擊區塊（button）會用這個當名稱。
+function s8CellTitle(p, i) {
+  const st = ((pages[p] || {}).cards || [])[i] || {};
+  const t = [st.line1, st.line2].map(x => String(x || '').trim()).filter(Boolean).join(' ');
+  return t ? `★${t}` : `項目${i + 1}（${S8_CELL_LABELS[mode][i]}）`;
 }
 function s8ShowPage(p) {
   if (!s8State) return;
@@ -4932,6 +4940,7 @@ function s8Collect() {
       file: `${d.name}_第${p + 1}頁.png`,
       cells: regs.map((r, i) => ({
         n: i + 1, label: S8_CELL_LABELS[mode][i], ...r,
+        title: s8CellTitle(p, i),
         url: String((s8State.urls[p] || [])[i] || '').trim(),
       })),
     });
@@ -5169,7 +5178,7 @@ $s8('s8PrepBtn').addEventListener('click', async () => {
       org: mode, name: d.name, altText: d.alt,
       pages: d.pages.map((pg, p) => ({
         title: `${d.name} 第${pg.page}則`, width: L().exportW, height: L().exportH,
-        buttons: pg.cells.map(c => ({ title: `項目${c.n}（${c.label}）`, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })),
+        buttons: pg.cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })),
       })),
       images: await Promise.all(s8State.images.map(im => blobToBase64(im.blob))),
     };
