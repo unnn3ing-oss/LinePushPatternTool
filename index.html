@@ -397,7 +397,7 @@
   .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
   /* ---- Copy bar under the preview (step 2, one cell picked) ---- */
   /* Step 2: floats over the cell the pointer is on; no fixed spot under the preview. */
-  .cell-copy { position: fixed; z-index: 60; transform: translate(-50%, -100%); padding: 8px 18px; border-radius: 99px; font-size: 14px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .15s ease; }
+  .cell-copy { position: fixed; z-index: 60; transform: translate(-50%, -50%); padding: 10px 22px; border-radius: 99px; font-size: 14px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .15s ease; }
   .cell-copy.show { opacity: 1; }
   .cell-copy[hidden] { display: none; }
   .cell-copy.no-link { background: #8a8f98; border-color: #8a8f98; cursor: default; }
@@ -949,7 +949,7 @@
           <div class="help-marks"><i class="dot ok">圖</i><i class="dot ok">字</i> 綠色圓圈＝這項沒問題　<i class="dot warn">!</i> 黃色＝圖片疑似露白　<i class="dot bad">!</i> 紅色＝缺圖片或缺標題</div>
           <span class="help-note">預覽圖有問題的格子左上角也會標同樣的圓圈，滑鼠移上去會顯示原因，移開後約 1 秒淡出。底部的提示會統計兩頁的狀況。</span></li>
         <li><b>疑似露白怎麼判斷</b>：只看照片「看得到」的範圍（被範本遮住的部分不算）。照片沒蓋滿這個範圍（例如被拖離格子），或照片邊緣本身接近白色／透明（任一邊有 90% 以上），就會標黃色「!」。這只是提醒，<b>不鎖定下載</b>。</li>
-        <li><b>複製推播連結</b>：在步驟 2 把游標移到預覽圖的格子上，格子的第一行標題正上方會浮出「複製推播連結」按鈕（編輯畫面時不會出現），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
+        <li><b>複製推播連結</b>：在步驟 2 點預覽圖的格子，該格整個會淡淡反白（亮 5%，沒有藍框線），正中間會出現「複製推播連結」按鈕（編輯畫面時不會出現；點空白處或換頁會收起），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
         <li><b>下載</b>：
           <ul>
             <li>「下載本頁」存目前這頁；若還有缺漏或疑似露白，會先問你。</li>
@@ -1760,6 +1760,17 @@ function newsTemplate(showHeader) {
   newsTemplateCache.set(key, out);
   return out;
 }
+// The whole area of a cell as the viewer sees it (step 2's selection highlight and the copy button's
+// centre): 新聞's top row runs on to the lower edge of its black band; 娛樂 is its quarter of the page.
+function stepTwoCellRect(i, showHeader) {
+  if (mode === 'ent') {
+    const w = CANVAS_W / 2, h = CANVAS_H / 2;
+    return { x: (i % 2) * w, y: Math.floor(i / 2) * h, w, h };
+  }
+  const cell = cellRect(i, showHeader);
+  const edge = NEWS_BAND_EDGE[cell.y];
+  return edge === undefined ? cell : { x: cell.x, y: cell.y, w: cell.w, h: edge - cell.y };
+}
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 4;
   const centerX = cell.x + cell.w / 2;
@@ -2039,17 +2050,26 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
-    // 新聞: the frame marks the photo you can see, not the text area (same range as the red edge-check frame).
-    let frameTop = cell.y, frameBottom = cell.y + cell.h;
-    if (mode === 'news') {
-      const fr = newsPhotoFrame(ctx, cell, pageState.cards[activeCard], pageState.showHeader);
-      frameTop = fr.top; frameBottom = fr.bottom;
+    if (isLocked() && mode !== 'collage') {
+      // 步驟 2: no frame; the whole cell is just lightened by 5%.
+      const rc = stepTwoCellRect(activeCard, pageState.showHeader);
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
+      ctx.restore();
+    } else {
+      // 新聞: the frame marks the photo you can see, not the text area (same range as the red edge-check frame).
+      let frameTop = cell.y, frameBottom = cell.y + cell.h;
+      if (mode === 'news') {
+        const fr = newsPhotoFrame(ctx, cell, pageState.cards[activeCard], pageState.showHeader);
+        frameTop = fr.top; frameBottom = fr.bottom;
+      }
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,74,173,0.9)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(cell.x + 1.5, frameTop + 1.5, cell.w - 3, frameBottom - frameTop - 3);
+      ctx.restore();
     }
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0,74,173,0.9)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(cell.x + 1.5, frameTop + 1.5, cell.w - 3, frameBottom - frameTop - 3);
-    ctx.restore();
   }
 }
 
@@ -4069,6 +4089,7 @@ function goStep(n) {
   hideDlConfirm();
   hideLockReminder();
   headerSelected = false;
+  cellSelected = false;   // each step starts with nothing picked
   drag = null; tagDrag = null; stickerDrag = null; lockProbe = null;
   syncChrome();
   render();
@@ -4114,55 +4135,36 @@ async function copyPushLink(i, btn) {
     setTimeout(() => { btn.textContent = old === '已複製 ✓' ? '複製推播連結' : old; }, 1500);
   }
 }
-// Step 2: a 「複製推播連結」 button floats over the cell the pointer is on.
+// Step 2: clicking a cell lightens it a little (see stepTwoCellRect) and shows 「複製推播連結」 in its centre.
 const cellCopyBtn = document.getElementById('cellCopyBtn');
-let copyBtnCell = -1, copyBtnTimer = null;
-// Canvas point just above the cell's first headline line (the button's bottom-centre).
-function copyBtnAnchor(i) {
-  const st = activePage().cards[i];
-  const has1 = !!(st.line1 || '').trim(), has2 = !!(st.line2 || '').trim();
-  if (mode === 'ent') {
-    const c = ENT_CELLS[i];
-    const y = has1 && has2 ? c.y1 : (c.y1 + c.y2) / 2;
-    return { x: c.cx, y: y + ENT_INK_DY - ENT_BASE_FONT_SIZE * 0.5 };
-  }
-  const cell = cellRect(i, activePage().showHeader);
-  const bottomAnchor = newsTextBottom(cell) - 4 - BASE_FONT_SIZE * 0.5;
-  const baseY = has1 ? bottomAnchor - (has2 ? BASE_FONT_SIZE * 1.18 : 0) : bottomAnchor;
-  return { x: cell.x + cell.w / 2, y: baseY - BASE_FONT_SIZE * 0.5 };
-}
+let copyBtnCell = -1;
 function showCellCopy(i) {
-  clearTimeout(copyBtnTimer);
-  if (!isLocked() || mode === 'collage' || i < 0) { hideCellCopy(true); return; }
+  if (!isLocked() || mode === 'collage' || i < 0) { hideCellCopy(); return; }
   const pg = activePage();
   const link = withUtm(pg.cards[i].url);
   if (copyBtnCell !== i || cellCopyBtn.hidden) {
     copyBtnCell = i;
     cellCopyBtn.textContent = link ? '複製推播連結' : '這格沒有連結';
     cellCopyBtn.classList.toggle('no-link', !link);
+    // The button appears right under the click that picked the cell (often the very centre): ignore the
+    // rest of that click so it does not copy by accident.
+    cellCopyBtn.style.pointerEvents = 'none';
+    setTimeout(() => { cellCopyBtn.style.pointerEvents = ''; }, 350);
   }
-  const a = copyBtnAnchor(i);
+  const rc = stepTwoCellRect(i, pg.showHeader);
   const r = canvas.getBoundingClientRect();
   cellCopyBtn.hidden = false;
-  cellCopyBtn.style.left = `${r.left + a.x * r.width / CANVAS_W}px`;
-  cellCopyBtn.style.top = `${r.top + (a.y - 6) * r.height / CANVAS_H}px`;
+  cellCopyBtn.style.left = `${r.left + (rc.x + rc.w / 2) * r.width / CANVAS_W}px`;
+  cellCopyBtn.style.top = `${r.top + (rc.y + rc.h / 2) * r.height / CANVAS_H}px`;
   void cellCopyBtn.offsetWidth;
   cellCopyBtn.classList.add('show');
 }
-function hideCellCopy(now) {
-  clearTimeout(copyBtnTimer);
-  const done = () => { copyBtnCell = -1; cellCopyBtn.classList.remove('show'); cellCopyBtn.hidden = true; };
-  if (now) done(); else copyBtnTimer = setTimeout(done, 250);
+function hideCellCopy() {
+  copyBtnCell = -1;
+  cellCopyBtn.classList.remove('show');
+  cellCopyBtn.hidden = true;
 }
-canvas.addEventListener('mousemove', evt => {
-  if (!isLocked() || mode === 'collage') return;
-  const pos = getCanvasPos(evt);
-  const i = cellIndexAt(pos.x, pos.y);
-  if (i >= 0) showCellCopy(i); else if (copyBtnCell >= 0) hideCellCopy(false);
-});
-canvas.addEventListener('mouseleave', () => { if (copyBtnCell >= 0) hideCellCopy(false); });
-cellCopyBtn.addEventListener('mouseenter', () => clearTimeout(copyBtnTimer));
-cellCopyBtn.addEventListener('mouseleave', () => hideCellCopy(false));
+window.addEventListener('resize', () => { if (copyBtnCell >= 0) requestAnimationFrame(() => showCellCopy(copyBtnCell)); });
 cellCopyBtn.addEventListener('click', () => {
   if (copyBtnCell >= 0) copyPushLink(copyBtnCell, cellCopyBtn);
 });
@@ -4217,7 +4219,7 @@ function renderCheckPanel() {
     ? '紅色「!」＝缺圖片或缺標題，補齊前不能全部下載；黃色「!」＝圖片疑似露白，仍可下載。要修改請按下方「返回編輯」。'
     : (warn
       ? '黃色「!」＝圖片疑似露白，仍可下載，下載前會再確認；要調整請按下方「返回編輯」。'
-      : '每格都有圖、有標題。游標移到預覽圖的格子上，可複製該格推播連結。');
+      : '每格都有圖、有標題。點預覽圖的格子，格子正中間會出現「複製推播連結」。');
   panel.appendChild(note);
   // The other page counts too: 全部下載 needs both pages complete.
   const otherIdx = 1 - activePageIndex;
@@ -4345,7 +4347,7 @@ function syncChrome() {
   document.querySelectorAll('.page-tab').forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
   updateSegKnobs();
 
-  if (!checking) hideCellCopy(true);
+  if (checking && cellSelected) showCellCopy(activeCard); else hideCellCopy();
 
   $('edgeSwitch').hidden = !editing;
   $('dockStickers').hidden = checking;
