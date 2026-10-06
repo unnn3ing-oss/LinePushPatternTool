@@ -507,8 +507,8 @@
   /* Header unticked: the label input folds away, leaving just the checkbox row. */
   #newsHeaderBox.header-off #topLabel { display: none; }
   #newsHeaderBox.header-off label { margin-bottom: 0 !important; }
-  /* 操作提示 popup: bottom-right, closable, sits under the help modal (z-index 100). Same dark look as the
-     bottom dock and the toasts (system UI), with round buttons and circle icons. */
+  /* 操作提示 popup: bottom-right, closable, sits under the help modal (z-index 100). White floating card like
+     the left panels, with round buttons and circle icons. */
   .tip-toast {
     position: fixed;
     right: 20px;
@@ -518,12 +518,11 @@
     max-height: calc(100vh - 56px - 96px - 12px);
     overflow-y: auto;
     z-index: 50;
-    color-scheme: dark;
-    background: #1f2328;
-    color: #e6e8eb;
-    border: none;
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 28px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
     padding: 18px 20px 18px;
     font-size: 13px;
     line-height: 1.65;
@@ -547,47 +546,47 @@
     height: 46px;
     padding: 0;
     border-radius: 50%;
-    border: none;
-    background: #1f2328;
-    color: #fff;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--accent);
     font-size: 22px;
     font-weight: 800;
     line-height: 1;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
     opacity: 0;
     transform: scale(.6);
     pointer-events: none;
     transition: opacity .3s ease .1s, transform .3s ease .1s, background .15s ease;
   }
   .tip-fab.show { opacity: 1; transform: scale(1); pointer-events: auto; }
-  .tip-fab:hover { background: #2f7bff; }
+  .tip-fab:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
   .tip-fab[hidden] { display: none; }
   .tip-toast-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .tip-toast-title { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: #fff; }
-  .tip-toast-title::before { content: '!'; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #2f7bff; color: #fff; font-size: 13px; font-weight: 800; line-height: 1; }
-  .tip-toast-close { width: 28px; height: 28px; border: none; border-radius: 50%; background: #2d333b; color: #aab1bb; font-size: 13px; line-height: 1; padding: 0; display: inline-grid; place-items: center; }
-  .tip-toast-close:hover { background: #3a414b; color: #fff; }
+  .tip-toast-title { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text); }
+  .tip-toast-title::before { content: '!'; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 800; line-height: 1; }
+  .tip-toast-close { width: 28px; height: 28px; border: none; border-radius: 50%; background: var(--track); color: var(--muted); font-size: 13px; line-height: 1; padding: 0; display: inline-grid; place-items: center; }
+  .tip-toast-close:hover { background: var(--border); color: var(--text); }
   .tip-toast p { margin: 0 0 10px; }
   .tip-toast p:last-child { margin-bottom: 0; }
-  .tip-help { margin-top: 16px; padding-top: 14px; border-top: 1px solid #3a414b; }
-  .tip-help button { width: 100%; border: none; border-radius: 99px; background: #2f7bff; color: #fff; padding: 10px 18px; font-size: 14px; font-weight: 700; }
-  .tip-help button:hover { background: #4a8cff; }
-  .tip-help-lead { margin: 0 0 10px; color: #9aa0aa; }
+  .tip-help { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .tip-help button { width: 100%; border: none; border-radius: 99px; background: var(--accent); color: #fff; padding: 10px 18px; font-size: 14px; font-weight: 700; }
+  .tip-help button:hover { background: var(--accent-dark); }
+  .tip-help-lead { margin: 0 0 10px; color: var(--muted); }
   .tip-toast [hidden] { display: none; }
   .tip-steps { list-style: none; margin: 0; padding: 0; }
   .tip-steps li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
   .tip-steps li:last-child { margin-bottom: 0; }
-  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #2d333b; border: none; color: #7aa7ff; }
+  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--step-soft); border: none; color: var(--accent); }
   .tip-text { min-width: 0; }
-  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; color: #fff; }
-  .tip-text span { display: block; color: #cfd4db; }
+  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; color: var(--text); }
+  .tip-text span { display: block; color: var(--muted); }
   .tip-text .tip-example { margin-top: 6px; font-size: 12px; }
   .tip-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 6px; margin-top: 6px; }
   .tip-chips .tip-chip-note { white-space: nowrap; margin-right: 6px; }
   .tip-toast .tip-text .tip-chip { display: inline-block; color: #fff; font-size: 12px; font-weight: 700; padding: 1px 8px; }
   .tip-chip-warn { background: #b45309; }
-  .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: #9aa0aa; }
-  .tip-toast .tip-example { background: #2d333b; border: none; border-radius: 14px; padding: 9px 12px; color: #e6e8eb; word-break: break-all; }
+  .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: var(--muted); }
+  .tip-toast .tip-example { background: var(--track); border: none; border-radius: 14px; padding: 9px 12px; color: var(--text); word-break: break-all; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   /* Only the selected cell's editor is shown; click a cell in the preview to switch. */
   #cellsList .cell-box:not(.active) { display: none; }
