@@ -408,11 +408,7 @@
   }
   .dropzone .dz-text { flex: 1; padding: 4px 8px; text-align: left; line-height: 1.35; }
   .dz-row { display: flex; gap: 8px; margin-bottom: 10px; }
-  /* Exactly half each (borders/padding included), minus half the gap. */
-  .dz-row .dropzone { flex: 0 0 calc(50% - 4px); min-width: 0; margin-bottom: 0; }
-  .dz-row .copy-push-btn { flex: 0 0 calc(50% - 4px); min-width: 0; height: 56px; padding: 0 8px; font-size: 18px; }
-  #cellsList.collage .dz-row .dropzone { flex: 1 1 auto; }
-  #cellsList.collage .copy-push-btn { display: none; }
+  .dz-row .dropzone { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
   .field-row { display: flex; gap: 8px; margin-bottom: 10px; }
   .field-row input[type="text"] { flex: 1; }
   .swatch-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -1900,22 +1896,11 @@ function buildCardUI(i) {
   fi.accept = 'image/*';
   dz.appendChild(dzThumb);
   dz.appendChild(dzText);
-  const copyPushBtn = document.createElement('button');
-  copyPushBtn.type = 'button';
-  copyPushBtn.className = 'copy-push-btn primary';
-  copyPushBtn.textContent = '複製推播連結';
-  copyPushBtn.title = '複製這一格的推播連結（後方自動加上 UTM）';
-  copyPushBtn.addEventListener('click', e => {
-    e.stopPropagation();   // don't open the file picker
-    setActiveCard(i);
-    copyPushLink(i, copyPushBtn);
-  });
   dz.appendChild(fi);
-  // Photo drop area and the copy button are two independent halves of one row.
+  // 複製推播連結 is not offered while editing; it appears under the preview in step 2.
   const dzRow = document.createElement('div');
   dzRow.className = 'dz-row';
   dzRow.appendChild(dz);
-  dzRow.appendChild(copyPushBtn);
   box.appendChild(dzRow);
 
   function handleFile(file) {
