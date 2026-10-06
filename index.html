@@ -57,7 +57,8 @@
   .topbar {
     position: sticky; top: 0; z-index: 40;
     height: 56px;
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 16px;
     padding: 0 22px;
@@ -65,9 +66,9 @@
     border-bottom: 1px solid var(--border);
   }
   .tb-left { display: flex; align-items: center; gap: 16px; flex: none; }
-  /* Centred on the window; sits after the title block on narrow windows. */
-  .stepper { display: flex; align-items: center; position: absolute; left: 50%; transform: translateX(-50%); }
-  @media (max-width: 1000px) { .stepper { position: static; transform: none; margin-left: auto; } }
+  /* Centred on the window; the grid pushes it right only if the left group gets wide enough to touch it. */
+  .stepper { display: flex; align-items: center; justify-self: center; }
+  @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr; } .stepper { justify-self: end; } }
   .stepper[hidden] { display: none; }
   .step-btn {
     white-space: nowrap;
@@ -120,8 +121,8 @@
   @media (max-width: 900px) {
     .stage { padding-bottom: 150px; }
     .float-stack { width: 100%; max-width: 560px; max-height: none; margin: 0 auto 4px; padding: 4px 0 12px; }
-    .topbar { flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 8px; }
-    .stepper { margin-left: 0; }
+    .topbar { display: flex; flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 8px; }
+    .stepper { justify-self: auto; }
   }
   .card {
     background: var(--card-bg);
@@ -316,8 +317,11 @@
   .panel-x:hover { background: var(--bg); color: var(--text); }
   #quickfillBox { position: relative; }
   #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
-  .qf-reopen { align-self: flex-start; padding: 8px 16px; font-weight: 700; border-color: var(--accent); color: var(--accent); background: var(--card-bg); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); }
-  .qf-reopen:hover { background: var(--step-soft); }
+  /* 快速填入 / 頂部標籤 re-open buttons: their own little group right of the mode tabs. */
+  .tb-tools { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .tb-tools[hidden], .tb-tools button[hidden] { display: none; }
+  .tb-tools button { white-space: nowrap; background: transparent; border: none; border-radius: 8px; padding: 6px 14px; color: var(--accent); font-weight: 700; font-size: 15px; }
+  .tb-tools button:hover { background: var(--step-soft); }
   /* ---- Step 2 check panel ---- */
   .check-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 15px; font-weight: 700; }
   .check-head small { font-size: 12px; font-weight: 700; }
@@ -331,6 +335,9 @@
   .check-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .check-row .t.empty { color: var(--muted); }
   .chip { flex: none; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+  /* Every status mark in the check list sits in a same-width slot, so 圖 / ! / 缺圖片 and 字 line up in columns. */
+  .check-row .chip, .check-row .chip-slot { flex: none; box-sizing: border-box; width: 54px; text-align: center; padding-left: 0; padding-right: 0; }
+  .check-row .chip-slot { display: flex; align-items: center; justify-content: center; }
   .chip.ok { background: #dcfce7; color: #15803d; }
   .chip.bad { background: #fee2e2; color: #b91c1c; }
   .chip.warn { background: #fef3c7; color: #92400e; }
@@ -614,6 +621,10 @@
       <button type="button" class="mode-tab" data-mode="ent">娛樂</button>
       <button type="button" class="mode-tab" data-mode="collage">拼圖</button>
     </div>
+    <div class="tb-tools" id="tbTools" hidden>
+      <button type="button" id="quickfillReopen" hidden>快速填入</button>
+      <button type="button" id="headerOpenBtn" hidden>頂部標籤</button>
+    </div>
   </div>
   <nav class="stepper" id="stepper" aria-label="製作步驟">
     <button type="button" class="step-btn active" data-step="1"><i>1</i>編輯畫面</button>
@@ -677,8 +688,6 @@
         </div>
       </div>
     </div>
-    <button type="button" class="qf-reopen" id="quickfillReopen" hidden>快速填入</button>
-    <button type="button" class="qf-reopen" id="headerOpenBtn" hidden>頂部標籤</button>
 
     <div class="top-label-box" id="newsHeaderBox">
         <div class="field">
@@ -797,8 +806,8 @@
       <ol class="help-steps">
         <li><b>選版型</b>：畫面最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
         <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
-          <br><span class="help-note">新聞：點預覽圖上黃色的「熱門話題」標籤列，左側會浮出「頂部標籤」面板，可改字或取消勾選隱藏；隱藏後，左側的「頂部標籤」按鈕可再打開。</span></li>
-        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：點預覽圖上的格子，左側就浮出那一格的編輯面板，點空白處收起。按下「快速填入」後面板會自動收起，左上的「快速填入」按鈕可以再打開。
+          <br><span class="help-note">新聞：點預覽圖上黃色的「熱門話題」標籤列，左側會浮出「頂部標籤」面板，可改字或取消勾選隱藏；隱藏後，最上方「拼圖」右側會出現「頂部標籤」按鈕可再打開。</span></li>
+        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：點預覽圖上的格子，左側就浮出那一格的編輯面板，點空白處收起。按下「快速填入」後面板會自動收起，最上方「拼圖」右側會出現「快速填入」按鈕可以再打開。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
           <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
           <span class="help-note" id="helpAutoImg" hidden><br>★ 下一行的文章連結會自動抓第一張圖放進對應格子；之後想換圖，直接拖進新圖或選好格子按 Ctrl+V 即可（手動放的圖，再按一次快速填入也不會被蓋掉）。</span></li>
@@ -3114,7 +3123,13 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
   if (entries.length) { quickfillOpen = false; syncChrome(); }
 });
 document.getElementById('quickfillClose').addEventListener('click', () => { quickfillOpen = false; syncChrome(); });
-document.getElementById('quickfillReopen').addEventListener('click', () => { quickfillOpen = true; syncChrome(); });
+document.getElementById('quickfillReopen').addEventListener('click', () => {
+  quickfillOpen = true;
+  cellSelected = false;
+  headerSelected = false;
+  syncChrome();
+  render();
+});
 
 
 const CONFIRM_DEFAULTS = {
@@ -3587,7 +3602,11 @@ function renderCheckPanel() {
     row.append(n, t);
     const chip = (text, kind) => { const c = document.createElement('span'); c.className = `chip ${kind}`; c.textContent = text; row.appendChild(c); };
     if (miss.includes('圖片')) chip('缺圖片', 'bad');
-    else if (gap) { const d = document.createElement('i'); d.className = 'warn-dot'; d.textContent = '!'; d.title = '圖片疑似露白'; row.appendChild(d); }
+    else if (gap) {
+      const slot = document.createElement('span'); slot.className = 'chip-slot';
+      const d = document.createElement('i'); d.className = 'warn-dot'; d.textContent = '!'; d.title = '圖片疑似露白';
+      slot.appendChild(d); row.appendChild(slot);
+    }
     else chip('圖', 'ok');
     if (miss.includes('標題')) chip('缺標題', 'bad'); else chip('字', 'ok');
     row.addEventListener('click', () => setActiveCard(i));
@@ -3660,10 +3679,12 @@ function syncChrome() {
   $('collageBox').hidden = !isCollage;
   const idle = editing && !cellSelected && !headerSelected;
   $('quickfillBox').hidden = !(idle && quickfillOpen);
-  $('quickfillReopen').hidden = !(idle && !quickfillOpen);
+  $('quickfillReopen').hidden = !(editing && !quickfillOpen);
   $('newsHeaderBox').hidden = !(mode === 'news' && editing && headerSelected);
-  // The yellow bar can be unticked away; this button is then the way back in.
-  $('headerOpenBtn').hidden = !(mode === 'news' && idle && !activePage().showHeader);
+  // Both buttons live in the top bar, right of the mode tabs. The yellow bar can be
+  // unticked away; its button is then the way back in.
+  $('headerOpenBtn').hidden = !(mode === 'news' && editing && !activePage().showHeader);
+  $('tbTools').hidden = $('quickfillReopen').hidden && $('headerOpenBtn').hidden;
   $('cellsList').hidden = !(cellSelected && !checking);
   $('checkPanel').hidden = !checking;
   if (checking) renderCheckPanel();
