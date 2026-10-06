@@ -267,7 +267,7 @@
   .dock-switch input:checked + .sw-track .sw-knob { transform: translateX(18px); }
   .dock-switch input:focus-visible + .sw-track { outline: 2px solid #2f7bff; outline-offset: 2px; }
   /* Hover pop-up on a "!" in the preview: says why the cell is flagged, fades out a second after the pointer leaves. */
-  .gap-tip { position: fixed; z-index: 70; max-width: 260px; background: #1f2328; color: #fff; border-radius: 12px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); font-size: 13px; line-height: 1.5; pointer-events: none; opacity: 0; transition: opacity .3s ease; }
+  .gap-tip { position: fixed; z-index: 70; max-width: 260px; background: #1f2328; color: #fff; border-radius: 18px; padding: 10px 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); font-size: 13px; line-height: 1.5; pointer-events: none; opacity: 0; transition: opacity .3s ease; }
   .gap-tip.show { opacity: 1; }
   .gap-tip[hidden] { display: none; }
   .gap-tip b { display: block; font-size: 14px; margin-bottom: 2px; }
@@ -286,10 +286,9 @@
     z-index: 30;
     background: var(--card-bg); color: var(--text);
     border: 1px solid var(--border);
-    border-top: 3px solid var(--accent);
-    border-radius: 10px;
+    border-radius: 22px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
-    padding: 12px 14px 14px;
+    padding: 16px 18px 18px;
   }
   .dl-confirm::after {
     content: '';
@@ -305,8 +304,14 @@
   .dl-confirm[hidden] { display: none; }
   .dl-confirm-text { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
   .dl-confirm-actions { display: flex; gap: 8px; }
-  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 8px 6px; font-size: 14px; background: var(--card-bg); border-color: var(--border); color: var(--text); }
+  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 9px 6px; font-size: 14px; font-weight: 700; border-radius: 99px; background: var(--track); border-color: var(--track); color: var(--text); }
+  #downloadRow .dl-confirm-actions button:hover { background: var(--border); border-color: var(--border); }
   #downloadRow .dl-confirm-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #downloadRow .dl-confirm-actions button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+  .modal .btn-row button { border: none; border-radius: 99px; padding: 9px 22px; font-weight: 700; background: var(--track); color: var(--text); }
+  .modal .btn-row button:hover { background: var(--border); }
+  .modal .btn-row button.primary { background: var(--accent); color: #fff; }
+  .modal .btn-row button.primary:hover { background: var(--accent-dark); }
   #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
   #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
   canvas {
@@ -329,8 +334,8 @@
     color: #fff;
     font-size: 14px;
     line-height: 1.55;
-    padding: 10px 18px;
-    border-radius: 12px;
+    padding: 10px 20px;
+    border-radius: 22px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
     opacity: 0;
     cursor: pointer;
@@ -502,22 +507,24 @@
   /* Header unticked: the label input folds away, leaving just the checkbox row. */
   #newsHeaderBox.header-off #topLabel { display: none; }
   #newsHeaderBox.header-off label { margin-bottom: 0 !important; }
-  /* 新聞 tips popup: bottom-right, closable, sits under the help modal (z-index 100). */
+  /* 操作提示 popup: bottom-right, closable, sits under the help modal (z-index 100). Same dark look as the
+     bottom dock and the toasts (system UI), with round buttons and circle icons. */
   .tip-toast {
     position: fixed;
     right: 20px;
-    bottom: 20px;
-    width: 380px;
+    bottom: 96px;   /* sits above the bottom dock row, never over its buttons */
+    width: 372px;
     max-width: calc(100vw - 40px);
-    max-height: calc(100vh - 40px);
+    max-height: calc(100vh - 56px - 96px - 12px);
     overflow-y: auto;
     z-index: 50;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-top: 4px solid var(--accent);
-    border-radius: 12px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
-    padding: 14px 16px 16px;
+    color-scheme: dark;
+    background: #1f2328;
+    color: #e6e8eb;
+    border: none;
+    border-radius: 28px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+    padding: 18px 20px 18px;
     font-size: 13px;
     line-height: 1.65;
   }
@@ -534,51 +541,53 @@
   .tip-fab {
     position: fixed;
     right: 20px;
-    bottom: 20px;
+    bottom: 96px;
     z-index: 50;
     width: 46px;
     height: 46px;
     padding: 0;
     border-radius: 50%;
-    border: 2px solid #fff;
-    background: var(--accent);
+    border: none;
+    background: #1f2328;
     color: #fff;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 800;
     line-height: 1;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
     opacity: 0;
     transform: scale(.6);
     pointer-events: none;
-    transition: opacity .3s ease .1s, transform .3s ease .1s;
+    transition: opacity .3s ease .1s, transform .3s ease .1s, background .15s ease;
   }
   .tip-fab.show { opacity: 1; transform: scale(1); pointer-events: auto; }
-  .tip-fab:hover { background: var(--accent-dark); }
+  .tip-fab:hover { background: #2f7bff; }
   .tip-fab[hidden] { display: none; }
-  .tip-toast-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .tip-toast-title { font-size: 16px; font-weight: 700; color: var(--accent); }
-  .tip-toast-close { border: none; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 8px; border-radius: 6px; }
-  .tip-toast-close:hover { background: var(--bg); color: var(--text); }
+  .tip-toast-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .tip-toast-title { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: #fff; }
+  .tip-toast-title::before { content: '!'; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #2f7bff; color: #fff; font-size: 13px; font-weight: 800; line-height: 1; }
+  .tip-toast-close { width: 28px; height: 28px; border: none; border-radius: 50%; background: #2d333b; color: #aab1bb; font-size: 13px; line-height: 1; padding: 0; display: inline-grid; place-items: center; }
+  .tip-toast-close:hover { background: #3a414b; color: #fff; }
   .tip-toast p { margin: 0 0 10px; }
   .tip-toast p:last-child { margin-bottom: 0; }
-  .tip-help { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .tip-help button { width: 100%; }
-  .tip-help-lead { margin: 0 0 10px; color: var(--muted); }
+  .tip-help { margin-top: 16px; padding-top: 14px; border-top: 1px solid #3a414b; }
+  .tip-help button { width: 100%; border: none; border-radius: 99px; background: #2f7bff; color: #fff; padding: 10px 18px; font-size: 14px; font-weight: 700; }
+  .tip-help button:hover { background: #4a8cff; }
+  .tip-help-lead { margin: 0 0 10px; color: #9aa0aa; }
   .tip-toast [hidden] { display: none; }
   .tip-steps { list-style: none; margin: 0; padding: 0; }
   .tip-steps li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
   .tip-steps li:last-child { margin-bottom: 0; }
-  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--bg); border: 1px solid var(--border); color: var(--accent); }
+  .tip-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #2d333b; border: none; color: #7aa7ff; }
   .tip-text { min-width: 0; }
-  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; }
-  .tip-text span { display: block; }
+  .tip-text b { display: block; font-size: 14px; margin-bottom: 1px; color: #fff; }
+  .tip-text span { display: block; color: #cfd4db; }
   .tip-text .tip-example { margin-top: 6px; font-size: 12px; }
   .tip-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 6px; margin-top: 6px; }
   .tip-chips .tip-chip-note { white-space: nowrap; margin-right: 6px; }
   .tip-toast .tip-text .tip-chip { display: inline-block; color: #fff; font-size: 12px; font-weight: 700; padding: 1px 8px; }
   .tip-chip-warn { background: #b45309; }
-  .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: var(--muted); }
-  .tip-toast .tip-example { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
+  .tip-toast .tip-text .tip-chip-note { display: inline-block; font-size: 12px; color: #9aa0aa; }
+  .tip-toast .tip-example { background: #2d333b; border: none; border-radius: 14px; padding: 9px 12px; color: #e6e8eb; word-break: break-all; }
   .cell-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   /* Only the selected cell's editor is shown; click a cell in the preview to switch. */
   #cellsList .cell-box:not(.active) { display: none; }
@@ -586,7 +595,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.5);
+    background: rgba(15, 17, 21, .55);
     align-items: center;
     justify-content: center;
     padding: 20px;
@@ -595,7 +604,8 @@
   .modal-overlay.open { display: flex; }
   .modal {
     background: var(--card-bg);
-    border-radius: 14px;
+    border-radius: 26px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .35);
     max-width: 560px;
     width: 100%;
     max-height: 85vh;
@@ -607,23 +617,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: 16px 20px 14px 24px;
     border-bottom: 1px solid var(--border);
   }
   .modal-head h2 { font-size: 16px; margin: 0; }
   .modal-close {
-    padding: 4px 10px;
-    font-size: 14px;
-    line-height: 1;
-    border-radius: 6px;
+    width: 32px; height: 32px; padding: 0;
+    display: inline-grid; place-items: center;
+    font-size: 14px; line-height: 1;
+    border: none; border-radius: 50%;
+    background: var(--track); color: var(--muted);
   }
+  .modal-close:hover { background: var(--border); color: var(--text); }
   .modal-body {
-    padding: 16px 20px 20px;
+    padding: 18px 24px 24px;
     overflow-y: auto;
     font-size: 13px;
     line-height: 1.6;
   }
-  .modal-body h3 { font-size: 14px; margin: 20px 0 6px; }
+  .modal-body h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 22px 0 8px; }
+  .modal-body h3::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
   .modal-body h3:first-child { margin-top: 0; }
   .modal-body ul { margin: 0; padding-left: 20px; }
   .modal-body li { margin-bottom: 4px; }
@@ -631,7 +644,7 @@
     max-width: 100%;
     display: block;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 14px;
     margin: 8px 0;
   }
   .help-compare {
@@ -648,14 +661,18 @@
     text-align: center;
     margin-top: 4px;
   }
-  .help-steps { margin: 0; padding-left: 20px; }
-  .help-steps li { margin-bottom: 8px; }
+  /* numbered steps use the same filled circles as the step progress bar */
+  .help-steps { list-style: none; counter-reset: hs; margin: 0; padding: 0; }
+  .help-steps > li { counter-increment: hs; position: relative; padding-left: 34px; margin-bottom: 12px; }
+  .help-steps > li::before { content: counter(hs); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; line-height: 1; }
   .help-note { color: var(--muted); font-size: 12px; }
   .help-marks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-  .help-code-inline { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 12px; word-break: break-all; }
-  .help-code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; margin: 4px 0; font-size: 12px; }
-  .help-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: 12px; }
-  .help-table th, .help-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+  .help-code-inline { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--track); border: none; border-radius: 99px; padding: 1px 8px; font-size: 12px; word-break: break-all; }
+  .help-code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--track); border: none; border-radius: 14px; padding: 8px 12px; margin: 4px 0; font-size: 12px; }
+  .help-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .help-table th, .help-table td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+  .help-table tr:last-child td { border-bottom: none; }
+  .help-table th:last-child, .help-table td:last-child { border-right: none; }
   .help-table th { background: var(--bg); }
   .help-arrow {
     align-self: center;
