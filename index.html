@@ -175,9 +175,11 @@
   button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
   button:disabled { opacity: .5; cursor: not-allowed; }
   .canvas-wrap { display: flex; justify-content: center; width: 100%; }
-  .mode-tabs { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
-  .mode-tab { white-space: nowrap; background: transparent; border: none; border-radius: 8px; padding: 6px 16px; color: var(--muted); font-weight: 700; font-size: 15px; }
-  .mode-tab.active { background: var(--accent); color: #fff; }
+  /* Same capsule look as the step progress: a fully rounded pill, the current one in soft blue. */
+  .mode-tabs { display: flex; gap: 2px; align-items: center; }
+  .mode-tab { white-space: nowrap; background: transparent; border: none; border-radius: 99px; padding: 6px 18px; color: var(--muted); font-size: 15px; font-weight: 700; }
+  .mode-tab:hover { background: var(--bg); }
+  .mode-tab.active, .mode-tab.active:hover { background: var(--step-soft); color: var(--accent); }
   .seg { display: flex; gap: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
   .seg button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 6px 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
   .seg button.active { background: var(--accent); color: #fff; }
@@ -318,9 +320,9 @@
   #quickfillBox { position: relative; }
   #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
   /* 快速填入 / 頂部標籤 re-open buttons: their own little group right of the mode tabs. */
-  .tb-tools { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .tb-tools { display: flex; gap: 2px; border: 1px solid var(--border); border-radius: 99px; padding: 2px; }
   .tb-tools[hidden], .tb-tools button[hidden] { display: none; }
-  .tb-tools button { white-space: nowrap; background: transparent; border: none; border-radius: 8px; padding: 6px 14px; color: var(--accent); font-weight: 700; font-size: 15px; }
+  .tb-tools button { white-space: nowrap; background: transparent; border: none; border-radius: 99px; padding: 5px 16px; color: var(--accent); font-weight: 700; font-size: 15px; }
   .tb-tools button:hover { background: var(--step-soft); }
   /* ---- Step 2 check panel ---- */
   .check-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 15px; font-weight: 700; }
@@ -336,8 +338,12 @@
   .check-row .t.empty { color: var(--muted); }
   .chip { flex: none; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
   /* Every status mark in the check list sits in a same-width slot, so 圖 / ! / 缺圖片 and 字 line up in columns. */
-  .check-row .chip, .check-row .chip-slot { flex: none; box-sizing: border-box; width: 54px; text-align: center; padding-left: 0; padding-right: 0; }
-  .check-row .chip-slot { display: flex; align-items: center; justify-content: center; }
+  .check-row .chip-slot { flex: none; box-sizing: border-box; width: 34px; display: flex; align-items: center; justify-content: center; }
+  /* Check marks are all circles: green 圖 / 字 = fine, yellow ! = photo shows white, red ! = missing. */
+  .dot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 800; line-height: 1; font-style: normal; cursor: default; }
+  .dot.ok { background: #dcfce7; color: #15803d; }
+  .dot.warn { background: #facc15; color: #1f2328; }
+  .dot.bad { background: #dc2626; color: #fff; }
   .chip.ok { background: #dcfce7; color: #15803d; }
   .chip.bad { background: #fee2e2; color: #b91c1c; }
   .chip.warn { background: #fef3c7; color: #92400e; }
@@ -1773,17 +1779,19 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
   if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
-  // 步驟 2: a yellow circled "!" on every cell whose photo shows white (on-screen only).
+  // 步驟 2: a circled "!" on every cell that needs a look — red when something is
+  // missing, yellow when the photo shows white (on-screen only, never exported).
   if (opts.interactive && isLocked()) {
     for (let i = 0; i < CELL_COUNT; i++) {
-      if (!cardHasGap(pageState, i)) continue;
+      const missing = cardMissing(pageState.cards[i]).length > 0;
+      if (!missing && !cardHasGap(pageState, i)) continue;
       const cell = cellRect(i, pageState.showHeader);
       const bx = cell.x + 24, by = cell.y + 24;
       ctx.save();
       ctx.beginPath(); ctx.arc(bx, by, 15, 0, Math.PI * 2);
-      ctx.fillStyle = '#facc15'; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = '#1f2328'; ctx.stroke();
-      ctx.fillStyle = '#1f2328'; ctx.font = `800 20px ${FONT_STACK}`;
+      ctx.fillStyle = missing ? '#dc2626' : '#facc15'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = missing ? '#ffffff' : '#1f2328'; ctx.stroke();
+      ctx.fillStyle = missing ? '#ffffff' : '#1f2328'; ctx.font = `800 20px ${FONT_STACK}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('!', bx, by + 1);
       ctx.restore();
@@ -3600,22 +3608,23 @@ function renderCheckPanel() {
     t.textContent = title || '尚未填入';
     if (!title) t.classList.add('empty');
     row.append(n, t);
-    const chip = (text, kind) => { const c = document.createElement('span'); c.className = `chip ${kind}`; c.textContent = text; row.appendChild(c); };
-    if (miss.includes('圖片')) chip('缺圖片', 'bad');
-    else if (gap) {
+    const mark = (kind, text, title) => {
       const slot = document.createElement('span'); slot.className = 'chip-slot';
-      const d = document.createElement('i'); d.className = 'warn-dot'; d.textContent = '!'; d.title = '圖片疑似露白';
+      const d = document.createElement('i'); d.className = `dot ${kind}`; d.textContent = text; d.title = title;
       slot.appendChild(d); row.appendChild(slot);
-    }
-    else chip('圖', 'ok');
-    if (miss.includes('標題')) chip('缺標題', 'bad'); else chip('字', 'ok');
+    };
+    if (miss.includes('圖片')) mark('bad', '!', '缺圖片');
+    else if (gap) mark('warn', '!', '圖片疑似露白');
+    else mark('ok', '圖', '圖片 OK');
+    if (miss.includes('標題')) mark('bad', '!', '缺標題');
+    else mark('ok', '字', '標題 OK');
     row.addEventListener('click', () => setActiveCard(i));
     panel.appendChild(row);
   });
   const note = document.createElement('div');
   note.className = 'check-note';
   note.textContent = bad
-    ? '要補圖、改字或調整照片，請按下方「返回編輯」；點上面任一格可選取該格。'
+    ? '紅色「!」＝缺圖片或缺標題，補齊前不能全部下載；黃色「!」＝圖片疑似露白，仍可下載。要修改請按下方「返回編輯」。'
     : (warn
       ? '黃色「!」＝圖片疑似露白，仍可下載，下載前會再確認；要調整請按下方「返回編輯」。'
       : '每格都有圖、有標題。點預覽圖上的格子，可複製該格推播連結。');
