@@ -19,7 +19,7 @@
 // 密碼只放在 Worker 的環境變數 LAB_PASSWORD（Secret），網頁原始碼裡沒有；沒設定時一律拒絕。
 //
 // 另有「S8 OAuth」（階段一：只讀，見 worker/README.md 的「連結 SUPER 8 Studio」）：
-//   POST /s8/login-start  → 取得 S8 授權頁網址（只請求 insightark-mcp:read 範圍）
+//   POST /s8/login-start  → 取得 S8 授權頁網址（請求 insightark-mcp:read＋write 範圍，一次授權）
 //   GET  /s8/callback     → S8 授權完成後跳回這裡，換取憑證、加密後交還網頁
 //   POST /s8/status       → 用憑證呼叫 auth_me、auth_organizations（唯讀）
 //   POST /s8/audience     → 試算「全部 LINE 顧客」可發送人數（broadcast_audience_preview，唯讀；組織與參數都由 Worker 固定）
@@ -170,7 +170,7 @@ async function handleLabPing(request, env) {
 // ---- S8 OAuth（階段一：只讀）----------------------------------------------------
 // 流程：網頁（已通過試驗功能密碼）→ /s8/login-start 取得授權網址 → 在彈出視窗登入並按「允許」→ S8 跳回 /s8/callback
 // → Worker 用 PKCE 換憑證、加密成 session 字串交給網頁 → 之後網頁帶著 session 呼叫 /s8/status。
-// 這個階段只請求 read 範圍，且只允許呼叫 S8_READ_TOOLS 內的工具，所以 Worker 無法寫入、發送或排程任何東西。
+// 連結一律請求 read＋write；但只有通過把關（s8Guard）的幾個工具與固定參數才會送出，沒有立即發送、resume 或 sendNow 的路徑。唯讀工具另有 S8_READ_TOOLS 白名單。
 const S8_BASE_DEFAULT = 'https://api-next.no8.io';
 const S8_SCOPE_READ = 'insightark-mcp:read';
 const S8_SCOPE_WRITE = 'insightark-mcp:read insightark-mcp:write';
@@ -281,11 +281,11 @@ async function handleS8LoginStart(request, env) {
   const redirectUri = `${new URL(request.url).origin}/s8/callback`;
   try {
     const meta = await s8Metadata(env);
-    const upgrade = body.upgrade === true;
-    const scope = upgrade ? S8_SCOPE_WRITE : S8_SCOPE_READ;
-    let clientId = !upgrade && typeof body.clientId === 'string' && /^[\w.~-]{1,200}$/.test(body.clientId) ? body.clientId : '';
+    // 連結一律要 read + write（避免反覆授權）。網頁會記住「帶 write 的用戶端 id」重複使用；沒有才向 S8 註冊一個新的。
+    // 舊版的 upgrade 參數仍接受但已無作用。
+    const scope = S8_SCOPE_WRITE;
+    let clientId = typeof body.clientId === 'string' && /^[\w.~-]{1,200}$/.test(body.clientId) ? body.clientId : '';
     let registered = false;
-    // 升級（write）一律向 S8 另外註冊一個帶 write 範圍的用戶端，不沿用唯讀用戶端
     if (!clientId) { clientId = await s8Register(env, meta, redirectUri, scope); registered = true; }
     const verifier = randomB64Url(48);
     const state = await s8Seal(env, { v: verifier, c: clientId, u: returnUrl, ru: redirectUri, sc: scope, x: Date.now() + S8_STATE_TTL_MS });
@@ -561,7 +561,7 @@ async function handleS8Prepare(request, env) {
   try {
     const loaded = await s8LoadSession(request, env); if (loaded.error) return loaded.error;
     const { sess, refreshed } = loaded;
-    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請先在「連結 S8」視窗按「升級為可建立草稿」', request, env);
+    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請在「S8」視窗按「連結 S8」重新授權一次', request, env);
     const altText = typeof body.altText === 'string' ? body.altText.trim().slice(0, 400) : '';
     if (!altText) return jsonError(400, '缺少推播通知文字', request, env);
     s8ValidatePages(body.pages);
@@ -653,7 +653,7 @@ async function handleS8Create(request, env) {
   try {
     const loaded = await s8LoadSession(request, env); if (loaded.error) return loaded.error;
     const { sess, refreshed } = loaded;
-    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請先升級', request, env);
+    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請在「S8」視窗按「連結 S8」重新授權一次', request, env);
     const mcp = await mcpOpen(env, sess.a, true);
     // 人數確認：重新試算，必須和使用者輸入的人數幾乎一致
     const { total, previewRef } = await s8AudienceTotal(mcp, prep.orgId);
@@ -694,7 +694,7 @@ async function handleS8Pause(request, env) {
   try {
     const loaded = await s8LoadSession(request, env); if (loaded.error) return loaded.error;
     const { sess, refreshed } = loaded;
-    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請先升級', request, env);
+    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請在「S8」視窗按「連結 S8」重新授權一次', request, env);
     const mcp = await mcpOpen(env, sess.a, true);
     const org = await s8ResolveOrg(mcp, body.org);
     const paused = await pauseToDraft(mcp, org.id, body.taskId);
