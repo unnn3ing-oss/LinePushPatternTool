@@ -78,6 +78,15 @@
     background: var(--track); border: none; border-radius: 99px; padding: 3px;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
   }
+  /* 新聞/娛樂/拼圖 and 頁數: one white knob slides under the labels, and can be dragged with the mouse. */
+  .seg-track { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .seg-track > button { position: relative; z-index: 1; transition: color .2s ease; }
+  .seg-track > button.hot, .seg-track.dragging > button.hot:hover { color: var(--accent); }
+  .seg-track.dragging > button.active:not(.hot) { color: var(--muted); }
+  .seg-knob { position: absolute; z-index: 0; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--knob); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); pointer-events: none; opacity: 0; }
+  .seg-track.ready .seg-knob { opacity: 1; transition: transform .3s cubic-bezier(.3, .9, .3, 1), width .3s cubic-bezier(.3, .9, .3, 1); }
+  .seg-track.dragging .seg-knob { transition: none; }
+  .seg-track.dragging { cursor: grabbing; }
   /* Step progress is plain (no track): numbered circles, and only the current step shows its name. */
   .stepper { display: flex; align-items: center; gap: 4px; justify-self: center; }
   @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr; } .stepper { justify-self: end; } }
@@ -191,7 +200,7 @@
   /* Same capsule look as the step progress: a fully rounded pill, the current one in soft blue. */
   .mode-tab { white-space: nowrap; background: transparent; border: none; border-radius: 99px; padding: 6px 18px; color: var(--muted); font-size: 15px; font-weight: 700; }
   .mode-tab:hover { color: var(--text); }
-  .mode-tab.active, .mode-tab.active:hover { background: var(--knob); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
+  .mode-tab.active, .mode-tab.active:hover { color: var(--accent); }
   .seg { display: flex; gap: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
   .seg button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 6px 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
   .seg button.active { background: var(--accent); color: #fff; }
@@ -334,7 +343,7 @@
   .page-tabs { margin: 0; }
   .page-tab { background: transparent; border: none; border-radius: 99px; padding: 6px 20px; color: var(--muted); font-weight: 600; font-size: 15px; }
   .page-tab:hover { color: var(--text); }
-  .page-tab.active, .page-tab.active:hover { background: var(--knob); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
+  .page-tab.active, .page-tab.active:hover { color: var(--accent); }
   .page-tabs[hidden] { display: none; }
   /* ---- Floating panels on the left ---- */
   .float-stack > .top-label-box,
@@ -909,8 +918,8 @@
 
       <h3>畫面怎麼看</h3>
       <ul>
-        <li><b>最上方</b>：標題、版型切換（新聞／娛樂／拼圖）、進度條「① 編輯畫面 → ② 畫面檢查」（拼圖沒有這一步）。快速填入面板收起後，「拼圖」右側會出現「快速填入」按鈕可再打開（新聞版黃色標籤列被隱藏時另有「頂部標籤」按鈕）。</li>
-        <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」，兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
+        <li><b>最上方</b>：標題、版型切換（新聞／娛樂／拼圖，白色滑塊會滑動過去，也可以用滑鼠按住滑塊左右拖曳來切換）、進度條「① 編輯畫面 → ② 畫面檢查」（拼圖沒有這一步）。快速填入面板收起後，「拼圖」右側會出現「快速填入」按鈕可再打開（新聞版黃色標籤列被隱藏時另有「頂部標籤」按鈕）。</li>
+        <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」（同樣有滑動效果，也能按住滑塊拖曳切換），兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
         <li><b>左側</b>：浮動面板。一開始是「快速填入」；點格子變成那一格的編輯面板，點空白處收起；步驟 2 則是檢查清單。</li>
         <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「檢查照片邊緣」開關、「清除本頁」、「下一步」；步驟 2 有提示、「返回編輯」、「下載本頁」、「全部下載」。</li>
         <li><b>右下角</b>「!」：操作提示。剛開啟網頁時約 5 秒後自動收起；游標移到彈窗上就會一直顯示，移出彈窗外 1 秒後漸漸收起；按「!」可再打開。</li>
@@ -2808,6 +2817,7 @@ pageTabs.forEach(btn => {
     if (idx === activePageIndex) return;
     activePageIndex = idx;
     pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === idx));
+    updateSegKnobs();
     syncTopUIFromState();
     syncAllCellUI();
     cellSelected = false;
@@ -3712,6 +3722,7 @@ function applyModeChrome() {
   modeSubEl.textContent = l.sub;
   modeTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+  updateSegKnobs();
   fitPreviewSize();
   syncTipToast();
   syncChrome();
@@ -4250,6 +4261,7 @@ function syncChrome() {
 
   document.querySelector('.page-tabs').hidden = isCollage;
   document.querySelectorAll('.page-tab').forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+  updateSegKnobs();
 
   if (!checking) hideCellCopy(true);
 
@@ -4267,6 +4279,79 @@ function syncChrome() {
   updateDownloadState();
   alignFloatStack();
 }
+
+// ---- sliding knob for the 新聞/娛樂/拼圖 and 頁數 capsules (also draggable) ----------------
+function segKnobOf(track) {
+  let k = track.querySelector(':scope > .seg-knob');
+  if (!k) { k = document.createElement('span'); k.className = 'seg-knob'; track.prepend(k); }
+  return k;
+}
+function placeSegKnob(track, btn) {
+  btn = btn || track.querySelector(':scope > button.active');
+  if (!btn || !btn.offsetWidth) return;
+  const k = segKnobOf(track);
+  k.style.width = `${btn.offsetWidth}px`;
+  k.style.transform = `translateX(${btn.offsetLeft}px)`;
+  if (!track.classList.contains('ready')) { void k.offsetWidth; requestAnimationFrame(() => track.classList.add('ready')); }
+}
+function updateSegKnobs() {
+  document.querySelectorAll('.seg-track').forEach(t => { if (!t.classList.contains('dragging')) placeSegKnob(t); });
+}
+document.querySelectorAll('.mode-tabs, .page-tabs').forEach(track => {
+  track.classList.add('seg-track');
+  segKnobOf(track);
+  if (window.ResizeObserver) new ResizeObserver(updateSegKnobs).observe(track);
+  const btns = () => Array.from(track.querySelectorAll(':scope > button'));
+  let down = null, moved = false;
+  track.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const cur = track.querySelector(':scope > button.active');
+    if (!cur) return;
+    down = { x: e.clientX, id: e.pointerId, left: cur.offsetLeft, w: cur.offsetWidth };
+    moved = false;
+  });
+  const nearest = cx => {   // the button whose centre is closest to knob-centre cx (track coordinates)
+    let best = null, bd = Infinity;
+    btns().forEach(b => { const d = Math.abs(b.offsetLeft + b.offsetWidth / 2 - cx); if (d < bd) { bd = d; best = b; } });
+    return best;
+  };
+  track.addEventListener('pointermove', e => {
+    if (!down || e.pointerId !== down.id) return;
+    const dx = e.clientX - down.x;
+    if (!moved) {
+      if (Math.abs(dx) < 5) return;
+      moved = true;
+      track.classList.add('dragging');
+      try { track.setPointerCapture(e.pointerId); } catch (err) { /* fine without capture */ }
+    }
+    const bs = btns();
+    const min = bs[0].offsetLeft, max = bs[bs.length - 1].offsetLeft + bs[bs.length - 1].offsetWidth - down.w;
+    const left = Math.max(min, Math.min(max, down.left + dx));
+    segKnobOf(track).style.transform = `translateX(${left}px)`;
+    const hot = nearest(left + down.w / 2);
+    bs.forEach(b => b.classList.toggle('hot', b === hot));
+  });
+  const end = e => {
+    if (!down || (e && e.pointerId !== down.id)) return;
+    const wasDrag = moved;
+    down = null; moved = false;
+    if (!wasDrag) return;
+    const hot = track.querySelector(':scope > button.hot');
+    track.classList.remove('dragging');
+    btns().forEach(b => b.classList.remove('hot'));
+    if (hot && !hot.classList.contains('active')) hot.click();
+    placeSegKnob(track);
+    // the click that follows a drag must not re-trigger a button
+    const stop = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    track.addEventListener('click', stop, { capture: true, once: true });
+    setTimeout(() => track.removeEventListener('click', stop, { capture: true }), 0);
+  };
+  track.addEventListener('pointerup', end);
+  track.addEventListener('pointercancel', end);
+});
+updateSegKnobs();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateSegKnobs);
+window.addEventListener('resize', updateSegKnobs);
 
 chromeReady = true;
 applyModeChrome();
