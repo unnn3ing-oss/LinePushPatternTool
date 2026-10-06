@@ -165,7 +165,34 @@
     z-index: 20;
     pointer-events: none;
   }
-  #downloadRow { margin-top: 0; margin-bottom: 14px; }
+  #downloadRow { margin-top: 0; margin-bottom: 14px; position: relative; }
+  /* 全部下載 asks "typos checked, no photo showing white?" in a small popover under the button. */
+  .dl-confirm {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 260px;
+    z-index: 30;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+    padding: 12px 14px 14px;
+  }
+  .dl-confirm::before {
+    content: '';
+    position: absolute;
+    top: -9px;
+    right: 62px;
+    border: 7px solid transparent;
+    border-top: 0;
+    border-bottom: 7px solid var(--accent);
+  }
+  .dl-confirm[hidden] { display: none; }
+  .dl-confirm-text { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  .dl-confirm-actions { display: flex; gap: 8px; }
+  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 8px 6px; font-size: 14px; }
   #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
   #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
   canvas {
@@ -489,6 +516,13 @@
         <button id="downloadJpgBtn">下載本頁</button>
         <button class="primary" id="downloadAllBtn">全部下載</button>
         <button class="primary" id="copyCollageBtn" style="display:none">直接複製</button>
+        <div class="dl-confirm" id="dlConfirm" role="dialog" aria-label="下載前確認" hidden>
+          <div class="dl-confirm-text">已確認無錯字、圖片無露白？</div>
+          <div class="dl-confirm-actions">
+            <button type="button" id="dlConfirmBack">再修改</button>
+            <button type="button" class="primary" id="dlConfirmOk">確認下載</button>
+          </div>
+        </div>
       </div>
 
       <div class="top-label-box" id="collageBox" style="display:none">
@@ -2613,6 +2647,7 @@ function updateDownloadState() {
   const downloadAllBtn = document.getElementById('downloadAllBtn');
   const locked = mode !== 'collage' && pages.some(pg => pageMissingReport(pg).length > 0);
   downloadAllBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+  if (locked) { const c = document.getElementById('dlConfirm'); if (c) c.hidden = true; }
   downloadAllBtn.classList.toggle('is-disabled', locked);
   if (locked) downloadAllBtn.dataset.tip = '圖片製作未完成！'; else delete downloadAllBtn.dataset.tip;
 }
@@ -2633,8 +2668,7 @@ document.getElementById('downloadJpgBtn').addEventListener('click', async () => 
   exportCanvas(off, ['image/jpeg', EXPORT_JPEG_QUALITY], exportFileName(activePageIndex));
 });
 
-document.getElementById('downloadAllBtn').addEventListener('click', async () => {
-  if (document.getElementById('downloadAllBtn').getAttribute('aria-disabled') === 'true') return;
+async function runDownloadAll() {
   await ensureAssetsReady();
   for (let p = 0; p < PAGE_COUNT; p++) {
     const off = renderPageToOffscreen(pages[p], 'final');
@@ -2643,7 +2677,20 @@ document.getElementById('downloadAllBtn').addEventListener('click', async () => 
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
   }
+}
+// 全部下載 first asks for a last check (typos / white edges) in a popover at the
+// button; 確認下載 goes ahead, 再修改 (or clicking elsewhere / Esc) closes it.
+const dlConfirm = document.getElementById('dlConfirm');
+function hideDlConfirm() { dlConfirm.hidden = true; }
+document.getElementById('downloadAllBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  if (e.currentTarget.getAttribute('aria-disabled') === 'true') return;
+  dlConfirm.hidden = !dlConfirm.hidden;
 });
+document.getElementById('dlConfirmBack').addEventListener('click', hideDlConfirm);
+document.getElementById('dlConfirmOk').addEventListener('click', () => { hideDlConfirm(); runDownloadAll(); });
+document.addEventListener('click', e => { if (!dlConfirm.hidden && !dlConfirm.contains(e.target)) hideDlConfirm(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideDlConfirm(); });
 
 // Parses pasted "★tag)line1 line2" or "★line1 line2(tag)" blocks (plus a
 // url line, skipped) into up to 12 {line1, line2, tag, tagColor} entries —
@@ -2923,6 +2970,7 @@ tipFab.addEventListener('click', () => setTipCollapsed(false));
   tipToast.addEventListener(ev, armTipTimer, { passive: true }));
 armTipTimer();
 
+const stickerHintShown = { news: false, ent: false };
 const stickerPalette = document.getElementById('stickerPalette');
 STICKER_DEFS.forEach(def => {
   const btn = document.createElement('button');
@@ -2940,6 +2988,11 @@ STICKER_DEFS.forEach(def => {
     const cell = cellRect(idx, activePage().showHeader);
     state.stickers.push({ key: def.key, x: cell.x + cell.w / 2, y: cell.y + cell.h / 2, scale: 1 });
     render();
+    // 新聞 and 娛樂: the first sticker added on any cell (per mode) gets a one-time how-to hint.
+    if ((mode === 'news' || mode === 'ent') && !stickerHintShown[mode]) {
+      stickerHintShown[mode] = true;
+      statusEl.show('可拖曳移動、游標在貼圖上使用滑鼠滾輪縮放');
+    }
   });
   stickerPalette.appendChild(btn);
 });
