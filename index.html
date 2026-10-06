@@ -18,6 +18,8 @@
     font-display: swap;
   }
   :root {
+    --stage: #e9ebf0;
+    --step-soft: #e6effa;
     --bg: #f4f5f7;
     --card-bg: #ffffff;
     --text: #1f2328;
@@ -29,6 +31,8 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
+      --stage: #0f1115;
+      --step-soft: #1b2a44;
       --bg: #16181d;
       --card-bg: #21242b;
       --text: #e6e8eb;
@@ -43,31 +47,81 @@
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
-    background: var(--bg);
+    background: var(--stage);
     color: var(--text);
-    padding: 24px;
     min-height: 100vh;
   }
-  .wrap { max-width: 1200px; margin: 0 auto; }
-  header { margin-bottom: 20px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 { font-size: 18px; margin: 0; white-space: nowrap; }
   p.sub { margin: 0; color: var(--muted); font-size: 13px; }
-  .layout {
-    display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 20px;
-    align-items: start;
+  /* ---- Top bar: title + mode tabs | step progress | (spacer) ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 22px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
   }
-  .preview-col {
-    position: sticky;
-    top: 20px;
-    align-self: start;
-    max-height: calc(100vh - 40px);
+  .tb-left { display: flex; align-items: center; gap: 16px; flex: none; }
+  /* Centred on the window; sits after the title block on narrow windows. */
+  .stepper { display: flex; align-items: center; position: absolute; left: 50%; transform: translateX(-50%); }
+  @media (max-width: 1000px) { .stepper { position: static; transform: none; margin-left: auto; } }
+  .stepper[hidden] { display: none; }
+  .step-btn {
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 18px; border: none; border-radius: 99px;
+    background: transparent; color: var(--muted);
+    font-size: 15px; font-weight: 700;
+  }
+  .step-btn i {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--border); color: var(--muted);
+    display: inline-grid; place-items: center;
+    font-style: normal; font-size: 12px;
+  }
+  .step-btn.active { background: var(--step-soft); color: var(--accent); }
+  .step-btn.active i { background: var(--accent); color: #fff; }
+  .step-btn.done i { background: var(--success); color: #fff; }
+  .step-line { width: 44px; height: 2px; background: var(--border); }
+  .step-line.done { background: var(--success); }
+  /* ---- Stage: preview in the middle, panels float over the empty left side ---- */
+  .stage {
+    position: relative;
+    min-height: calc(100vh - 56px);
+    padding: 12px 20px 128px;
+  }
+  .center-col {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .float-stack {
+    display: flex; flex-direction: column; gap: 12px;
+    width: 336px;
+    max-height: calc(100vh - 56px - 8px - 110px);
     overflow-y: auto;
+    /* side/bottom padding leaves room for the panels' shadows inside the scroll box */
+    padding: 8px 18px 28px;
+    z-index: 20;
+  }
+  .float-stack:empty { display: none; }
+  @media (min-width: 901px) {
+    .stage { padding-left: 348px; }
+    .float-stack { position: absolute; left: 2px; top: 8px; }
+  }
+  /* Wide enough to centre the preview on the whole window. */
+  @media (min-width: 1400px) {
+    .stage { padding-left: 20px; }
   }
   @media (max-width: 900px) {
-    .layout { grid-template-columns: 1fr; }
-    .preview-col { position: static; max-height: none; overflow: visible; }
+    .stage { padding-bottom: 150px; }
+    .float-stack { width: 100%; max-width: 560px; max-height: none; margin: 0 auto 4px; padding: 4px 0 12px; }
+    .topbar { flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 8px; }
+    .stepper { margin-left: 0; }
   }
   .card {
     background: var(--card-bg);
@@ -89,7 +143,6 @@
   textarea { resize: vertical; line-height: 1.5; }
   .field { margin-bottom: 14px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
-  .preview-box { margin-top: 14px; margin-bottom: 0; background: var(--card-bg); }
   .sticker-palette { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
   .sticker-btn {
     width: 82px; height: 82px; padding: 5px;
@@ -100,8 +153,8 @@
   .sticker-btn:hover { border-color: var(--accent); }
   .sticker-btn img { width: 100%; height: 100%; object-fit: contain; }
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  /* The boxes above #cellsList each carry a bottom margin, so it needs none. */
-  #cellsList { margin-top: 0; }
+  #cellsList { margin: 0; }
+  #cellsList:empty { display: none; }
   button {
     font-family: inherit;
     font-size: 14px;
@@ -120,17 +173,9 @@
   }
   button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  .canvas-wrap {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px;
-    display: flex;
-    justify-content: center;
-  }
-  .left-col { display: flex; flex-direction: column; gap: 14px; }
-  .mode-tabs { display: flex; gap: 6px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 5px; }
-  .mode-tab { flex: 1; background: transparent; border: none; border-radius: 8px; padding: 10px; color: var(--muted); font-weight: 700; font-size: 17px; }
+  .canvas-wrap { display: flex; justify-content: center; width: 100%; }
+  .mode-tabs { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .mode-tab { white-space: nowrap; background: transparent; border: none; border-radius: 8px; padding: 6px 16px; color: var(--muted); font-weight: 700; font-size: 15px; }
   .mode-tab.active { background: var(--accent); color: #fff; }
   .seg { display: flex; gap: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
   .seg button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 6px 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
@@ -138,61 +183,85 @@
   .seg-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .seg-row .swatch-label { width: 78px; flex-shrink: 0; }
   .seg-row .seg { flex: 1; }
-  /* Download buttons split the row evenly, keeping the row's gap between them. */
-  #downloadRow button { flex: 1 1 0; min-width: 0; }
+  /* ---- Bottom floating dock: T寶貼圖 (editing) + step / download actions ---- */
+  .dock {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    z-index: 45;
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px 14px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    background: #1f2328; color: #fff;
+    padding: 10px 16px; border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+  }
+  .dock-stickers { display: flex; align-items: center; gap: 12px; }
+  .dock-stickers[hidden], .dock-sep[hidden] { display: none; }
+  .dock-label { font-size: 12px; opacity: .75; white-space: nowrap; }
+  .dock-sep { width: 1px; height: 32px; background: #3a414b; }
+  .dock .sticker-palette { margin: 0; gap: 8px; flex-wrap: nowrap; }
+  .dock .sticker-btn { width: 46px; height: 46px; padding: 3px; border-radius: 10px; background: #fff; border-color: transparent; }
+  .dock .sticker-btn:hover { border-color: #2f7bff; }
+  #downloadRow { position: relative; display: flex; align-items: center; gap: 10px; }
+  #downloadRow button {
+    position: relative; white-space: nowrap;
+    background: #2d333b; border-color: #3a414b; color: #fff;
+    padding: 9px 16px; font-weight: 600;
+  }
+  #downloadRow button:hover { background: #3a414b; }
+  #downloadRow button.primary { background: #2f7bff; border-color: #2f7bff; }
+  #downloadRow button.primary:hover { background: #4a8cff; border-color: #4a8cff; }
+  #downloadRow button.ghost { background: transparent; border-color: transparent; color: #aab1bb; font-weight: 500; }
+  #downloadRow button.ghost:hover { color: #fff; background: #2d333b; }
+  /* 拼圖: 直接複製 is the highlighted (blue) button, 下載 stays white. */
+  #downloadRow button.light { background: #fff; border-color: #fff; color: #1f2328; }
+  #downloadRow button.light:hover { background: #e6e8eb; border-color: #e6e8eb; }
+  #downloadRow button[hidden] { display: none; }
   /* 全部下載 locked (incomplete cells): greyed out with an instant tooltip. */
-  #downloadRow button { position: relative; }
   #downloadRow button.is-disabled,
   #downloadRow button.is-disabled:hover {
-    background: var(--border);
-    border-color: var(--border);
-    color: var(--muted);
-    cursor: not-allowed;
+    background: #2d333b; border-color: #3a414b; color: #6b7280; cursor: not-allowed;
   }
   #downloadRow button.is-disabled:hover::after {
     content: attr(data-tip);
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1f2328;
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-    padding: 4px 10px;
-    border-radius: 6px;
-    z-index: 20;
-    pointer-events: none;
+    position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+    background: #b91c1c; color: #fff;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    padding: 4px 10px; border-radius: 6px; z-index: 20; pointer-events: none;
   }
-  #downloadRow { margin-top: 0; margin-bottom: 14px; position: relative; }
-  /* 全部下載 asks "typos checked, no photo showing white?" in a small popover under the button. */
+  .dock-chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  .dock-chip[hidden] { display: none; }
+  .dock-chip.bad { background: #fee2e2; color: #b91c1c; }
+  .dock-chip.warn { background: #fef3c7; color: #92400e; }
+  /* 全部下載 asks "typos checked, no photo showing white?" in a small popover above the button. */
   .dl-confirm {
     position: absolute;
-    top: calc(100% + 10px);
+    bottom: calc(100% + 16px);
     right: 0;
     width: 260px;
     z-index: 30;
-    background: var(--card-bg);
+    background: var(--card-bg); color: var(--text);
     border: 1px solid var(--border);
     border-top: 3px solid var(--accent);
     border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
     padding: 12px 14px 14px;
   }
-  .dl-confirm::before {
+  .dl-confirm::after {
     content: '';
     position: absolute;
-    top: -9px;
+    bottom: -8px;
     right: 62px;
-    border: 7px solid transparent;
-    border-top: 0;
-    border-bottom: 7px solid var(--accent);
+    width: 12px; height: 12px;
+    background: var(--card-bg);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    transform: rotate(45deg);
   }
   .dl-confirm[hidden] { display: none; }
   .dl-confirm-text { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
   .dl-confirm-actions { display: flex; gap: 8px; }
-  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 8px 6px; font-size: 14px; }
+  #downloadRow .dl-confirm-actions button { flex: 1 1 0; height: auto; padding: 8px 6px; font-size: 14px; background: var(--card-bg); border-color: var(--border); color: var(--text); }
+  #downloadRow .dl-confirm-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   #collageBox .btn-row button { padding: 6px 10px; font-size: 13px; }
   #cellsList.collage .field-header, #cellsList.collage .field-row { display: none; }
   canvas {
@@ -206,7 +275,7 @@
   .status-toast {
     position: fixed;
     left: 50%;
-    bottom: 24px;
+    bottom: 108px;
     transform: translate(-50%, 24px);
     width: max-content;
     max-width: min(560px, calc(100vw - 48px));
@@ -226,9 +295,66 @@
   .status-toast.error { background: #b91c1c; }
   .status-toast.show { opacity: 1; transform: translate(-50%, 0); }
   .status-toast[hidden] { display: none; }
-  .page-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
-  .page-tab { flex: 1; background: transparent; border: none; border-radius: 7px; padding: 8px 10px; color: var(--muted); font-weight: 600; font-size: 16px; }
-  .page-tab.active { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .page-tabs { display: flex; gap: 2px; margin: 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .page-tab { background: transparent; border: none; border-radius: 7px; padding: 6px 18px; color: var(--muted); font-weight: 600; font-size: 15px; }
+  .page-tab.active { background: var(--step-soft); color: var(--accent); }
+  .page-tabs[hidden] { display: none; }
+  /* ---- Floating panels on the left ---- */
+  .float-stack > .top-label-box,
+  .float-stack > #cellsList .cell-box,
+  .float-stack > .check-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .16);
+    margin: 0;
+    padding: 14px;
+  }
+  .float-stack > #cellsList .cell-box.active { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0, 0, 0, .18), 0 0 0 1px var(--accent); }
+  .float-stack > [hidden] { display: none; }
+  .panel-x { position: absolute; top: 8px; right: 8px; border: none; background: transparent; color: var(--muted); padding: 2px 8px; font-size: 16px; line-height: 1; }
+  .panel-x:hover { background: var(--bg); color: var(--text); }
+  #quickfillBox { position: relative; }
+  #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
+  .qf-reopen { align-self: flex-start; padding: 8px 16px; font-weight: 700; border-color: var(--accent); color: var(--accent); background: var(--card-bg); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); }
+  .qf-reopen:hover { background: var(--step-soft); }
+  /* ---- Step 2 check panel ---- */
+  .check-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 15px; font-weight: 700; }
+  .check-head small { font-size: 12px; font-weight: 700; }
+  .check-head small.bad { color: #b91c1c; }
+  .check-head small.ok { color: #15803d; }
+  .check-head small.warn { color: #b45309; }
+  .check-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .check-row:hover { background: var(--bg); }
+  .check-row.sel { background: var(--step-soft); }
+  .check-row .n { flex: none; width: 22px; height: 22px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+  .check-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .check-row .t.empty { color: var(--muted); }
+  .chip { flex: none; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+  .chip.ok { background: #dcfce7; color: #15803d; }
+  .chip.bad { background: #fee2e2; color: #b91c1c; }
+  .chip.warn { background: #fef3c7; color: #92400e; }
+  .check-note { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .check-other { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
+  .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
+  /* ---- Copy bar under the preview (step 2, one cell picked) ---- */
+  .copy-bar { display: flex; align-items: center; gap: 10px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 8px 8px 8px 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px; max-width: 100%; }
+  .copy-bar[hidden] { display: none; }
+  .copy-bar .cb-url { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+  .copy-bar button { padding: 7px 14px; font-weight: 700; font-size: 14px; }
+  /* ---- Reminder when something is dragged while the photos are locked ---- */
+  .lock-toast {
+    position: fixed; left: 50%; bottom: 108px; transform: translate(-50%, 24px);
+    z-index: 61; display: flex; align-items: center; gap: 12px;
+    background: #1f2328; color: #fff;
+    padding: 9px 10px 9px 16px; border-radius: 99px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+    font-size: 14px; white-space: nowrap;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+  }
+  .lock-toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .lock-toast[hidden] { display: none; }
+  .lock-toast button { background: #2f7bff; border: none; color: #fff; border-radius: 99px; padding: 6px 14px; font-weight: 700; font-size: 14px; }
   .top-label-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -236,24 +362,8 @@
     margin-bottom: 14px;
     background: var(--bg);
   }
-  .quickfill-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    user-select: none;
-  }
-  .quickfill-title { font-size: 15px; font-weight: 600; }
-  .quickfill-chevron {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; border-radius: 50%;
-    border: 2px solid var(--accent); color: var(--accent);
-    font-size: 15px; line-height: 1; padding-left: 2px;
-    transition: transform .15s, background .15s, color .15s;
-  }
-  .quickfill-body { margin-top: 10px; }
-  .quickfill-body.collapsed { display: none; }
-  .quickfill-header.open .quickfill-chevron { transform: rotate(90deg); background: var(--accent); color: #fff; }
+  .quickfill-header { display: flex; align-items: center; margin-bottom: 8px; }
+  .quickfill-title { font-size: 15px; font-weight: 700; }
   .cell-box {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -498,34 +608,26 @@
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
+<header class="topbar">
+  <div class="tb-left">
     <h1>Line推播套版產生器</h1>
-    <p class="sub" id="modeSub"></p>
-  </header>
-
-  <div class="layout">
-    <div class="left-col">
     <div class="mode-tabs">
       <button type="button" class="mode-tab active" data-mode="news">新聞</button>
       <button type="button" class="mode-tab" data-mode="ent">娛樂</button>
       <button type="button" class="mode-tab" data-mode="collage">拼圖</button>
     </div>
-    <div class="card">
-      <div class="btn-row" id="downloadRow">
-        <button id="downloadJpgBtn">下載本頁</button>
-        <button class="primary" id="downloadAllBtn">全部下載</button>
-        <button class="primary" id="copyCollageBtn" style="display:none">直接複製</button>
-        <div class="dl-confirm" id="dlConfirm" role="dialog" aria-label="下載前確認" hidden>
-          <div class="dl-confirm-text">已確認無錯字、圖片無露白？</div>
-          <div class="dl-confirm-actions">
-            <button type="button" id="dlConfirmBack">再修改</button>
-            <button type="button" class="primary" id="dlConfirmOk">確認下載</button>
-          </div>
-        </div>
-      </div>
+  </div>
+  <nav class="stepper" id="stepper" aria-label="製作步驟">
+    <button type="button" class="step-btn active" data-step="1"><i>1</i>編輯畫面</button>
+    <span class="step-line" id="stepLine"></span>
+    <button type="button" class="step-btn" data-step="2"><i>2</i>畫面檢查</button>
+  </nav>
+  <p class="sub" id="modeSub" hidden></p>
+</header>
 
-      <div class="top-label-box" id="collageBox" style="display:none">
+<main class="stage" id="stage">
+  <div class="float-stack" id="floatStack">
+    <div class="top-label-box" id="collageBox" hidden>
         <label>版面方式</label>
         <div class="seg" id="collageLayoutSeg">
           <button type="button" data-layout="grid" class="active">等分</button>
@@ -565,20 +667,21 @@
         </div>
       </div>
 
-      <div class="top-label-box" id="quickfillBox">
-        <div class="quickfill-header open" id="quickfillHeader">
-          <span class="quickfill-title">快速填入</span>
-          <span class="quickfill-chevron" id="quickfillChevron">▸</span>
-        </div>
-        <div class="quickfill-body" id="quickfillBody">
-          <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;整段過審推播新聞貼入即可&#10;標題含有空格或驚嘆號、問號，就會自動換行&#10;（網址會自動略過，可直接貼上）"></textarea>
-          <div class="btn-row">
-            <button type="button" id="quickfillBtn">快速填入</button>
-          </div>
+    <div class="top-label-box" id="quickfillBox">
+      <button type="button" class="panel-x" id="quickfillClose" aria-label="收起快速填入" title="收起">✕</button>
+      <div class="quickfill-header" id="quickfillHeader">
+        <span class="quickfill-title">快速填入</span>
+      </div>
+      <div class="quickfill-body" id="quickfillBody">
+        <textarea id="quickfillText" rows="6" placeholder="★標題第一行 標題第二行&#10;整段過審推播新聞貼入即可&#10;標題含有空格或驚嘆號、問號，就會自動換行&#10;（網址會自動略過，可直接貼上）"></textarea>
+        <div class="btn-row">
+          <button type="button" class="primary" id="quickfillBtn">快速填入</button>
         </div>
       </div>
+    </div>
+    <button type="button" class="qf-reopen" id="quickfillReopen" hidden>快速填入</button>
 
-      <div class="top-label-box" id="newsHeaderBox">
+    <div class="top-label-box" id="newsHeaderBox">
         <div class="field">
           <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px">
             <input type="checkbox" id="showHeaderToggle" checked style="width:auto; margin:0">
@@ -588,32 +691,54 @@
         </div>
       </div>
 
-      <div id="cellsList"></div>
+    <div id="cellsList"></div>
 
-      <div class="btn-row">
-        <button id="resetAllBtn">清除本頁</button>
-      </div>
+    <div class="check-panel" id="checkPanel" hidden></div>
+  </div>
+
+  <div class="center-col" id="centerCol">
+    <div class="page-tabs">
+      <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
+      <button type="button" class="page-tab" data-page="1">第 2 頁</button>
     </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="canvas" width="1040" height="800"></canvas>
     </div>
+    <div class="copy-bar" id="copyBar" hidden>
+      <b id="copyBarName"></b>
+      <span class="cb-url" id="copyBarUrl"></span>
+      <button type="button" class="primary" id="copyBarBtn">複製推播連結</button>
+    </div>
+  </div>
+</main>
 
-    <div class="preview-col">
-      <div class="page-tabs">
-        <button type="button" class="page-tab active" data-page="0">第 1 頁</button>
-        <button type="button" class="page-tab" data-page="1">第 2 頁</button>
-      </div>
-      <div class="canvas-wrap">
-        <canvas id="canvas" width="1040" height="800"></canvas>
-      </div>
-
-      <div class="top-label-box preview-box">
-        <div class="field" style="margin-bottom:0">
-          <label>T寶貼圖</label>
-          <div class="hint" style="margin-top:0; margin-bottom:8px">先在上方預覽圖點選要編輯的格子，再點下方貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。</div>
-          <div class="sticker-palette" id="stickerPalette"></div>
-        </div>
+<div class="dock" id="dock">
+  <div class="dock-stickers" id="dockStickers" title="先在預覽圖點選要編輯的格子，再點貼圖加入；可在預覽圖上拖曳移動、滑鼠滾輪縮放，點貼圖右上角「✕」移除。">
+    <span class="dock-label">T寶貼圖</span>
+    <div class="sticker-palette" id="stickerPalette"></div>
+  </div>
+  <span class="dock-sep" id="dockSep"></span>
+  <div id="downloadRow">
+    <span class="dock-chip" id="dockChip" hidden></span>
+    <button type="button" class="ghost" id="resetAllBtn">清除本頁</button>
+    <button type="button" id="backStepBtn" hidden>← 返回編輯</button>
+    <button type="button" class="primary" id="nextStepBtn">下一步：畫面檢查 →</button>
+    <button type="button" class="light" id="downloadJpgBtn" hidden>下載本頁</button>
+    <button type="button" class="primary" id="downloadAllBtn" hidden>全部下載</button>
+    <button type="button" class="primary" id="copyCollageBtn" hidden>直接複製</button>
+    <div class="dl-confirm" id="dlConfirm" role="dialog" aria-label="下載前確認" hidden>
+      <div class="dl-confirm-text">已確認無錯字、圖片無露白？</div>
+      <div class="dl-confirm-actions">
+        <button type="button" id="dlConfirmBack">再修改</button>
+        <button type="button" class="primary" id="dlConfirmOk">確認下載</button>
       </div>
     </div>
   </div>
+</div>
+
+<div class="lock-toast" id="lockToast" role="status" hidden>
+  <span>🔒 照片已鎖定，無法在這一步調整</span>
+  <button type="button" id="lockToastBtn">返回上一步更改</button>
 </div>
 
 <div class="status-toast" id="statusToast" role="status" aria-live="polite" title="點一下關閉" hidden></div>
@@ -636,7 +761,7 @@
       <li>
         <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-6 2-2 6z"/></svg></span>
         <div class="tip-text"><b>填錯了？點格子就能改</b>
-          <span>直接點預覽圖上的格子，就能在左側單獨修改那一格，不用重新快速填入。</span>
+          <span>直接點預覽圖上的格子，左側就會浮出那一格的編輯面板，改完點空白處收起，不用重新快速填入。</span>
         </div>
       </li>
       <li>
@@ -671,17 +796,17 @@
 
       <h3>操作流程</h3>
       <ol class="help-steps">
-        <li><b>選版型</b>：編輯區最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
+        <li><b>選版型</b>：畫面最上方點「新聞」「娛樂」或「拼圖」。各版型的內容各自保留，切換不會不見。</li>
         <li><b>選頁面</b>：預覽圖上方點「第 1 頁／第 2 頁」，兩頁各自獨立。
           <br><span class="help-note">新聞第 1 頁可在「頂部標籤」下方的欄位改黃色標籤列的字，或取消勾選隱藏標籤列。</span></li>
-        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：編輯區一次只顯示一格（預設第一格），在預覽圖上點哪一格，就換成那一格的編輯區。
+        <li><b>填標題</b>：在「快速填入」貼上內容，按「快速填入」一次套進所有格子；也可以手動輸入：點預覽圖上的格子，左側就浮出那一格的編輯面板，點空白處收起。按下「快速填入」後面板會自動收起，左上的「快速填入」按鈕可以再打開。
           <div class="help-code">★直擊)第一行標題 第二行標題</div>
           <span class="help-note">★ 開頭一則一格；「標籤)」寫在★後面會變成標籤，不寫就沒有標籤；碰到空格（全形、半形）或「!」「?」就自動換到第二行；整段過審推播新聞直接貼入即可，網址行會自動略過。</span>
           <span class="help-note" id="helpAutoImg" hidden><br>★ 下一行的文章連結會自動抓第一張圖放進對應格子；之後想換圖，直接拖進新圖或選好格子按 Ctrl+V 即可（手動放的圖，再按一次快速填入也不會被蓋掉）。</span></li>
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
-        <li><b>遮擋人物（選用）</b>：先選格子，再點預覽圖下方「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>下載</b>：按「下載本頁」存目前這頁，或「全部下載」一次存兩頁。</li>
+        <li><b>遮擋人物（選用）</b>：先選格子，再點畫面底部「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
+        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題、露白；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
       </ol>
 
       <h3>拼圖</h3>
@@ -850,6 +975,16 @@ const LAYOUTS = {
 };
 let mode = 'news';
 function L() { return LAYOUTS[mode]; }
+// 新聞／娛樂 work in two steps: 1 編輯畫面, 2 畫面檢查 (photos locked, downloads
+// unlocked). 拼圖 has no headline check, so it has no steps.
+let step = 1;
+const stepByMode = { news: 1, ent: 1 };
+// Whether a cell is picked: only then does its editor float on the left and its
+// frame light up on the preview. Clicking empty space un-picks it.
+let cellSelected = false;
+let quickfillOpen = true;
+let chromeReady = false;     // syncChrome() waits until every element it touches exists
+function isLocked() { return mode !== 'collage' && step === 2; }
 // Mode-dependent values the rest of the code reads as plain globals.
 let CELL_COUNT, CELL_LABELS, LINE_COLORS, TAG_COLORS, STICKER_BASE_SIZE;
 function applyModeGlobals() {
@@ -1619,7 +1754,7 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   drawTemplateOverlay(ctx, pageState.showHeader);
   if (renderMode === 'final') {
-    for (let i = 0; i < CELL_COUNT; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive);
+    for (let i = 0; i < CELL_COUNT; i++) drawCellStickers(ctx, pageState.cards[i], opts.interactive && !isLocked());
     for (let i = 0; i < CELL_COUNT; i++) {
       if (mode === 'ent') drawEntCellText(ctx, i, pageState.cards[i]);
       else if (mode === 'news') drawCellText(ctx, cellRect(i, pageState.showHeader), pageState.cards[i]);
@@ -1628,7 +1763,7 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
 
-  if (opts.showActiveBorder && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
+  if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
@@ -1736,6 +1871,7 @@ function setCardImageAt(pageIdx, i, image, fileName, source = 'manual') {
   state.offsetY = (cell.h - dh) / 2;
   if (pageIdx === activePageIndex) refreshCardThumb(i);
   render();
+  if (isLocked()) syncChrome();
 }
 function setCardImage(i, image, fileName) { setCardImageAt(activePageIndex, i, image, fileName, 'manual'); }
 
@@ -1769,18 +1905,10 @@ function buildCardUI(i) {
   copyPushBtn.className = 'copy-push-btn primary';
   copyPushBtn.textContent = '複製推播連結';
   copyPushBtn.title = '複製這一格的推播連結（後方自動加上 UTM）';
-  copyPushBtn.addEventListener('click', async e => {
+  copyPushBtn.addEventListener('click', e => {
     e.stopPropagation();   // don't open the file picker
     setActiveCard(i);
-    const link = withUtm(activePage().cards[i].url);
-    if (!link) { statusEl.show(`第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`, 'error'); return; }
-    const ok = await copyText(link);
-    if (ok) statusEl.show(`已複製第 ${i + 1} 格推播連結（含 UTM）`, 'success');
-    else statusEl.show('這個瀏覽器無法複製，請改用手動複製', 'error');
-    if (ok) {
-      copyPushBtn.textContent = '已複製 ✓';
-      setTimeout(() => { copyPushBtn.textContent = '複製推播連結'; }, 1500);
-    }
+    copyPushLink(i, copyPushBtn);
   });
   dz.appendChild(fi);
   // Photo drop area and the copy button are two independent halves of one row.
@@ -2022,9 +2150,17 @@ function syncAllCellUI() {
   for (let i = 0; i < CELL_COUNT; i++) syncCellUIFromState(i);
 }
 
-function setActiveCard(i) {
+function setActiveCard(i, select = true) {
   activeCard = i;
+  if (select) cellSelected = true;
   cardEls.forEach((el, idx) => el.box.classList.toggle('active', idx === i));
+  syncChrome();
+  render();
+}
+function clearSelection() {
+  if (!cellSelected) return;
+  cellSelected = false;
+  syncChrome();
   render();
 }
 
@@ -2036,7 +2172,7 @@ function buildAllCardUI() {
   for (let i = 0; i < CELL_COUNT; i++) buildCardUI(i);
 }
 buildAllCardUI();
-setActiveCard(0);
+setActiveCard(0, false);
 
 // ---------------------------------------------------------------------------
 // Canvas drag-to-pan / wheel-to-zoom
@@ -2073,6 +2209,7 @@ function cellIndexAt(x, y) {
 
 let drag = null;
 let stickerDrag = null;
+let lockProbe = null;   // pointer pressed on a cell while locked: a drag from here shows the reminder
 let tagDrag = null;
 let collageDrag = null;
 
@@ -2219,8 +2356,16 @@ function pointerDown(evt) {
   const pos = getCanvasPos(evt);
   if (mode === 'collage' && collagePointerDown(evt, pos)) return;
   const idx = cellIndexAt(pos.x, pos.y);
-  if (idx < 0) return;
+  if (idx < 0) { clearSelection(); return; }
   const state = activePage().cards[idx];
+
+  // 步驟 2: photos, tags and stickers are locked. A click just picks the cell
+  // (for 複製推播連結); dragging it shows the 「返回上一步更改」 reminder.
+  if (isLocked()) {
+    setActiveCard(idx);
+    lockProbe = { startX: pos.x, startY: pos.y };
+    return;
+  }
 
   if (mode === 'news') {
     const cell = cellRect(idx, activePage().showHeader);
@@ -2254,7 +2399,6 @@ function pointerDown(evt) {
   }
 
   setActiveCard(idx);
-  cardEls[idx].box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   if (!state.img) return;
   evt.preventDefault();
   drag = { idx, startX: pos.x, startY: pos.y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
@@ -2264,6 +2408,14 @@ function pointerDown(evt) {
 function pointerMove(evt) {
   const pos = getCanvasPos(evt);
   if (collageDrag) { collagePointerMove(evt, pos); return; }
+  if (lockProbe) {
+    if (Math.hypot(pos.x - lockProbe.startX, pos.y - lockProbe.startY) > 6) { lockProbe = null; showLockReminder(); }
+    return;
+  }
+  if (isLocked() && !drag && !tagDrag && !stickerDrag) {
+    canvas.style.cursor = cellIndexAt(pos.x, pos.y) >= 0 ? 'pointer' : 'default';
+    return;
+  }
   if (tagDrag) {
     evt.preventDefault();
     const state = activePage().cards[tagDrag.idx];
@@ -2311,6 +2463,7 @@ function pointerMove(evt) {
 
 function pointerUp() {
   if (collageDrag) collagePointerUp();
+  lockProbe = null;
   drag = null;
   stickerDrag = null;
   tagDrag = null;
@@ -2321,6 +2474,7 @@ canvas.addEventListener('mousedown', pointerDown);
 window.addEventListener('mousemove', pointerMove);
 window.addEventListener('mouseup', pointerUp);
 canvas.addEventListener('dblclick', evt => {
+  if (isLocked()) { showLockReminder(); return; }
   if (mode === 'collage' && activePage().collage.layout === 'free' && activePage().collage.editFrames) return;
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
@@ -2340,6 +2494,10 @@ canvas.addEventListener('wheel', evt => {
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
   const state = activePage().cards[idx];
+  if (isLocked()) {
+    if (state.img || state.stickers.length) { evt.preventDefault(); showLockReminder(); }
+    return;
+  }
 
   const stIdx = stickerHit(state, pos.x, pos.y);
   if (stIdx >= 0) {
@@ -2365,6 +2523,7 @@ canvas.addEventListener('wheel', evt => {
 canvas.addEventListener('dragover', evt => evt.preventDefault());
 canvas.addEventListener('drop', evt => {
   evt.preventDefault();
+  if (isLocked()) { showLockReminder(); return; }
   const pos = getCanvasPos(evt);
   const idx = cellIndexAt(pos.x, pos.y);
   if (idx < 0) return;
@@ -2381,7 +2540,11 @@ document.addEventListener('paste', e => {
   for (const item of items) {
     if (item.type && item.type.startsWith('image/')) {
       const file = item.getAsFile();
-      if (activeCard < 0 || activeCard >= CELL_COUNT) break;
+      if (isLocked()) { showLockReminder(); break; }
+      if (!cellSelected || activeCard < 0 || activeCard >= CELL_COUNT) {
+        statusEl.show('先點預覽圖選一格，再按 Ctrl+V 貼上圖片');
+        break;
+      }
       loadImageFile(file, (image, name) => {
         setCardImage(activeCard, image, name);
         refreshCardThumb(activeCard);
@@ -2428,7 +2591,8 @@ pageTabs.forEach(btn => {
     pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === idx));
     syncTopUIFromState();
     syncAllCellUI();
-    setActiveCard(0);
+    cellSelected = false;
+    setActiveCard(0, false);
   });
 });
 
@@ -2643,13 +2807,40 @@ function pageMissingReport(pageState) {
   });
   return rows;
 }
+// 露白: the photo no longer covers its whole cell (it may be pushed past the edge
+// a little on purpose, but the exported image must not show white). A warning
+// only — it can't be told apart from an intended crop, so it never locks downloads.
+function cardHasGap(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return false;
+  const cell = cellRect(i, pageState.showHeader);
+  const { dw, dh } = cellImageSize(cell, st);
+  const e = 0.5;
+  return st.offsetX > e || st.offsetY > e || st.offsetX + dw < cell.w - e || st.offsetY + dh < cell.h - e;
+}
+function pageGapCount(pageState) {
+  let n = 0;
+  for (let i = 0; i < pageState.cards.length; i++) if (cardHasGap(pageState, i)) n++;
+  return n;
+}
 function updateDownloadState() {
   const downloadAllBtn = document.getElementById('downloadAllBtn');
-  const locked = mode !== 'collage' && pages.some(pg => pageMissingReport(pg).length > 0);
+  const missing = mode === 'collage' ? 0 : pages.reduce((n, pg) => n + pageMissingReport(pg).length, 0);
+  const gaps = mode === 'collage' ? 0 : pages.reduce((n, pg) => n + pageGapCount(pg), 0);
+  const locked = missing > 0;
   downloadAllBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
   if (locked) { const c = document.getElementById('dlConfirm'); if (c) c.hidden = true; }
   downloadAllBtn.classList.toggle('is-disabled', locked);
   if (locked) downloadAllBtn.dataset.tip = '圖片製作未完成！'; else delete downloadAllBtn.dataset.tip;
+  const chip = document.getElementById('dockChip');
+  if (chip) {
+    const show = step === 2 && mode !== 'collage' && (missing || gaps);
+    chip.hidden = !show;
+    if (show) {
+      chip.className = 'dock-chip ' + (missing ? 'bad' : 'warn');
+      chip.textContent = missing ? `${missing} 項待補，尚不能全部下載` : `${gaps} 格圖片疑似露白，請確認`;
+    }
+  }
 }
 document.getElementById('downloadJpgBtn').addEventListener('click', async () => {
   if (mode !== 'collage') {
@@ -2686,6 +2877,7 @@ document.getElementById('downloadAllBtn').addEventListener('click', e => {
   e.stopPropagation();
   if (e.currentTarget.getAttribute('aria-disabled') === 'true') return;
   dlConfirm.hidden = !dlConfirm.hidden;
+  if (!dlConfirm.hidden) hideStatusToast();
 });
 document.getElementById('dlConfirmBack').addEventListener('click', hideDlConfirm);
 document.getElementById('dlConfirmOk').addEventListener('click', () => { hideDlConfirm(); runDownloadAll(); });
@@ -2876,20 +3068,14 @@ document.getElementById('quickfillBtn').addEventListener('click', () => {
   if (entries.length) statusEl.show(baseMsg, 'success');
   else statusEl.show('沒有找到任何「★」開頭的內容可以填入', 'error');
   if (entries.length) autoFetchImages(entries, baseMsg);
-  // Once something was actually filled in, fold the box away to make room
-  // (it stays open when nothing matched, so the pasted text can be fixed).
-  if (entries.length) {
-    quickfillBody.classList.add('collapsed');
-    quickfillHeader.classList.remove('open');
-  }
+  // Once something was actually filled in, tuck the panel away (it stays open
+  // when nothing matched, so the pasted text can be fixed); 「快速填入」 on the
+  // left brings it back.
+  if (entries.length) { quickfillOpen = false; syncChrome(); }
 });
+document.getElementById('quickfillClose').addEventListener('click', () => { quickfillOpen = false; syncChrome(); });
+document.getElementById('quickfillReopen').addEventListener('click', () => { quickfillOpen = true; syncChrome(); });
 
-const quickfillHeader = document.getElementById('quickfillHeader');
-const quickfillBody = document.getElementById('quickfillBody');
-quickfillHeader.addEventListener('click', () => {
-  const collapsed = quickfillBody.classList.toggle('collapsed');
-  quickfillHeader.classList.toggle('open', !collapsed);
-});
 
 const CONFIRM_DEFAULTS = {
   title: '確定要清除本頁？',
@@ -2927,8 +3113,9 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
     syncCollageCount();
     buildAllCardUI();
     syncCollageUI();
-    setActiveCard(0);
   }
+  cellSelected = false;
+  setActiveCard(0, false);
   syncTopUIFromState();
   syncAllCellUI();
   render();
@@ -2983,7 +3170,7 @@ STICKER_DEFS.forEach(def => {
   btn.appendChild(img);
   btn.addEventListener('click', () => {
     const idx = activeCard;
-    if (idx < 0 || idx >= CELL_COUNT) return;
+    if (!cellSelected || idx < 0 || idx >= CELL_COUNT) { statusEl.show('先點預覽圖選一格，再加貼圖'); return; }
     const state = activePage().cards[idx];
     const cell = cellRect(idx, activePage().showHeader);
     state.stickers.push({ key: def.key, x: cell.x + cell.w / 2, y: cell.y + cell.h / 2, scale: 1 });
@@ -3011,35 +3198,26 @@ function applyModeChrome() {
   canvas.height = l.H;
   canvas.style.aspectRatio = `${l.W} / ${l.H}`;
   canvas.style.maxWidth = `${l.previewMaxWidth}px`;
-  newsHeaderBox.style.display = mode === 'news' ? '' : 'none';
   const isCollage = mode === 'collage';
-  document.getElementById('quickfillBox').style.display = isCollage ? 'none' : '';
-  document.getElementById('collageBox').style.display = isCollage ? '' : 'none';
-  document.querySelector('.page-tabs').style.display = isCollage ? 'none' : '';
-  document.getElementById('downloadAllBtn').style.display = isCollage ? 'none' : '';
-  // 拼圖: 直接複製 is the highlighted (blue) button, 下載 stays white.
-  document.getElementById('copyCollageBtn').style.display = isCollage ? '' : 'none';
-  document.getElementById('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
-  document.getElementById('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
   cellsList.classList.toggle('collage', isCollage);
   modeSubEl.textContent = l.sub;
   modeTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   pageTabs.forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
   fitPreviewSize();
   syncTipToast();
+  syncChrome();
 }
 
-// The preview column is sticky with its own max height (viewport − 40px) and
-// scrolls internally when taller. Rather than showing a second scrollbar, the
-// canvas shrinks just enough that the whole column fits the window (never
-// below 320px wide, and never above the mode's normal preview width).
+// The preview sits in the middle of the window between the top bar and the
+// floating dock; it shrinks just enough to fit that height (never above the
+// mode's normal preview width, and never narrower than the minimum below).
 function fitPreviewSize() {
   const l = L();
-  const col = document.querySelector('.preview-col');
   canvas.style.maxWidth = `${l.previewMaxWidth}px`;
-  if (getComputedStyle(col).position !== 'sticky') return;
-  const chrome = col.scrollHeight - canvas.getBoundingClientRect().height;
-  const availH = window.innerHeight - 40 - chrome - 2;
+  if (window.innerWidth <= 900) return;
+  const tabsH = mode === 'collage' ? 0 : 46;
+  const reserve = 56 + 12 + tabsH + 10 + 58 + 124;   // top bar, gaps, page tabs, copy bar, dock
+  const availH = window.innerHeight - reserve;
   // Tall boards may go narrower than 320px so the whole thing still fits.
   const minW = Math.max(120, Math.min(320, 320 * l.W / l.H));
   const w = clamp(Math.floor(availH * l.W / l.H), minW, l.previewMaxWidth);
@@ -3060,11 +3238,17 @@ function setMode(newMode) {
   if (newMode === mode) return;
   pagesByMode[mode] = pages;
   pageIndexByMode[mode] = activePageIndex;
-  quickfillByMode[mode] = { text: quickfillText.value, open: !quickfillBody.classList.contains('collapsed') };
+  quickfillByMode[mode] = { text: quickfillText.value, open: quickfillOpen };
   quickfillText.value = quickfillByMode[newMode].text;
-  quickfillBody.classList.toggle('collapsed', !quickfillByMode[newMode].open);
-  quickfillHeader.classList.toggle('open', quickfillByMode[newMode].open);
+  quickfillOpen = quickfillByMode[newMode].open;
+  if (mode !== 'collage') stepByMode[mode] = step;
+  step = newMode === 'collage' ? 1 : stepByMode[newMode];
+  cellSelected = false;
+  hideDlConfirm();
+  hideLockReminder();
   drag = null;
+  tagDrag = null;
+  lockProbe = null;
   stickerDrag = null;
   collageDrag = null;
   mode = newMode;
@@ -3076,7 +3260,7 @@ function setMode(newMode) {
   buildAllCardUI();
   syncTopUIFromState();
   syncAllCellUI();
-  setActiveCard(0);
+  setActiveCard(0, false);
 }
 
 modeTabs.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
@@ -3117,7 +3301,7 @@ function collageLayoutChanged(nextActive) {
   syncAllCellUI();
   refitCollagePhotos();
   syncCollageUI();
-  setActiveCard(clamp(nextActive, 0, Math.max(0, CELL_COUNT - 1)));
+  setActiveCard(clamp(nextActive, 0, Math.max(0, CELL_COUNT - 1)), false);
 }
 
 function setCollageGrid(cols, rows) {
@@ -3267,6 +3451,173 @@ document.getElementById('copyCollageBtn').addEventListener('click', async () => 
     statusEl.show('這個瀏覽器無法直接複製圖片，請改用「下載」後再上傳到格子。', 'error');
   }
 });
+// ---------------------------------------------------------------------------
+// 兩步驟流程與浮動面板：1 編輯畫面 → 2 畫面檢查（鎖定照片、開放下載）
+// ---------------------------------------------------------------------------
+function goStep(n) {
+  if (mode === 'collage') return;
+  n = n === 2 ? 2 : 1;
+  if (n === step) return;
+  step = n;
+  stepByMode[mode] = n;
+  hideDlConfirm();
+  hideLockReminder();
+  drag = null; tagDrag = null; stickerDrag = null; lockProbe = null;
+  syncChrome();
+  render();
+}
+document.querySelectorAll('.step-btn').forEach(b => b.addEventListener('click', () => goStep(Number(b.dataset.step))));
+document.getElementById('nextStepBtn').addEventListener('click', () => goStep(2));
+document.getElementById('backStepBtn').addEventListener('click', () => goStep(1));
+
+// Clicking empty space (not a panel, the preview or a button) un-picks the cell.
+document.getElementById('stage').addEventListener('mousedown', e => {
+  const id = e.target.id;
+  if (id === 'stage' || id === 'centerCol' || id === 'canvasWrap') clearSelection();
+});
+
+// Dragging a photo, tag or sticker while step 2 has them locked.
+const lockToast = document.getElementById('lockToast');
+let lockToastTimer = null;
+function showLockReminder() {
+  hideStatusToast();
+  clearTimeout(lockToastTimer);
+  lockToast.hidden = false;
+  void lockToast.offsetWidth;
+  lockToast.classList.add('show');
+  lockToastTimer = setTimeout(hideLockReminder, 5000);
+}
+function hideLockReminder() {
+  clearTimeout(lockToastTimer);
+  lockToast.classList.remove('show');
+  lockToast.hidden = true;
+}
+document.getElementById('lockToastBtn').addEventListener('click', () => { hideLockReminder(); goStep(1); });
+
+async function copyPushLink(i, btn) {
+  const link = withUtm(activePage().cards[i].url);
+  if (!link) { statusEl.show(`第 ${i + 1} 格沒有連結可以複製（連結來自快速填入時標題下一行的網址）`, 'error'); return; }
+  const ok = await copyText(link);
+  if (ok) statusEl.show(`已複製第 ${i + 1} 格推播連結（含 UTM）`, 'success');
+  else statusEl.show('這個瀏覽器無法複製，請改用手動複製', 'error');
+  if (ok && btn) {
+    const old = btn.textContent;
+    btn.textContent = '已複製 ✓';
+    setTimeout(() => { btn.textContent = old === '已複製 ✓' ? '複製推播連結' : old; }, 1500);
+  }
+}
+document.getElementById('copyBarBtn').addEventListener('click', e => {
+  if (cellSelected) copyPushLink(activeCard, e.currentTarget);
+});
+
+// Step 2's left panel: the existing completeness rules (headline lines + photo),
+// plus a 露白 warning, listed per cell of the current page.
+function renderCheckPanel() {
+  const panel = document.getElementById('checkPanel');
+  const pg = activePage();
+  let bad = 0, warn = 0;
+  const rows = pg.cards.map((st, i) => {
+    const miss = cardMissing(st);
+    const gap = cardHasGap(pg, i);
+    bad += miss.length;
+    if (gap) warn++;
+    return { st, i, miss, gap };
+  });
+  panel.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'check-head';
+  head.append('畫面檢查');
+  const sum = document.createElement('small');
+  sum.className = bad ? 'bad' : (warn ? 'warn' : 'ok');
+  sum.textContent = bad ? `${bad} 項待補` : (warn ? `${warn} 格疑似露白` : '全部通過');
+  head.appendChild(sum);
+  panel.appendChild(head);
+  rows.forEach(({ st, i, miss, gap }) => {
+    const row = document.createElement('div');
+    row.className = 'check-row' + (cellSelected && i === activeCard ? ' sel' : '');
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = String(i + 1);
+    const t = document.createElement('span'); t.className = 't';
+    const title = [st.line1, st.line2].map(x => (x || '').trim()).filter(Boolean).join(' ');
+    t.textContent = title || '尚未填入';
+    if (!title) t.classList.add('empty');
+    row.append(n, t);
+    const chip = (text, kind) => { const c = document.createElement('span'); c.className = `chip ${kind}`; c.textContent = text; row.appendChild(c); };
+    if (miss.includes('圖片')) chip('缺圖片', 'bad'); else if (gap) chip('露白', 'warn'); else chip('圖', 'ok');
+    if (miss.includes('標題')) chip('缺標題', 'bad'); else chip('字', 'ok');
+    row.addEventListener('click', () => setActiveCard(i));
+    panel.appendChild(row);
+  });
+  const note = document.createElement('div');
+  note.className = 'check-note';
+  note.textContent = (bad || warn)
+    ? '要補圖、改字或調整照片，請按下方「返回編輯」；點上面任一格可選取該格。'
+    : '每格都有圖、有標題。點預覽圖上的格子，可複製該格推播連結。';
+  panel.appendChild(note);
+  // The other page counts too: 全部下載 needs both pages complete.
+  const otherIdx = 1 - activePageIndex;
+  const other = pages[otherIdx];
+  const ob = pageMissingReport(other).length, og = pageGapCount(other);
+  const line = document.createElement('div');
+  line.className = 'check-other';
+  line.append(`第 ${otherIdx + 1} 頁：${ob ? `${ob} 項待補` : (og ? `${og} 格疑似露白` : '全部通過')}`);
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.textContent = '前往';
+  go.addEventListener('click', () => document.querySelector(`.page-tab[data-page="${otherIdx}"]`).click());
+  line.appendChild(go);
+  panel.appendChild(line);
+}
+
+// One place that decides what is visible for the current mode / step / selection.
+function syncChrome() {
+  if (!chromeReady) return;
+  const $ = id => document.getElementById(id);
+  const isCollage = mode === 'collage';
+  const editing = !isCollage && step === 1;
+  const checking = !isCollage && step === 2;
+
+  $('stepper').hidden = isCollage;
+  document.querySelectorAll('.step-btn').forEach(b => {
+    const n = Number(b.dataset.step);
+    b.classList.toggle('active', n === step);
+    b.classList.toggle('done', n < step);
+    b.querySelector('i').textContent = n < step ? '✓' : String(n);
+  });
+  $('stepLine').classList.toggle('done', step === 2);
+
+  $('collageBox').hidden = !isCollage;
+  $('quickfillBox').hidden = !(editing && !cellSelected && quickfillOpen);
+  $('quickfillReopen').hidden = !(editing && !cellSelected && !quickfillOpen);
+  $('newsHeaderBox').hidden = !(mode === 'news' && editing && !cellSelected);
+  $('cellsList').hidden = !(cellSelected && !checking);
+  $('checkPanel').hidden = !checking;
+  if (checking) renderCheckPanel();
+
+  document.querySelector('.page-tabs').hidden = isCollage;
+  document.querySelectorAll('.page-tab').forEach(b => b.classList.toggle('active', Number(b.dataset.page) === activePageIndex));
+
+  const showCopy = checking && cellSelected;
+  $('copyBar').hidden = !showCopy;
+  if (showCopy) {
+    $('copyBarName').textContent = `第 ${activeCard + 1} 格`;
+    const link = withUtm(activePage().cards[activeCard].url);
+    $('copyBarUrl').textContent = link || '（這格沒有連結）';
+  }
+
+  $('dockStickers').hidden = checking;
+  $('dockSep').hidden = checking;
+  $('resetAllBtn').hidden = checking;
+  $('resetAllBtn').textContent = isCollage ? '清除拼圖' : '清除本頁';
+  $('nextStepBtn').hidden = !editing;
+  $('backStepBtn').hidden = !checking;
+  $('downloadJpgBtn').hidden = !(checking || isCollage);
+  $('downloadJpgBtn').textContent = isCollage ? '下載' : '下載本頁';
+  $('downloadAllBtn').hidden = !checking;
+  $('copyCollageBtn').hidden = !isCollage;
+  updateDownloadState();
+}
+
+chromeReady = true;
 applyModeChrome();
 if (imageProxyUrl()) {
   document.getElementById('tipAutoImg').hidden = false;
