@@ -194,7 +194,7 @@
     width: max-content;
     max-width: calc(100vw - 32px);
     background: #1f2328; color: #fff;
-    padding: 10px 16px; border-radius: 18px;
+    padding: 10px 18px; border-radius: 36px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
   }
   .dock-stickers { display: flex; align-items: center; gap: 12px; }
@@ -208,7 +208,7 @@
   #downloadRow button {
     position: relative; white-space: nowrap;
     background: #2d333b; border-color: #3a414b; color: #fff;
-    padding: 9px 16px; font-weight: 600;
+    padding: 9px 18px; font-weight: 600; border-radius: 99px;
   }
   #downloadRow button:hover { background: #3a414b; }
   #downloadRow button.primary { background: #2f7bff; border-color: #2f7bff; }
@@ -298,8 +298,8 @@
   .status-toast.error { background: #b91c1c; }
   .status-toast.show { opacity: 1; transform: translate(-50%, 0); }
   .status-toast[hidden] { display: none; }
-  .page-tabs { display: flex; gap: 2px; margin: 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
-  .page-tab { background: transparent; border: none; border-radius: 7px; padding: 6px 18px; color: var(--muted); font-weight: 600; font-size: 15px; }
+  .page-tabs { display: flex; gap: 2px; margin: 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px; }
+  .page-tab { background: transparent; border: none; border-radius: 99px; padding: 6px 20px; color: var(--muted); font-weight: 600; font-size: 15px; }
   .page-tab.active { background: var(--step-soft); color: var(--accent); }
   .page-tabs[hidden] { display: none; }
   /* ---- Floating panels on the left ---- */
@@ -353,10 +353,10 @@
   .check-other { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
   .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
   /* ---- Copy bar under the preview (step 2, one cell picked) ---- */
-  .copy-bar { display: flex; align-items: center; gap: 10px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 8px 8px 8px 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px; max-width: 100%; }
+  .copy-bar { display: flex; align-items: center; gap: 10px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 99px; padding: 6px 6px 6px 18px; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px; max-width: 100%; }
   .copy-bar[hidden] { display: none; }
   .copy-bar .cb-url { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
-  .copy-bar button { padding: 7px 14px; font-weight: 700; font-size: 14px; }
+  .copy-bar button { padding: 8px 18px; border-radius: 99px; font-weight: 700; font-size: 14px; }
   /* ---- Reminder when something is dragged while the photos are locked ---- */
   .lock-toast {
     position: fixed; left: 50%; bottom: 108px; transform: translate(-50%, 24px);
