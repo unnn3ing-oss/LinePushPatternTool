@@ -61,7 +61,7 @@ await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
 
 async function openDialog() {
-  await page.evaluate(() => { pushTitleInput.value = '測試推播標題'; openS8Dialog(); });
+  await page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; openS8Dialog(); });
   await page.waitForFunction(() => document.querySelectorAll('#s8Stage .s8-cell').length === 6, null, { timeout: 60000 });
   await page.evaluate(() => {
     s8State.urls.forEach((row, p) => row.forEach((_, i) => { s8State.urls[p][i] = `https://example.com/p${p + 1}/n${i + 1}?utm_source=x`; }));
@@ -79,6 +79,14 @@ check(await page.evaluate(() => document.getElementById('labToggle').title === '
 
 // ===== 1. 預覽：頁籤與點格子看完整連結 =====
 await openDialog();
+check(await page.locator('#pushTitleBox, #pushTitleInput, #pushTitleReopen').count() === 0, '編輯畫面的「推播標題」卡片與工具列按鈕已移除');
+check((await page.getAttribute('#s8Alt', 'placeholder')) === '填入推播標題，例如★我是推播標題 推播標題是我', '「推播通知」欄位的示範文字：填入推播標題，例如★我是推播標題 推播標題是我');
+check((await page.inputValue('#s8Alt')) === '測試推播標題', '推播通知欄位帶入先前輸入的內容');
+await page.fill('#s8Alt', '★我是推播標題 推播標題是我');
+check(await page.evaluate(() => s8AltByMode[mode]) === '★我是推播標題 推播標題是我', '在這個欄位輸入會被記住（關掉再開仍在）');
+await page.fill('#s8Alt', '');
+check(await page.evaluate(() => s8Collect().alt === '') && (await page.locator('#s8Errs li').allTextContents()).some(t => t.includes('推播通知')), '推播通知留白：列出「請填推播通知」錯誤');
+await page.fill('#s8Alt', '測試推播標題');
 check((await page.locator('.s8-ptab').count()) === 2 && (await page.textContent('.s8-ptab.active')) === '第 1 頁', '預覽上方有「第 1 頁／第 2 頁」切換，預設第 1 頁');
 check((await page.locator('#s8Stage img').count()) === 1, '預覽區一次只顯示一張圖');
 const box = await page.evaluate(() => { const s = document.getElementById('s8Stage').getBoundingClientRect(), i = document.querySelector('#s8Stage img').getBoundingClientRect(); return { dh: Math.abs(s.height - i.height), dt: Math.abs(s.top - i.top), dw: Math.abs(s.width - i.width) }; });

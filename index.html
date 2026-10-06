@@ -107,7 +107,6 @@
   body.lab-on .topbar { box-shadow: inset 0 -3px 0 #f59e0b; }
   .lab-pass { width: 100%; margin-top: 4px; }
   .lab-msg { margin: 8px 0 0; min-height: 20px; font-size: 13px; color: #b91c1c; }
-  #pushTitleInput { width: 100%; }
   /* 排入 S8 (lab): the package dialog */
   .s8-modal { max-width: 760px !important; }
   .s8-modes { display: grid; gap: 8px; margin-bottom: 10px; }
@@ -191,7 +190,6 @@
   .s8-tip { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
   .s8-tip:empty { display: none; }
 
-  #pushTitleApply { width: 100%; font-weight: 700; padding: 10px; }
   .stepper[hidden] { display: none; }
   .step-btn {
     white-space: nowrap;
@@ -472,7 +470,7 @@
   .float-stack > [hidden] { display: none; }
   .panel-x { position: absolute; top: 8px; right: 8px; border: none; background: transparent; color: var(--muted); padding: 2px 8px; font-size: 16px; line-height: 1; }
   .panel-x:hover { background: var(--bg); color: var(--text); }
-  #quickfillBox, #pushTitleBox { position: relative; }
+  #quickfillBox { position: relative; }
   #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
   /* 快速填入 / 頂部標籤 re-open buttons: their own little group right of the mode tabs. */
   .tb-tools { gap: 10px; }
@@ -800,7 +798,6 @@
     <div class="tb-tools" id="tbTools" hidden>
       <button type="button" id="quickfillReopen" hidden>快速填入</button>
       <button type="button" id="headerOpenBtn" hidden>頂部標籤</button>
-      <button type="button" id="pushTitleReopen" hidden>推播標題</button>
     </div>
   </div>
   <nav class="stepper" id="stepper" aria-label="製作步驟">
@@ -870,13 +867,6 @@
       </div>
     </div>
 
-    <div class="top-label-box" id="pushTitleBox" hidden>
-      <button type="button" class="panel-x" id="pushTitleClose" aria-label="收起推播標題" title="收起">✕</button>
-      <div class="quickfill-header"><span class="quickfill-title">推播標題</span></div>
-      <input type="text" id="pushTitleInput" placeholder="LINE 推播通知會顯示的文字" autocomplete="off">
-      <div class="hint">之後排入 S8 時，會填在「推播通知」。</div>
-      <div class="btn-row"><button type="button" class="primary" id="pushTitleApply">填入推播標題</button></div>
-    </div>
 
     <div class="top-label-box" id="newsHeaderBox">
         <div class="field">
@@ -1212,7 +1202,7 @@
           <pre class="s8c-out" id="s8CountOut" hidden></pre>
           <details id="s8CountRawBox" hidden style="margin-top:6px"><summary style="cursor:pointer; font-size:13px; color:var(--muted)">查看 S8 原始回傳</summary><pre class="s8c-out" id="s8CountRaw"></pre></details>
         </div>
-        <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="必填：來自「推播標題」">
+        <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="填入推播標題，例如★我是推播標題 推播標題是我">
       </div>
       <div class="s8-page">連結預覽（點圖上的格子，下方會顯示該格的完整連結）</div>
       <div class="s8-prev">
@@ -1400,7 +1390,6 @@ let cellSelected = false;
 let headerSelected = false;
 let quickfillOpen = true;
 let labOn = false;            // 試驗功能: the second (lab) interface is switched on
-let pushTitleOpen = true;     // 試驗功能: the 推播標題 card is open (else it sits in the top bar)
 // 步驟 1 option: show the photo-edge check right on the preview (check range + yellow "!").
 let edgeCheckOn = false;
 let chromeReady = false;     // syncChrome() waits until every element it touches exists
@@ -4167,10 +4156,6 @@ function setMode(newMode) {
   quickfillByMode[mode] = { text: quickfillText.value, open: quickfillOpen };
   quickfillText.value = quickfillByMode[newMode].text;
   quickfillOpen = quickfillByMode[newMode].open;
-  // 試驗功能: each mode keeps its own 推播標題 and whether its card is open
-  pushTitleByMode[mode] = { text: pushTitleInput.value, open: pushTitleOpen };
-  pushTitleInput.value = pushTitleByMode[newMode].text;
-  pushTitleOpen = pushTitleByMode[newMode].open;
   if (mode !== 'collage') stepByMode[mode] = step;
   step = newMode === 'collage' ? 1 : stepByMode[newMode];
   cellSelected = false;
@@ -4645,11 +4630,7 @@ function syncChrome() {
   // Both buttons live in the top bar, right of the mode tabs. The yellow bar can be
   // unticked away; its button is then the way back in.
   $('headerOpenBtn').hidden = !(mode === 'news' && editing && !activePage().showHeader);
-  // 試驗功能: the 推播標題 card sits under 快速填入 and tucks away into the top bar the same way.
-  const labPush = labOn && editing;
-  $('pushTitleBox').hidden = !(labPush && idle && pushTitleOpen);
-  $('pushTitleReopen').hidden = !(labPush && !pushTitleOpen);
-  $('tbTools').hidden = $('quickfillReopen').hidden && $('headerOpenBtn').hidden && $('pushTitleReopen').hidden;
+  $('tbTools').hidden = $('quickfillReopen').hidden && $('headerOpenBtn').hidden;
   $('cellsList').hidden = !(cellSelected && !checking);
   $('checkPanel').hidden = !checking;
   if (checking) renderCheckPanel();
@@ -4866,6 +4847,7 @@ function s8Regions(pageState) {
 
 const s8Overlay = document.getElementById('s8Overlay');
 let s8State = null;     // { regions, urls:[[...],[...]], images:[{blob, url, size, tooBig}], sp: 目前頁, cell: 選取的格 }
+const s8AltByMode = { news: "", ent: "", collage: "" };   // 推播標題（推播通知）：只在「排入S8」視窗輸入，這裡記住各版型最後輸入的內容
 // ---- 預覽：頁籤切換、點格子看完整連結 ----
 function s8RenderStage() {
   const stage = document.getElementById('s8Stage');
@@ -4952,7 +4934,7 @@ function s8Validate(d) {
   const errs = [];
   if (!d.name) errs.push('請填群發名稱');
   if (d.target === 'tag' && !d.tag) errs.push('請填發送對象標籤');
-  if (!d.alt) errs.push('請填推播通知（可回到編輯畫面填「推播標題」）');
+  if (!d.alt) errs.push('請填推播通知（推播標題）');
   d.pages.forEach(pg => pg.cells.forEach(c => {
     if (!c.url) errs.push(`第 ${pg.page} 頁 項目${c.n}（${c.label}）沒有連結`);
     else if (!/^https?:\/\//i.test(c.url)) errs.push(`第 ${pg.page} 頁 項目${c.n}（${c.label}）的連結要以 http(s):// 開頭`);
@@ -4981,7 +4963,7 @@ async function openS8Dialog() {
   document.getElementById('s8Account').textContent = S8_ACCOUNT[mode];
   document.getElementById('s8Tag').value = '';
   document.getElementById('s8TargetAll').checked = true;
-  document.getElementById('s8Alt').value = pushTitleInput.value.trim();
+  document.getElementById('s8Alt').value = s8AltByMode[mode] || '';   // 推播標題只在這裡輸入；每個版型記住最後輸入的內容
   s8State = { regions: pages.map(pg => s8Regions(pg)), images: [], urls: pages.map(pg => pg.cards.map(st => withUtm(st.url) || '')), sp: 0, cell: -1 };
   s8ShowPage(0);
   s8ResetCreate();
@@ -5016,6 +4998,7 @@ function closeS8Dialog() {
   s8State = null;
 }
 ['s8Name', 's8Tag', 's8Alt'].forEach(id => document.getElementById(id).addEventListener('input', s8Refresh));
+document.getElementById('s8Alt').addEventListener('input', e => { s8AltByMode[mode] = e.target.value; });
 ['s8TargetAll', 's8TargetTag'].forEach(id => document.getElementById(id).addEventListener('change', s8Refresh));
 // 把 broadcast_audience_preview 的回傳翻成易讀文字（時間轉台北時間；previewRef 等內部欄位只放在「原始回傳」）
 function s8AudienceText(orgName, d) {
@@ -5402,25 +5385,6 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') s8cOverlay.c
   window.__s8Pending = q.get('s8error') ? { error: q.get('s8error') } : { check: true };
 })();
 
-// 推播標題: its own card under 快速填入; once filled it tucks into the top bar like 快速填入 does.
-const pushTitleInput = document.getElementById('pushTitleInput');
-const pushTitleByMode = { news: { text: '', open: true }, ent: { text: '', open: true }, collage: { text: '', open: true } };
-function applyPushTitle() {
-  if (!pushTitleInput.value.trim()) { statusEl.show('請先輸入推播標題', 'error'); pushTitleInput.focus(); return; }
-  pushTitleOpen = false;
-  statusEl.show('已填入推播標題', 'success');
-  syncChrome();
-}
-document.getElementById('pushTitleApply').addEventListener('click', applyPushTitle);
-pushTitleInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyPushTitle(); } });
-document.getElementById('pushTitleClose').addEventListener('click', () => { pushTitleOpen = false; syncChrome(); });
-document.getElementById('pushTitleReopen').addEventListener('click', () => {
-  pushTitleOpen = true;
-  cellSelected = false; headerSelected = false;
-  syncChrome();
-  render();
-  setTimeout(() => pushTitleInput.focus(), 0);
-});
 
 chromeReady = true;
 applyModeChrome();
