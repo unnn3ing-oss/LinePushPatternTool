@@ -241,6 +241,20 @@
     font-size: 12px; font-weight: 600; white-space: nowrap;
     padding: 4px 10px; border-radius: 6px; z-index: 20; pointer-events: none;
   }
+  /* 步驟 1 option in the dock: an iOS-style switch. */
+  .dock-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .dock-switch[hidden] { display: none; }
+  .dock-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .sw-track { position: relative; flex: none; width: 42px; height: 24px; border-radius: 99px; background: #4b5563; transition: background .2s ease; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .3); }
+  .sw-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: transform .2s ease; }
+  .dock-switch input:checked + .sw-track { background: #34c759; }
+  .dock-switch input:checked + .sw-track .sw-knob { transform: translateX(18px); }
+  .dock-switch input:focus-visible + .sw-track { outline: 2px solid #2f7bff; outline-offset: 2px; }
+  /* Hover pop-up on a "!" in the preview: says why the cell is flagged, fades out a second after the pointer leaves. */
+  .gap-tip { position: fixed; z-index: 70; max-width: 260px; background: #1f2328; color: #fff; border-radius: 12px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); font-size: 13px; line-height: 1.5; pointer-events: none; opacity: 0; transition: opacity .3s ease; }
+  .gap-tip.show { opacity: 1; }
+  .gap-tip[hidden] { display: none; }
+  .gap-tip b { display: block; font-size: 14px; margin-bottom: 2px; }
   .dock-chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
   .dock-chip[hidden] { display: none; }
   .dock-chip.bad { background: #fee2e2; color: #b91c1c; }
@@ -742,6 +756,11 @@
     <div class="sticker-palette" id="stickerPalette"></div>
   </div>
   <span class="dock-sep" id="dockSep"></span>
+  <label class="dock-switch" id="edgeSwitch" title="開啟後，預覽圖會標出照片邊緣的檢查範圍：綠線＝檢查範圍的上下緣、紅色＝被範本遮住不檢查；邊緣疑似露白的格子會標黃色「!」" hidden>
+    <input type="checkbox" id="edgeCheckToggle">
+    <span class="sw-track"><span class="sw-knob"></span></span>
+    <span class="sw-label">檢查照片邊緣</span>
+  </label>
   <div id="downloadRow">
     <span class="dock-chip" id="dockChip" hidden></span>
     <button type="button" class="ghost" id="resetAllBtn">清除本頁</button>
@@ -759,6 +778,8 @@
     </div>
   </div>
 </div>
+
+<div class="gap-tip" id="gapTip" role="tooltip" hidden></div>
 
 <div class="lock-toast" id="lockToast" role="status" hidden>
   <span>🔒 照片已鎖定，無法在這一步調整</span>
@@ -830,7 +851,7 @@
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
         <li><b>遮擋人物（選用）</b>：先選格子，再點畫面底部「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題，圖片疑似露白（照片被拖離格子，或照片本身帶白邊、透明邊）的格子會標黃色圓圈「!」，滑鼠停上去會說明原因（仍可下載，但下載前會再問一次）；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
+        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題，圖片疑似露白（照片被拖離格子，或照片本身帶白邊、透明邊）的格子會標黃色圓圈「!」，滑鼠移到預覽圖上的黃色「!」會跳出原因說明（仍可下載，但下載前會再問一次）；步驟 1 想先看，可打開底部的「檢查照片邊緣」開關；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
       </ol>
 
       <h3>拼圖</h3>
@@ -1010,6 +1031,8 @@ let cellSelected = false;
 // (opens the 頂部標籤 editor on the left).
 let headerSelected = false;
 let quickfillOpen = true;
+// 步驟 1 option: show the photo-edge check right on the preview (check range + yellow "!").
+let edgeCheckOn = false;
 let chromeReady = false;     // syncChrome() waits until every element it touches exists
 function isLocked() { return mode !== 'collage' && step === 2; }
 // Mode-dependent values the rest of the code reads as plain globals.
@@ -1789,12 +1812,39 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
     if (pageState.showHeader) drawHeaderLabel(ctx, pageState.topLabel || '熱門話題');
   }
   if (opts.interactive && mode === 'collage') drawCollageGuides(ctx);
-  // 步驟 2: a circled "!" on every cell that needs a look — red when something is
-  // missing, yellow when the photo shows white (on-screen only, never exported).
-  if (opts.interactive && isLocked()) {
+  // Photo-edge check, on-screen only (never exported):
+  //  - 步驟 1 with the 「檢查照片邊緣」 switch on: the check range of every cell (red = covered by the
+  //    template, not checked; green lines = edges of the range) and a yellow "!" where the edge looks white.
+  //  - 步驟 2: a circled "!" on every cell that needs a look — red when something is missing,
+  //    yellow when the photo shows white.
+  if (opts.interactive && mode !== 'collage' && (isLocked() || edgeCheckOn)) {
+    const checking = isLocked();
+    if (!checking && mode === 'ent') {
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const ov = entCheckOverlay(i);
+        if (ov) { const cell = cellRect(i, pageState.showHeader); ctx.drawImage(ov, cell.x, cell.y); }
+      }
+    }
+    if (!checking && mode !== 'ent') {
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const cell = cellRect(i, pageState.showHeader);
+        const win = cardVisibleWindow(cell, pageState.showHeader);
+        ctx.save();
+        ctx.fillStyle = 'rgba(220,38,38,0.28)';
+        ctx.fillRect(cell.x, cell.y, cell.w, win.top - cell.y);
+        ctx.fillRect(cell.x, win.bottom, cell.w, cell.y + cell.h - win.bottom);
+        ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cell.x, win.top); ctx.lineTo(cell.x + cell.w, win.top);
+        ctx.moveTo(cell.x, win.bottom); ctx.lineTo(cell.x + cell.w, win.bottom);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
     for (let i = 0; i < CELL_COUNT; i++) {
-      const missing = cardMissing(pageState.cards[i]).length > 0;
-      if (!missing && !cardHasGap(pageState, i)) continue;
+      const kind = cardBadgeKind(pageState, i);
+      if (!kind) continue;
+      const missing = kind === 'bad';
       const cell = cellRect(i, pageState.showHeader);
       const bx = cell.x + 24, by = cell.y + 24;
       ctx.save();
@@ -2662,6 +2712,7 @@ pageTabs.forEach(btn => {
     syncAllCellUI();
     cellSelected = false;
     headerSelected = false;
+    if (typeof hideGapTip === 'function') hideGapTip(true);
     setActiveCard(0, false);
   });
 });
@@ -2925,7 +2976,134 @@ function cardVisibleWindow(cell, showHeader) {
   while (bottom > top && hidden(bottom - 1)) bottom--;
   return { top, bottom };
 }
+// 娛樂: the photo shows through a slightly skewed hole in the template (frame, tape and the yellow
+// caption strip cover the rest), so "visible" is a mask, not a rectangle. For each photo cell:
+//   vis  = template is not (almost) opaque there,
+//   ring = visible pixels within 3px of the edge of that area (what the white-edge scan looks at),
+//   side = which edge of the cell each ring pixel belongs to (0 左, 1 上, 2 右, 3 下).
+const entMaskCache = new Map();
+let entAlphaCache = null;
+function entAlphaData() {
+  if (entAlphaCache !== null) return entAlphaCache || null;
+  if (!templateEntImg) return null;      // not loaded yet: try again later
+  entAlphaCache = false;
+  try {
+    const c = document.createElement('canvas');
+    c.width = ENT_W; c.height = ENT_H;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(templateEntImg, 0, 0, ENT_W, ENT_H);
+    entAlphaCache = x.getImageData(0, 0, ENT_W, ENT_H).data;
+  } catch (err) { entAlphaCache = false; }
+  return entAlphaCache || null;
+}
+function entCellMask(i) {
+  if (entMaskCache.has(i)) return entMaskCache.get(i);
+  const data = entAlphaData();
+  if (!data) return null;
+  const r = ENT_CELLS[i].photo;
+  const cx = Math.round(r.x), cy = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
+  const vis = new Uint8Array(w * h);
+  let count = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (data[((cy + y) * ENT_W + cx + x) * 4 + 3] < OVERLAY_HIDE_ALPHA) { vis[y * w + x] = 1; count++; }
+  }
+  // Erode by a square of radius R (pixels outside the cell count as "not visible").
+  const erode = R => {
+    const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let ok = 1;
+      for (let d = -R; d <= R && ok; d++) { const xx = x + d; if (xx < 0 || xx >= w || !vis[y * w + xx]) ok = 0; }
+      tmp[y * w + x] = ok;
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let ok = 1;
+      for (let d = -R; d <= R && ok; d++) { const yy = y + d; if (yy < 0 || yy >= h || !tmp[yy * w + x]) ok = 0; }
+      out[y * w + x] = ok;
+    }
+    return out;
+  };
+  const inner = erode(EDGE_BAND_PX), inner1 = erode(1);
+  const ring = new Uint8Array(w * h), side = new Uint8Array(w * h), edge = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const k = y * w + x;
+    if (!vis[k]) continue;
+    if (!inner1[k]) edge[k] = 1;
+    if (inner[k]) continue;
+    ring[k] = 1;
+    const d = [x, y, w - 1 - x, h - 1 - y];
+    side[k] = d.indexOf(Math.min(...d));
+  }
+  const m = { cx, cy, w, h, vis, ring, side, edge, count };
+  entMaskCache.set(i, m);
+  return m;
+}
+// On-screen picture of the check range for one 娛樂 cell: red = covered by the template (not checked),
+// green = edge of the visible area. Built once per cell.
+const entOverlayCache = new Map();
+function entCheckOverlay(i) {
+  if (entOverlayCache.has(i)) return entOverlayCache.get(i);
+  const m = entCellMask(i);
+  if (!m) return null;
+  const c = document.createElement('canvas');
+  c.width = m.w; c.height = m.h;
+  const x = c.getContext('2d');
+  const img = x.createImageData(m.w, m.h);
+  for (let k = 0; k < m.w * m.h; k++) {
+    const p = k * 4;
+    if (!m.vis[k]) { img.data[p] = 220; img.data[p + 1] = 38; img.data[p + 2] = 38; img.data[p + 3] = 72; }
+    else if (m.edge[k]) { img.data[p] = 22; img.data[p + 1] = 163; img.data[p + 2] = 74; img.data[p + 3] = 255; }
+  }
+  x.putImageData(img, 0, 0);
+  entOverlayCache.set(i, c);
+  return c;
+}
+function entGeoGap(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return false;
+  const m = entCellMask(i);
+  if (!m) return false;
+  if (!st.img.__id) st.img.__id = ++imgIdCounter;
+  const gkey = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}`;
+  if (st._entGeo && st._entGeo.key === gkey) return st._entGeo.val;
+  const cell = cellRect(i, pageState.showHeader);
+  const { dw, dh } = cellImageSize(cell, st);
+  const x0 = st.offsetX, y0 = st.offsetY, x1 = x0 + dw, y1 = y0 + dh;
+  let outside = 0;
+  for (let y = 0; y < m.h; y++) {
+    const yIn = y + 0.5 >= y0 && y + 0.5 < y1;
+    for (let x = 0; x < m.w; x++) {
+      if (!m.vis[y * m.w + x]) continue;
+      if (!(yIn && x + 0.5 >= x0 && x + 0.5 < x1)) outside++;
+    }
+  }
+  const val = outside > m.count * 0.001;   // more than ~0.5px of visible area not covered by the photo
+  st._entGeo = { key: gkey, val };
+  return val;
+}
+function entWhiteEdges(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return [];
+  const m = entCellMask(i);
+  if (!m) return [];
+  const cell = cellRect(i, pageState.showHeader);
+  const off = document.createElement('canvas');
+  off.width = m.w; off.height = m.h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  drawCellImage(octx, { x: 0, y: 0, w: cell.w, h: cell.h }, st);
+  let data;
+  try { data = octx.getImageData(0, 0, m.w, m.h).data; } catch (err) { return []; }
+  const n = [0, 0, 0, 0], white = [0, 0, 0, 0];
+  for (let k = 0; k < m.w * m.h; k++) {
+    if (!m.ring[k]) continue;
+    const sd = m.side[k], p = k * 4;
+    n[sd]++;
+    if (data[p + 3] < 250 || (data[p] >= EDGE_WHITE_MIN && data[p + 1] >= EDGE_WHITE_MIN && data[p + 2] >= EDGE_WHITE_MIN)) white[sd]++;
+  }
+  const names = ['左', '上', '右', '下'];
+  return names.filter((_, sd) => n[sd] >= 20 && white[sd] / n[sd] >= EDGE_WHITE_RATIO);
+}
 function cardGeoGap(pageState, i) {
+  if (mode === 'ent') return entGeoGap(pageState, i);
   const st = pageState.cards[i];
   if (!st.img) return false;
   const cell = cellRect(i, pageState.showHeader);
@@ -2940,6 +3118,14 @@ function cardWhiteEdges(pageState, i) {
   const st = pageState.cards[i];
   if (!st.img) return [];
   const cell = cellRect(i, pageState.showHeader);
+  if (mode === 'ent') {
+    if (!st.img.__id) st.img.__id = ++imgIdCounter;
+    const ekey = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|ent`;
+    if (st._edgeCache && st._edgeCache.key === ekey) return st._edgeCache.sides;
+    const sides = entWhiteEdges(pageState, i);
+    st._edgeCache = { key: ekey, sides };
+    return sides;
+  }
   const win = cardVisibleWindow(cell, pageState.showHeader);
   if (!st.img.__id) st.img.__id = ++imgIdCounter;
   const key = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|${cell.w}|${cell.h}|${win.top}|${win.bottom}|${mode}`;
@@ -2973,6 +3159,18 @@ function cardWhiteEdges(pageState, i) {
 }
 function cardHasGap(pageState, i) {
   return cardGeoGap(pageState, i) || cardWhiteEdges(pageState, i).length > 0;
+}
+// Which "!" a cell wears on the preview: 'bad' (red, something missing — step 2 only), 'warn' (yellow,
+// photo edge shows white), or null.
+function cardBadgeKind(pageState, i) {
+  if (isLocked() && cardMissing(pageState.cards[i]).length > 0) return 'bad';
+  return cardHasGap(pageState, i) ? 'warn' : null;
+}
+// What the hover pop-up says about a cell's "!".
+function cardBadgeText(pageState, i) {
+  const miss = cardMissing(pageState.cards[i]);
+  if (isLocked() && miss.length) return { title: '尚未完成', body: `缺${miss.join('、')}，補齊後才能「全部下載」` };
+  return { title: '疑似露白', body: cardGapReason(pageState, i) || '照片邊緣疑似露出空白' };
 }
 // Tooltip text for a cell flagged 露白.
 function cardGapReason(pageState, i) {
@@ -3424,6 +3622,7 @@ function setMode(newMode) {
   headerSelected = false;
   hideDlConfirm();
   hideLockReminder();
+  if (typeof hideGapTip === 'function') hideGapTip(true);
   drag = null;
   tagDrag = null;
   lockProbe = null;
@@ -3634,6 +3833,7 @@ document.getElementById('copyCollageBtn').addEventListener('click', async () => 
 // ---------------------------------------------------------------------------
 function goStep(n) {
   if (mode === 'collage') return;
+  if (typeof hideGapTip === 'function') hideGapTip(true);
   n = n === 2 ? 2 : 1;
   if (n === step) return;
   step = n;
@@ -3657,6 +3857,7 @@ document.getElementById('stage').addEventListener('mousedown', e => {
 
 // Dragging a photo, tag or sticker while step 2 has them locked.
 const lockToast = document.getElementById('lockToast');
+const LOCK_TOAST_MS = 3000;
 let lockToastTimer = null;
 function showLockReminder() {
   hideStatusToast();
@@ -3664,7 +3865,7 @@ function showLockReminder() {
   lockToast.hidden = false;
   void lockToast.offsetWidth;
   lockToast.classList.add('show');
-  lockToastTimer = setTimeout(hideLockReminder, 5000);
+  lockToastTimer = setTimeout(hideLockReminder, LOCK_TOAST_MS);
 }
 function hideLockReminder() {
   clearTimeout(lockToastTimer);
@@ -3780,6 +3981,59 @@ function alignFloatStack() {
 window.addEventListener('resize', alignFloatStack);
 document.getElementById('headerOpenBtn').addEventListener('click', openHeaderEditor);
 
+document.getElementById('edgeCheckToggle').addEventListener('change', e => {
+  edgeCheckOn = e.target.checked;
+  hideGapTip(true);
+  render();
+});
+
+// Hover pop-up for the "!" marks drawn on the preview (step 2, or step 1 with the edge-check switch on).
+const gapTip = document.getElementById('gapTip');
+let gapTipCell = -1, gapTipTimer = null, gapTipHideTimer = null;
+const GAP_TIP_FADE_DELAY_MS = 1000;
+function badgeCellAt(pos) {
+  if (mode === 'collage' || !(isLocked() || edgeCheckOn)) return -1;
+  for (let i = 0; i < CELL_COUNT; i++) {
+    if (!cardBadgeKind(activePage(), i)) continue;
+    const cell = cellRect(i, activePage().showHeader);
+    if (Math.hypot(pos.x - (cell.x + 24), pos.y - (cell.y + 24)) <= 19) return i;
+  }
+  return -1;
+}
+function showGapTip(i) {
+  clearTimeout(gapTipTimer); clearTimeout(gapTipHideTimer);
+  gapTipCell = i;
+  const t = cardBadgeText(activePage(), i);
+  gapTip.textContent = '';
+  const b = document.createElement('b'); b.textContent = `第 ${i + 1} 格　${t.title}`;
+  gapTip.append(b, t.body);
+  gapTip.hidden = false;
+  const r = canvas.getBoundingClientRect();
+  const cell = cellRect(i, activePage().showHeader);
+  const sx = r.left + (cell.x + 24) * r.width / CANVAS_W, sy = r.top + (cell.y + 24) * r.height / CANVAS_H;
+  gapTip.style.left = '0px'; gapTip.style.top = '0px';
+  const w = gapTip.offsetWidth, h = gapTip.offsetHeight;
+  gapTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, sx + 20))}px`;
+  gapTip.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, sy + 20))}px`;
+  void gapTip.offsetWidth;
+  gapTip.classList.add('show');
+}
+// Pointer left the "!": wait a second, then fade out (immediately when `now`).
+function hideGapTip(now) {
+  clearTimeout(gapTipTimer); clearTimeout(gapTipHideTimer);
+  gapTipCell = -1;
+  if (gapTip.hidden) return;
+  const fade = () => { gapTip.classList.remove('show'); gapTipHideTimer = setTimeout(() => { gapTip.hidden = true; }, 300); };
+  if (now) { gapTip.classList.remove('show'); gapTip.hidden = true; return; }
+  gapTipTimer = setTimeout(fade, GAP_TIP_FADE_DELAY_MS);
+}
+canvas.addEventListener('mousemove', evt => {
+  const i = badgeCellAt(getCanvasPos(evt));
+  if (i >= 0) { if (i !== gapTipCell || gapTip.hidden || !gapTip.classList.contains('show')) showGapTip(i); }
+  else if (gapTipCell >= 0) hideGapTip(false);
+});
+canvas.addEventListener('mouseleave', () => { if (gapTipCell >= 0) hideGapTip(false); });
+
 // One place that decides what is visible for the current mode / step / selection.
 function syncChrome() {
   if (!chromeReady) return;
@@ -3821,6 +4075,7 @@ function syncChrome() {
     $('copyBarUrl').textContent = link || '（這格沒有連結）';
   }
 
+  $('edgeSwitch').hidden = !editing;
   $('dockStickers').hidden = checking;
   $('dockSep').hidden = checking;
   $('resetAllBtn').hidden = checking;
