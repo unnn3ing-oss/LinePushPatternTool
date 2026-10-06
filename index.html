@@ -1817,10 +1817,17 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
+    // 新聞: the frame marks the photo you can see — from the top of the cell down to the top
+    // of the first headline line (the bottom edge of the small tag), not over the text area.
+    let frameH = cell.h;
+    if (mode === 'news') {
+      const f = computeCardFit(ctx, cell, pageState.cards[activeCard]);
+      frameH = clamp(newsTagLimitBottom(cell, f) - cell.y, 24, cell.h);
+    }
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(cell.x + 1.5, cell.y + 1.5, cell.w - 3, cell.h - 3);
+    ctx.strokeRect(cell.x + 1.5, cell.y + 1.5, cell.w - 3, frameH - 3);
     ctx.restore();
   }
 }
