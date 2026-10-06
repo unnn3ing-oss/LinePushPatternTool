@@ -20,6 +20,8 @@
   :root {
     --stage: #e9ebf0;
     --step-soft: #e6effa;
+    --track: #dcdfe5;   /* filled capsule behind a segmented control, like a toggle's track */
+    --knob: #ffffff;    /* the raised pill for the current item */
     --bg: #f4f5f7;
     --card-bg: #ffffff;
     --text: #1f2328;
@@ -33,6 +35,8 @@
     :root {
       --stage: #0f1115;
       --step-soft: #1b2a44;
+      --track: #2b2f38;
+      --knob: #4a505c;
       --bg: #16181d;
       --card-bg: #21242b;
       --text: #e6e8eb;
@@ -67,7 +71,14 @@
   }
   .tb-left { display: flex; align-items: center; gap: 16px; flex: none; }
   /* Centred on the window; the grid pushes it right only if the left group gets wide enough to touch it. */
-  .stepper { display: flex; align-items: center; justify-self: center; }
+  /* Segmented controls share one look: a solid-colour capsule "track" (slightly inset) with a
+     plain white pill "knob" on the current item — no glass or blur. */
+  .stepper, .mode-tabs, .page-tabs, .tb-tools {
+    display: flex; align-items: center; gap: 2px;
+    background: var(--track); border: none; border-radius: 99px; padding: 3px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+  }
+  .stepper { justify-self: center; }
   @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr; } .stepper { justify-self: end; } }
   .stepper[hidden] { display: none; }
   .step-btn {
@@ -79,14 +90,14 @@
   }
   .step-btn i {
     width: 24px; height: 24px; border-radius: 50%;
-    background: var(--border); color: var(--muted);
+    background: rgba(0, 0, 0, .12); color: var(--muted);
     display: inline-grid; place-items: center;
     font-style: normal; font-size: 12px;
   }
-  .step-btn.active { background: var(--step-soft); color: var(--accent); }
+  .step-btn.active { background: var(--knob); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .step-btn.active i { background: var(--accent); color: #fff; }
   .step-btn.done i { background: var(--success); color: #fff; }
-  .step-line { width: 44px; height: 2px; background: var(--border); }
+  .step-line { width: 20px; height: 2px; background: rgba(0, 0, 0, .14); border-radius: 2px; }
   .step-line.done { background: var(--success); }
   /* ---- Stage: preview in the middle, panels float over the empty left side ---- */
   .stage {
@@ -176,10 +187,9 @@
   button:disabled { opacity: .5; cursor: not-allowed; }
   .canvas-wrap { display: flex; justify-content: center; width: 100%; }
   /* Same capsule look as the step progress: a fully rounded pill, the current one in soft blue. */
-  .mode-tabs { display: flex; gap: 2px; align-items: center; }
   .mode-tab { white-space: nowrap; background: transparent; border: none; border-radius: 99px; padding: 6px 18px; color: var(--muted); font-size: 15px; font-weight: 700; }
-  .mode-tab:hover { background: var(--bg); }
-  .mode-tab.active, .mode-tab.active:hover { background: var(--step-soft); color: var(--accent); }
+  .mode-tab:hover { color: var(--text); }
+  .mode-tab.active, .mode-tab.active:hover { background: var(--knob); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .seg { display: flex; gap: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
   .seg button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 6px 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
   .seg button.active { background: var(--accent); color: #fff; }
@@ -298,9 +308,10 @@
   .status-toast.error { background: #b91c1c; }
   .status-toast.show { opacity: 1; transform: translate(-50%, 0); }
   .status-toast[hidden] { display: none; }
-  .page-tabs { display: flex; gap: 2px; margin: 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px; }
+  .page-tabs { margin: 0; }
   .page-tab { background: transparent; border: none; border-radius: 99px; padding: 6px 20px; color: var(--muted); font-weight: 600; font-size: 15px; }
-  .page-tab.active { background: var(--step-soft); color: var(--accent); }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active, .page-tab.active:hover { background: var(--knob); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .page-tabs[hidden] { display: none; }
   /* ---- Floating panels on the left ---- */
   .float-stack > .top-label-box,
@@ -320,10 +331,9 @@
   #quickfillBox { position: relative; }
   #quickfillBtn { width: 100%; font-weight: 700; padding: 10px; }
   /* 快速填入 / 頂部標籤 re-open buttons: their own little group right of the mode tabs. */
-  .tb-tools { display: flex; gap: 2px; border: 1px solid var(--border); border-radius: 99px; padding: 2px; }
   .tb-tools[hidden], .tb-tools button[hidden] { display: none; }
-  .tb-tools button { white-space: nowrap; background: transparent; border: none; border-radius: 99px; padding: 5px 16px; color: var(--accent); font-weight: 700; font-size: 15px; }
-  .tb-tools button:hover { background: var(--step-soft); }
+  .tb-tools button { white-space: nowrap; background: var(--knob); border: none; border-radius: 99px; padding: 6px 16px; color: var(--accent); font-weight: 700; font-size: 15px; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
+  .tb-tools button:hover { background: var(--card-bg); filter: brightness(.97); }
   /* ---- Step 2 check panel ---- */
   .check-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 15px; font-weight: 700; }
   .check-head small { font-size: 12px; font-weight: 700; }
@@ -353,10 +363,10 @@
   .check-other { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
   .check-other button { padding: 3px 10px; font-size: 12px; margin-left: 6px; }
   /* ---- Copy bar under the preview (step 2, one cell picked) ---- */
-  .copy-bar { display: flex; align-items: center; gap: 10px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 99px; padding: 6px 6px 6px 18px; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px; max-width: 100%; }
+  .copy-bar { display: flex; align-items: center; gap: 10px; background: var(--track); border: none; border-radius: 99px; padding: 4px 4px 4px 18px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); font-size: 13px; max-width: 100%; }
   .copy-bar[hidden] { display: none; }
   .copy-bar .cb-url { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
-  .copy-bar button { padding: 8px 18px; border-radius: 99px; font-weight: 700; font-size: 14px; }
+  .copy-bar button { padding: 8px 18px; border-radius: 99px; font-weight: 700; font-size: 14px; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
   /* ---- Reminder when something is dragged while the photos are locked ---- */
   .lock-toast {
     position: fixed; left: 50%; bottom: 108px; transform: translate(-50%, 24px);
@@ -820,7 +830,7 @@
         <li><b>放照片</b>：在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔；也可以把圖片拖進格子，或選好格子後按 Ctrl+V 貼上。
           <br><span class="help-note">在照片上拖曳可移動、滑鼠滾輪可縮放，「重設位置」回到置中。</span></li>
         <li><b>遮擋人物（選用）</b>：先選格子，再點畫面底部「T寶貼圖」的表情，拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題，圖片疑似露白的格子會標黃色圓圈「!」（仍可下載，但下載前會再問一次）；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
+        <li><b>檢查並下載</b>：新聞、娛樂編輯完按底部「下一步：畫面檢查」（或點上方進度條的「畫面檢查」）。這一步照片、標籤、貼圖都會鎖定，左側列出每格的缺圖、缺標題，圖片疑似露白（照片被拖離格子，或照片本身帶白邊、透明邊）的格子會標黃色圓圈「!」，滑鼠停上去會說明原因（仍可下載，但下載前會再問一次）；拖曳時會提醒「返回上一步更改」。確認沒問題後按「下載本頁」存目前這頁，或「全部下載」一次存兩頁（兩頁都完整才能按）。點預覽圖上的格子，下方會出現該格的「複製推播連結」。要修改按「返回編輯」。拼圖沒有這一步，直接用底部的「下載」或「直接複製」。</li>
       </ol>
 
       <h3>拼圖</h3>
@@ -2857,16 +2867,65 @@ function pageMissingReport(pageState) {
   });
   return rows;
 }
-// 露白: the photo no longer covers its whole cell (it may be pushed past the edge
-// a little on purpose, but the exported image must not show white). A warning
-// only — it can't be told apart from an intended crop, so it never locks downloads.
-function cardHasGap(pageState, i) {
+// 露白: the photo shows white (or nothing) at the edge of its cell. A warning only — it can't
+// be told apart from a photo that is meant to have a white border, so it never locks downloads.
+// Two checks, both on the cell as it will be exported:
+//   1. geometry: the photo no longer covers the whole cell (it was dragged inward);
+//   2. pixels: the cell is drawn on its own and a 3px band along each edge is scanned — an edge
+//      counts as white when >= 90% of its pixels are near-white (R,G,B >= 240) or see-through.
+//      This also catches photos that carry their own white / transparent border.
+// 新聞's bottom edge is skipped for the pixel scan: the template's black gradient covers it.
+const EDGE_BAND_PX = 3, EDGE_WHITE_MIN = 240, EDGE_WHITE_RATIO = 0.9;
+let imgIdCounter = 0;
+function cardGeoGap(pageState, i) {
   const st = pageState.cards[i];
   if (!st.img) return false;
   const cell = cellRect(i, pageState.showHeader);
   const { dw, dh } = cellImageSize(cell, st);
   const e = 0.5;
   return st.offsetX > e || st.offsetY > e || st.offsetX + dw < cell.w - e || st.offsetY + dh < cell.h - e;
+}
+// Which edges of cell i look white/see-through: a subset of ['左', '上', '右', '下'].
+function cardWhiteEdges(pageState, i) {
+  const st = pageState.cards[i];
+  if (!st.img) return [];
+  const cell = cellRect(i, pageState.showHeader);
+  if (!st.img.__id) st.img.__id = ++imgIdCounter;
+  const key = `${st.img.__id}|${st.scale}|${st.offsetX}|${st.offsetY}|${cell.w}|${cell.h}|${mode}`;
+  if (st._edgeCache && st._edgeCache.key === key) return st._edgeCache.sides;
+  const w = Math.ceil(cell.w), h = Math.ceil(cell.h);
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  drawCellImage(octx, { x: 0, y: 0, w: cell.w, h: cell.h }, st);
+  let data;
+  try { data = octx.getImageData(0, 0, w, h).data; } catch (err) { return []; }   // tainted canvas: skip the pixel check
+  const white = (x, y) => {
+    const p = (y * w + x) * 4;
+    return data[p + 3] < 250 || (data[p] >= EDGE_WHITE_MIN && data[p + 1] >= EDGE_WHITE_MIN && data[p + 2] >= EDGE_WHITE_MIN);
+  };
+  const band = Math.min(EDGE_BAND_PX, w, h);
+  const ratio = (xs, ys) => {
+    let n = 0, total = 0;
+    for (let y = ys[0]; y < ys[1]; y++) for (let x = xs[0]; x < xs[1]; x++) { total++; if (white(x, y)) n++; }
+    return total ? n / total : 0;
+  };
+  const sides = [];
+  if (ratio([0, band], [0, h]) >= EDGE_WHITE_RATIO) sides.push('左');
+  if (ratio([0, w], [0, band]) >= EDGE_WHITE_RATIO) sides.push('上');
+  if (ratio([w - band, w], [0, h]) >= EDGE_WHITE_RATIO) sides.push('右');
+  if (mode !== 'news' && ratio([0, w], [h - band, h]) >= EDGE_WHITE_RATIO) sides.push('下');
+  st._edgeCache = { key, sides };
+  return sides;
+}
+function cardHasGap(pageState, i) {
+  return cardGeoGap(pageState, i) || cardWhiteEdges(pageState, i).length > 0;
+}
+// Tooltip text for a cell flagged 露白.
+function cardGapReason(pageState, i) {
+  if (cardGeoGap(pageState, i)) return '照片被拖離格子，邊緣露出空白';
+  const sides = cardWhiteEdges(pageState, i);
+  return sides.length ? `照片${sides.join('、')}邊疑似白邊或透明` : '';
 }
 function pageGapCount(pageState) {
   let n = 0;
@@ -2876,7 +2935,7 @@ function pageGapCount(pageState) {
 function updateDownloadState() {
   const downloadAllBtn = document.getElementById('downloadAllBtn');
   const missing = mode === 'collage' ? 0 : pages.reduce((n, pg) => n + pageMissingReport(pg).length, 0);
-  const gaps = mode === 'collage' ? 0 : pages.reduce((n, pg) => n + pageGapCount(pg), 0);
+  const gaps = (mode === 'collage' || step !== 2) ? 0 : pages.reduce((n, pg) => n + pageGapCount(pg), 0);
   const locked = missing > 0;
   downloadAllBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
   if (locked) { const c = document.getElementById('dlConfirm'); if (c) c.hidden = true; }
@@ -3614,7 +3673,7 @@ function renderCheckPanel() {
       slot.appendChild(d); row.appendChild(slot);
     };
     if (miss.includes('圖片')) mark('bad', '!', '缺圖片');
-    else if (gap) mark('warn', '!', '圖片疑似露白');
+    else if (gap) mark('warn', '!', cardGapReason(pg, i) || '圖片疑似露白');
     else mark('ok', '圖', '圖片 OK');
     if (miss.includes('標題')) mark('bad', '!', '缺標題');
     else mark('ok', '字', '標題 OK');
