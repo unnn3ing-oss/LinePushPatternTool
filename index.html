@@ -2317,8 +2317,7 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
       const kind = cardBadgeKind(pageState, i);
       if (!kind) continue;
       const missing = kind === 'bad';
-      const cell = cellRect(i, pageState.showHeader);
-      const bx = cell.x + 24, by = cell.y + 24;
+      const { x: bx, y: by } = badgeAnchor(i, pageState.showHeader);
       ctx.save();
       ctx.beginPath(); ctx.arc(bx, by, 15, 0, Math.PI * 2);
       ctx.fillStyle = missing ? '#dc2626' : '#facc15'; ctx.fill();
@@ -3657,6 +3656,14 @@ function cardWhiteEdges(pageState, i) {
 function cardHasGap(pageState, i) {
   return cardGeoGap(pageState, i) || cardWhiteEdges(pageState, i).length > 0;
 }
+// Where a cell's "!" sits: 24px in from the left and 24px down from where the photo starts to SHOW. For 新聞 that is
+// below the yellow header / the upper row's black band (the lower row's cell starts under that band, so using the
+// cell's own top would put its "!" on the band, i.e. up in the top row).
+function badgeAnchor(i, showHeader) {
+  const cell = cellRect(i, showHeader);
+  const top = mode === 'news' && i >= CELL_COUNT / 2 ? cardVisibleWindow(cell, showHeader).top : cell.y;   // only the lower row starts under a band
+  return { x: cell.x + 24, y: top + 24 };
+}
 // Which "!" a cell wears on the preview: 'bad' (red, something missing — step 2 only), 'warn' (yellow,
 // photo edge shows white), or null.
 function cardBadgeKind(pageState, i) {
@@ -4573,8 +4580,8 @@ function badgeCellAt(pos) {
   if (mode === 'collage' || !isLocked()) return -1;
   for (let i = 0; i < CELL_COUNT; i++) {
     if (!cardBadgeKind(activePage(), i)) continue;
-    const cell = cellRect(i, activePage().showHeader);
-    if (Math.hypot(pos.x - (cell.x + 24), pos.y - (cell.y + 24)) <= 19) return i;
+    const a = badgeAnchor(i, activePage().showHeader);
+    if (Math.hypot(pos.x - a.x, pos.y - a.y) <= 19) return i;
   }
   return -1;
 }
@@ -4587,8 +4594,8 @@ function showGapTip(i) {
   gapTip.append(b, t.body);
   gapTip.hidden = false;
   const r = canvas.getBoundingClientRect();
-  const cell = cellRect(i, activePage().showHeader);
-  const sx = r.left + (cell.x + 24) * r.width / CANVAS_W, sy = r.top + (cell.y + 24) * r.height / CANVAS_H;
+  const a = badgeAnchor(i, activePage().showHeader);
+  const sx = r.left + a.x * r.width / CANVAS_W, sy = r.top + a.y * r.height / CANVAS_H;
   gapTip.style.left = '0px'; gapTip.style.top = '0px';
   const w = gapTip.offsetWidth, h = gapTip.offsetHeight;
   gapTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, sx + 20))}px`;
