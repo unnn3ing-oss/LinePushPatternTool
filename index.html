@@ -949,7 +949,7 @@
           <div class="help-marks"><i class="dot ok">圖</i><i class="dot ok">字</i> 綠色圓圈＝這項沒問題　<i class="dot warn">!</i> 黃色＝圖片疑似露白　<i class="dot bad">!</i> 紅色＝缺圖片或缺標題</div>
           <span class="help-note">預覽圖有問題的格子左上角也會標同樣的圓圈，滑鼠移上去會顯示原因，移開後約 1 秒淡出。底部的提示會統計兩頁的狀況。</span></li>
         <li><b>疑似露白怎麼判斷</b>：只看照片「看得到」的範圍（被範本遮住的部分不算）。照片沒蓋滿這個範圍（例如被拖離格子），或照片邊緣本身接近白色／透明（任一邊有 90% 以上），就會標黃色「!」。這只是提醒，<b>不鎖定下載</b>。</li>
-        <li><b>複製推播連結</b>：在步驟 2 點預覽圖的格子，該格整個會淡淡反白（亮 5%，沒有藍框線），正中間會出現「複製推播連結」按鈕（編輯畫面時不會出現；點空白處或換頁會收起），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
+        <li><b>複製推播連結</b>：在步驟 2 點預覽圖的格子，該格整個會淡淡反灰（暗 10%，沒有藍框線），正中間會出現「複製推播連結」按鈕（編輯畫面時不會出現；點空白處或換頁會收起），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
         <li><b>下載</b>：
           <ul>
             <li>「下載本頁」存目前這頁；若還有缺漏或疑似露白，會先問你。</li>
@@ -1761,15 +1761,19 @@ function newsTemplate(showHeader) {
   return out;
 }
 // The whole area of a cell as the viewer sees it (step 2's selection highlight and the copy button's
-// centre): 新聞's top row runs on to the lower edge of its black band; 娛樂 is its quarter of the page.
+// centre): 新聞 from the top of the visible photo to the lower edge of the cell's black band; 娛樂 is its quarter of the page.
 function stepTwoCellRect(i, showHeader) {
   if (mode === 'ent') {
     const w = CANVAS_W / 2, h = CANVAS_H / 2;
     return { x: (i % 2) * w, y: Math.floor(i / 2) * h, w, h };
   }
   const cell = cellRect(i, showHeader);
+  // from where the cell starts to show (below the yellow bar's edge / the upper row's black band) ...
+  const top = cardVisibleWindow(cell, showHeader).top;
+  // ... to the lower edge of its own black band (the top row's band runs on below the cell)
   const edge = NEWS_BAND_EDGE[cell.y];
-  return edge === undefined ? cell : { x: cell.x, y: cell.y, w: cell.w, h: edge - cell.y };
+  const bottom = edge === undefined ? cell.y + cell.h : edge;
+  return { x: cell.x, y: top, w: cell.w, h: bottom - top };
 }
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 4;
@@ -2051,10 +2055,10 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
     if (isLocked() && mode !== 'collage') {
-      // 步驟 2: no frame; the whole cell is just lightened by 5%.
+      // 步驟 2: no frame; the whole cell is just dimmed (black at 10%).
       const rc = stepTwoCellRect(activeCard, pageState.showHeader);
       ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillStyle = 'rgba(0,0,0,0.10)';
       ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
       ctx.restore();
     } else {
@@ -4135,7 +4139,7 @@ async function copyPushLink(i, btn) {
     setTimeout(() => { btn.textContent = old === '已複製 ✓' ? '複製推播連結' : old; }, 1500);
   }
 }
-// Step 2: clicking a cell lightens it a little (see stepTwoCellRect) and shows 「複製推播連結」 in its centre.
+// Step 2: clicking a cell dims it a little (see stepTwoCellRect) and shows 「複製推播連結」 in its centre.
 const cellCopyBtn = document.getElementById('cellCopyBtn');
 let copyBtnCell = -1;
 function showCellCopy(i) {
