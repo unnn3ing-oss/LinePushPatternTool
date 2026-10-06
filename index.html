@@ -1159,6 +1159,7 @@
           <input type="text" id="s8Tag" autocomplete="off" placeholder="標籤名稱（S8 裡的名稱）" style="margin-top:6px" disabled>
           <div class="btn-row" style="margin-top:8px"><button type="button" id="s8CountBtn">試算全部 LINE 顧客人數（唯讀）</button></div>
           <pre class="s8c-out" id="s8CountOut" hidden></pre>
+          <details id="s8CountRawBox" hidden style="margin-top:6px"><summary style="cursor:pointer; font-size:13px; color:var(--muted)">查看 S8 原始回傳</summary><pre class="s8c-out" id="s8CountRaw"></pre></details>
         </div>
         <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="必填：來自「推播標題」">
       </div>
@@ -4924,6 +4925,22 @@ function closeS8Dialog() {
 }
 ['s8Name', 's8Tag', 's8Alt'].forEach(id => document.getElementById(id).addEventListener('input', s8Refresh));
 ['s8TargetAll', 's8TargetTag'].forEach(id => document.getElementById(id).addEventListener('change', s8Refresh));
+// 把 broadcast_audience_preview 的回傳翻成易讀文字（時間轉台北時間；previewRef 等內部欄位只放在「原始回傳」）
+function s8AudienceText(orgName, d) {
+  const tpe = iso => {
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return '';
+    const x = new Date(t + 8 * 3600 * 1000);
+    return `${x.getUTCFullYear()}-${pad2(x.getUTCMonth() + 1)}-${pad2(x.getUTCDate())} ${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}:${pad2(x.getUTCSeconds())}`;
+  };
+  const lines = [`組織：${orgName}`, '發送對象：全部 LINE 顧客（不加標籤或其他條件）'];
+  if (d && Number.isFinite(d.total)) lines.push(`可發送人數：${d.total.toLocaleString()} 人（已排除封鎖者）`);
+  else lines.push('可發送人數：S8 沒有回傳人數，請看下方「原始回傳」');
+  if (d && d.previewedAt && tpe(d.previewedAt)) lines.push(`試算時間：${tpe(d.previewedAt)}（台北時間）`);
+  if (d && d.expiresAt && tpe(d.expiresAt)) lines.push(`試算有效至：${tpe(d.expiresAt)}（約 15 分鐘，這只是試算，沒有建立任何東西）`);
+  else lines.push('這只是試算，沒有建立任何東西。');
+  return lines.join('\n');
+}
 document.getElementById('s8CountBtn').addEventListener('click', async () => {
   const out = document.getElementById('s8CountOut');
   const btn = document.getElementById('s8CountBtn');
@@ -4931,8 +4948,11 @@ document.getElementById('s8CountBtn').addEventListener('click', async () => {
   btn.disabled = true; out.hidden = false; out.textContent = `向 S8（${S8_ACCOUNT[mode]}）試算中…`;
   try {
     const d = await s8Api('/s8/audience', { org: mode }, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
-    out.textContent = `組織：${d.org.name}\nS8 試算結果（唯讀，沒有建立任何東西）：\n${JSON.stringify(d.result.data !== undefined ? d.result.data : d.result, null, 2)}`;
-  } catch (e) { out.textContent = e.message; }
+    const raw = d.result.data !== undefined ? d.result.data : d.result;
+    out.textContent = s8AudienceText(d.org.name, raw);
+    document.getElementById('s8CountRaw').textContent = JSON.stringify(raw, null, 2);
+    document.getElementById('s8CountRawBox').hidden = false;
+  } catch (e) { out.textContent = e.message; document.getElementById('s8CountRawBox').hidden = true; }
   btn.disabled = false;
 });
 document.getElementById('s8CloseBtn').addEventListener('click', closeS8Dialog);
