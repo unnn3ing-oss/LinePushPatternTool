@@ -1118,9 +1118,11 @@
       <div class="btn-row" style="margin-top:0">
         <button type="button" class="primary" id="s8cConnect">連結 S8</button>
         <button type="button" id="s8cCheck">重新檢查</button>
+        <button type="button" id="s8cTools">查看工具定義</button>
         <button type="button" id="s8cDisconnect">中斷連線</button>
       </div>
       <pre class="s8c-out" id="s8cOut" hidden></pre>
+      <div class="btn-row" id="s8cCopyRow" hidden style="margin-top:8px"><button type="button" id="s8cCopyOut">複製這段內容</button></div>
     </div>
   </div>
 </div>
@@ -1137,7 +1139,12 @@
         <label for="s8Name">群發名稱</label><input type="text" id="s8Name" autocomplete="off">
         <label>組織／帳號</label><div class="s8-fixed" id="s8Account"></div>
         <label>平台</label><div class="s8-fixed">LINE</div>
-        <label for="s8Tag">發送對象標籤</label><input type="text" id="s8Tag" autocomplete="off" placeholder="必填：請填 S8 裡的標籤名稱">
+        <label>發送對象</label>
+        <div>
+          <label style="display:flex; gap:8px; align-items:center; margin:0 0 6px; font-size:14px; color:var(--text)"><input type="radio" name="s8Target" id="s8TargetAll" value="all" checked style="width:auto; margin:0">全部 LINE 顧客（不加標籤條件）</label>
+          <label style="display:flex; gap:8px; align-items:center; margin:0; font-size:14px; color:var(--text)"><input type="radio" name="s8Target" id="s8TargetTag" value="tag" style="width:auto; margin:0">指定標籤</label>
+          <input type="text" id="s8Tag" autocomplete="off" placeholder="標籤名稱（S8 裡的名稱）" style="margin-top:6px" disabled>
+        </div>
         <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="必填：來自「推播標題」">
       </div>
       <div id="s8Pages"></div>
@@ -4683,11 +4690,13 @@ const S8_ACCOUNT = { news: 'TVBS新聞', ent: 'TVBS娛樂頭條' };
 const S8_CELL_LABELS = { news: ['左上', '中上', '右上', '左下', '中下', '右下'], ent: ['左上', '右上', '左下', '右下'] };
 const S8_SAFETY_RULES = [
   '絕對禁止立即發送：呼叫 broadcast_create 時一定要帶 scheduleAt，不可省略（省略 scheduleAt 會立刻發送，這是禁止的）。',
-  'scheduleAt = 你「執行建立的當下」的台北時間（+08:00）再加 24 小時（+1 day）；不得更早，也不得是過去或接近現在的時間。建立前，先把目前時間與算出的 scheduleAt 回報給我確認。',
+  'scheduleAt = 你「執行建立的當下」的台北時間（+08:00）再加 24 小時（+1 day）；格式是 RFC 3339（例如 2026-10-11T20:00:00+08:00），必須是嚴格的未來時間；不得更早，也不得是過去或接近現在的時間。建立前，先把目前時間與算出的 scheduleAt 回報給我確認。',
   '建立成功後，立刻用 broadcast_update 把這筆排程暫停成草稿（距發送時間必須超過 30 秒），再用 broadcast_get 確認狀態確實是草稿；如果暫停失敗，立刻告訴我，保留原排程（+24 小時），不要再做任何其他操作。',
   '不要使用 resume、不要把它改成立即發送、不要刪除或改動任何其他既有群發。',
   '建立前，先用 messaging_message_preview 給我每一則訊息的預覽，並用 broadcast_audience_preview 顯示可發送人數與 previewRef，等我明確回覆「確認」才建立；預覽後我若要改內容，要重新預覽。',
   '圖片只能用我附上的兩張 PNG，透過 media_upload_url 取得上傳網址後上傳；不要換圖，也不要重新繪製。',
+  '發送對象要完全照上面寫的：不得自行增加、減少或更換任何標籤條件、性別、客戶群等篩選；人數與預覽先給我確認，數字和我預期差很多就停止。',
+  '圖片尺寸是 1040 寬、高 800（新聞）或 1040（娛樂）。若 imagemap 的 size／aspectRatio 不接受這個尺寸，停止並回報，不要自行裁切、縮放或改圖。',
   '工具報錯、座標或連結對不上、找不到標籤時，停止並回報；不要自行猜測，也不要改用其他標籤、平台或組織。',
 ];
 
@@ -4726,7 +4735,8 @@ function buildS8Prompt(d) {
   out.push(`- 組織：${d.account}`);
   out.push('- 平台：line（只選這一個）');
   out.push(`- 群發名稱：${d.name}`);
-  out.push(`- 發送對象：標籤「${d.tag}」（先用 broadcast_audience_preview 試算，把可發送人數與 previewRef 給我確認）`);
+  if (d.target === 'tag') out.push(`- 發送對象：標籤「${d.tag}」（先用 broadcast_audience_preview 試算，把可發送人數與 previewRef 給我確認）`);
+  else out.push('- 發送對象：全部 LINE 顧客，不加任何標籤條件、不加其他篩選（先用 broadcast_audience_preview 試算，把可發送人數與 previewRef 給我確認；全部顧客可能是數十萬人，數字出來後務必明講並等我確認）');
   out.push(`- 推播通知文字（圖文訊息的 altText）：${d.alt}`);
   out.push('');
   out.push(`■ 訊息內容：同一個群發內依序放 ${d.pages.length} 則「圖文訊息」（imagemap），每則一張圖加 ${d.pages[0].cells.length} 個點擊區塊（button，連結類型 url）。`);
@@ -4747,10 +4757,21 @@ function buildS8Prompt(d) {
   out.push('');
   out.push('■ 結構化資料（與上面相同，供核對）');
   out.push(JSON.stringify({
-    organization: d.account, platform: 'line', name: d.name, audienceTag: d.tag, altText: d.alt,
-    scheduleRule: 'scheduleAt = now(+08:00) + 24h, then pause to draft; never omit scheduleAt',
-    messages: d.pages.map(pg => ({ type: 'imagemap', image: pg.file, imageSize: { width: W, height: H }, altText: d.alt,
-      areas: pg.cells.map(c => ({ item: c.n, label: c.label, ...c.pct, linkType: 'url', url: c.url })) })),
+    organization: d.account, platform: 'line', name: d.name,
+    audience: d.target === 'tag' ? { type: 'tag', tag: d.tag } : { type: 'all-line-customers', filters: 'none' },
+    schedule: 'scheduleAt = now(+08:00) + 24h (RFC 3339, strictly future); then pause into a draft; never omit scheduleAt',
+    messages: d.pages.map(pg => ({
+      contentType: 'application/x-template',
+      data: {
+        templateType: 'imagemap', altText: d.alt,
+        elements: [{
+          title: `${d.name} 第${pg.page}則`, imageFile: pg.file, imageUrl: '(media_upload_url 上傳後取得的 https 網址)',
+          size: { width: W, height: H }, aspectRatio: '(依工具說明；不接受就停止回報)', messageTemplateType: 'ImagemapTemplate1',
+          buttons: pg.cells.map(c => ({ title: `項目${c.n}（${c.label}）`, type: 'url', data: c.url, tags: [],
+            x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })),
+        }],
+      },
+    })),
   }, null, 2));
   return out.join('\n');
 }
@@ -4761,6 +4782,7 @@ function s8Collect() {
   const d = {
     account: S8_ACCOUNT[mode],
     name: document.getElementById('s8Name').value.trim(),
+    target: document.getElementById('s8TargetTag').checked ? 'tag' : 'all',
     tag: document.getElementById('s8Tag').value.trim(),
     alt: document.getElementById('s8Alt').value.trim(),
     pages: [],
@@ -4780,7 +4802,7 @@ function s8Collect() {
 function s8Validate(d) {
   const errs = [];
   if (!d.name) errs.push('請填群發名稱');
-  if (!d.tag) errs.push('請填發送對象標籤');
+  if (d.target === 'tag' && !d.tag) errs.push('請填發送對象標籤');
   if (!d.alt) errs.push('請填推播通知（可回到編輯畫面填「推播標題」）');
   d.pages.forEach(pg => pg.cells.forEach(c => {
     if (!c.url) errs.push(`第 ${pg.page} 頁 項目${c.n}（${c.label}）沒有連結`);
@@ -4797,7 +4819,9 @@ function s8Refresh() {
   document.getElementById('s8Errs').innerHTML = '';
   errs.forEach(e => { const li = document.createElement('li'); li.textContent = e; document.getElementById('s8Errs').appendChild(li); });
   document.querySelectorAll('.s8-url').forEach(inp => inp.classList.toggle('bad', !inp.value.trim()));
-  ['s8Name', 's8Tag', 's8Alt'].forEach(id => document.getElementById(id).classList.toggle('bad', !document.getElementById(id).value.trim()));
+  document.getElementById('s8Tag').disabled = d.target !== 'tag';
+  ['s8Name', 's8Alt'].forEach(id => document.getElementById(id).classList.toggle('bad', !document.getElementById(id).value.trim()));
+  document.getElementById('s8Tag').classList.toggle('bad', d.target === 'tag' && !d.tag);
   document.querySelectorAll('.s8-cap').forEach((cap, p) => {
     const im = s8State.images[p];
     if (im) cap.textContent = `${d.name || '（未命名）'}_第${p + 1}頁.png（${(im.size / 1048576).toFixed(2)} MB）`;
@@ -4812,6 +4836,7 @@ async function openS8Dialog() {
   document.getElementById('s8Name').value = name;
   document.getElementById('s8Account').textContent = S8_ACCOUNT[mode];
   document.getElementById('s8Tag').value = '';
+  document.getElementById('s8TargetAll').checked = true;
   document.getElementById('s8Alt').value = pushTitleInput.value.trim();
   s8State = { regions: pages.map(pg => s8Regions(pg)), images: [] };
   const host = document.getElementById('s8Pages');
@@ -4860,6 +4885,7 @@ function closeS8Dialog() {
   s8State = null;
 }
 ['s8Name', 's8Tag', 's8Alt'].forEach(id => document.getElementById(id).addEventListener('input', s8Refresh));
+['s8TargetAll', 's8TargetTag'].forEach(id => document.getElementById(id).addEventListener('change', s8Refresh));
 document.getElementById('s8CloseBtn').addEventListener('click', closeS8Dialog);
 document.getElementById('s8CancelBtn').addEventListener('click', closeS8Dialog);
 s8Overlay.addEventListener('mousedown', e => { if (e.target === s8Overlay) closeS8Dialog(); });
@@ -4906,7 +4932,7 @@ async function s8Api(path, body, headers = {}) {
   if (!res.ok) throw new Error(data.error || `失敗（${res.status}）`);
   return data;
 }
-function s8ShowOut(text) { const o = document.getElementById('s8cOut'); o.hidden = !text; o.textContent = text || ''; }
+function s8ShowOut(text, copyable) { const o = document.getElementById('s8cOut'); o.hidden = !text; o.textContent = text || ''; document.getElementById('s8cCopyRow').hidden = !(text && copyable); }
 async function s8Check() {
   if (!s8Get(S8_SESSION_KEY)) { s8UpdatePill(); s8ShowOut(''); return; }
   s8UpdatePill('檢查中…');
@@ -4955,6 +4981,18 @@ function openS8Conn() { s8cOverlay.classList.add('open'); s8UpdatePill(); s8Chec
 s8Link.addEventListener('click', openS8Conn);
 document.getElementById('s8cConnect').addEventListener('click', s8Connect);
 document.getElementById('s8cCheck').addEventListener('click', s8Check);
+document.getElementById('s8cTools').addEventListener('click', async () => {
+  if (!s8Get(S8_SESSION_KEY)) { s8ShowOut('請先連結 S8'); return; }
+  s8ShowOut('讀取工具定義中…');
+  try {
+    const d = await s8Api('/s8/tools', {}, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
+    s8ShowOut(JSON.stringify(d.tools, null, 2), true);
+  } catch (e) { s8ShowOut(e.message); }
+});
+document.getElementById('s8cCopyOut').addEventListener('click', async () => {
+  const ok = await copyText(document.getElementById('s8cOut').textContent);
+  statusEl.show(ok ? '已複製' : '這個瀏覽器無法複製，請手動選取', ok ? 'success' : 'error');
+});
 document.getElementById('s8cDisconnect').addEventListener('click', () => { s8Set(S8_SESSION_KEY, ''); s8ShowOut(''); s8UpdatePill(); });
 document.getElementById('s8cCloseBtn').addEventListener('click', () => s8cOverlay.classList.remove('open'));
 s8cOverlay.addEventListener('mousedown', e => { if (e.target === s8cOverlay) s8cOverlay.classList.remove('open'); });

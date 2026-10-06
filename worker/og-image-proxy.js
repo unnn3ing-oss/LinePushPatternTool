@@ -22,6 +22,7 @@
 //   POST /s8/login-start  → 取得 S8 授權頁網址（只請求 insightark-mcp:read 範圍）
 //   GET  /s8/callback     → S8 授權完成後跳回這裡，換取憑證、加密後交還網頁
 //   POST /s8/status       → 用憑證呼叫 auth_me、auth_organizations（唯讀）
+//   POST /s8/tools        → 列出 S8 工具的名稱與欄位定義（MCP tools/list，唯讀，不執行任何工具）
 // S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
 
 const ALLOWED_HOST_SUFFIXES = ['tvbs.com.tw'];
@@ -169,6 +170,8 @@ async function handleLabPing(request, env) {
 const S8_BASE_DEFAULT = 'https://api-next.no8.io';
 const S8_SCOPE_READ = 'insightark-mcp:read';
 const S8_READ_TOOLS = new Set(['auth_me', 'auth_organizations']);   // 階段一唯一允許的 MCP 工具
+// 查看工具定義時只列出和群發有關的工具（名稱、說明、欄位），不呼叫它們。
+const S8_TOOLS_SHOWN = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview', 'broadcast_create', 'broadcast_update', 'broadcast_get', 'messaging_message_preview', 'media_upload_url', 'crm_tag_list']);
 const S8_STATE_TTL_MS = 10 * 60 * 1000;
 const S8_CLIENT_NAME = 'Line推播套版產生器';
 
@@ -358,6 +361,36 @@ async function mcpCallTools(env, token, calls) {
   return out;
 }
 
+async function mcpListTools(env, token) {
+  const init = await mcpRpc(env, token, '', 1, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'line-push-pattern-tool', version: '1' } });
+  if (!init.body || init.body.error) throw new Error(`MCP 初始化失敗：${(init.body && init.body.error && init.body.error.message) || init.status}`);
+  const sid = init.sid;
+  await mcpRpc(env, token, sid, null, 'notifications/initialized', {}).catch(() => {});
+  const all = [];
+  let cursor;
+  for (let i = 0; i < 10; i++) {
+    const r = await mcpRpc(env, token, sid, 2 + i, 'tools/list', cursor ? { cursor } : {});
+    if (!r.body || r.body.error) throw new Error(`tools/list 失敗：${(r.body && r.body.error && r.body.error.message) || r.status}`);
+    all.push(...((r.body.result && r.body.result.tools) || []));
+    cursor = r.body.result && r.body.result.nextCursor;
+    if (!cursor) break;
+  }
+  return all.filter(t => S8_TOOLS_SHOWN.has(t.name)).map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+}
+
+async function handleS8Tools(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const sess = await s8Open(env, request.headers.get('X-S8-Session'));
+  if (!sess || !sess.a) return jsonError(401, '尚未連結 S8（或連結資料無效），請重新連結', request, env);
+  if (sess.e < Date.now() + 30 * 1000) return jsonError(401, '憑證即將過期，請先按「重新檢查」更新後再試', request, env);
+  try {
+    return jsonOk({ ok: true, tools: await mcpListTools(env, sess.a) }, request, env);
+  } catch (e) {
+    return jsonError(e.status === 401 ? 401 : 502, e.message || '無法呼叫 S8', request, env);
+  }
+}
+
 async function handleS8Status(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
@@ -391,6 +424,7 @@ export default {
     if (path === '/s8/login-start') return handleS8LoginStart(request, env);
     if (path === '/s8/callback') return handleS8Callback(request, env);
     if (path === '/s8/status') return handleS8Status(request, env);
+    if (path === '/s8/tools') return handleS8Tools(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 
     const articleParam = new URL(request.url).searchParams.get('url');
