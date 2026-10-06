@@ -23,6 +23,9 @@
 //   GET  /s8/callback     → S8 授權完成後跳回這裡，換取憑證、加密後交還網頁
 //   POST /s8/status       → 用憑證呼叫 auth_me、auth_organizations（唯讀）
 //   POST /s8/audience     → 試算「全部 LINE 顧客」可發送人數（broadcast_audience_preview，唯讀；組織與參數都由 Worker 固定）
+//   POST /s8/prepare      → （需 write 授權）上傳兩張圖到 S8、產生 S8 預覽網址，並封存要建立的內容
+//   POST /s8/create       → （需 write 授權）重新試算人數後建立群發草稿：先以「建立當下 + 24 小時」排程，立刻暫停成草稿；絕不立即發送、也沒有保留排程的選項
+//   POST /s8/pause        → 把排程暫停成草稿（broadcast_update 只允許 pause，沒有 resume／立即發送）
 //   POST /s8/tools        → 列出 S8 工具的名稱與欄位定義（MCP tools/list，唯讀，不執行任何工具）
 // S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
 
@@ -170,6 +173,7 @@ async function handleLabPing(request, env) {
 // 這個階段只請求 read 範圍，且只允許呼叫 S8_READ_TOOLS 內的工具，所以 Worker 無法寫入、發送或排程任何東西。
 const S8_BASE_DEFAULT = 'https://api-next.no8.io';
 const S8_SCOPE_READ = 'insightark-mcp:read';
+const S8_SCOPE_WRITE = 'insightark-mcp:read insightark-mcp:write';
 const S8_READ_TOOLS = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview']);   // 唯讀工具白名單（只有試算人數，沒有任何建立／發送／排程）
 const S8_ORG_NAMES = { news: 'TVBS新聞', ent: 'TVBS娛樂頭條' };   // 組織只能從這兩個名稱解析，不採信網頁傳來的 orgId
 // 查看工具定義時只列出和群發有關的工具（名稱、說明、欄位），不呼叫它們。
@@ -218,12 +222,12 @@ async function s8Metadata(env) {
   return { issuer: base, authorization_endpoint: `${base}/mcp/oauth/authorize`, token_endpoint: `${base}/mcp/oauth/token`, registration_endpoint: `${base}/mcp/oauth/register` };
 }
 
-async function s8Register(env, meta, redirectUri) {
+async function s8Register(env, meta, redirectUri, scope = S8_SCOPE_READ) {
   const r = await fetch(meta.registration_endpoint, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_name: S8_CLIENT_NAME, redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'], token_endpoint_auth_method: 'none', scope: S8_SCOPE_READ,
+      response_types: ['code'], token_endpoint_auth_method: 'none', scope,
     }),
   });
   const data = await r.json().catch(() => ({}));
@@ -277,17 +281,20 @@ async function handleS8LoginStart(request, env) {
   const redirectUri = `${new URL(request.url).origin}/s8/callback`;
   try {
     const meta = await s8Metadata(env);
-    let clientId = typeof body.clientId === 'string' && /^[\w.~-]{1,200}$/.test(body.clientId) ? body.clientId : '';
+    const upgrade = body.upgrade === true;
+    const scope = upgrade ? S8_SCOPE_WRITE : S8_SCOPE_READ;
+    let clientId = !upgrade && typeof body.clientId === 'string' && /^[\w.~-]{1,200}$/.test(body.clientId) ? body.clientId : '';
     let registered = false;
-    if (!clientId) { clientId = await s8Register(env, meta, redirectUri); registered = true; }
+    // 升級（write）一律向 S8 另外註冊一個帶 write 範圍的用戶端，不沿用唯讀用戶端
+    if (!clientId) { clientId = await s8Register(env, meta, redirectUri, scope); registered = true; }
     const verifier = randomB64Url(48);
-    const state = await s8Seal(env, { v: verifier, c: clientId, u: returnUrl, ru: redirectUri, x: Date.now() + S8_STATE_TTL_MS });
+    const state = await s8Seal(env, { v: verifier, c: clientId, u: returnUrl, ru: redirectUri, sc: scope, x: Date.now() + S8_STATE_TTL_MS });
     const url = new URL(meta.authorization_endpoint);
     url.search = new URLSearchParams({
-      response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: S8_SCOPE_READ, state,
+      response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope, state,
       code_challenge: await pkceChallenge(verifier), code_challenge_method: 'S256', resource: s8McpUrl(env),
     }).toString();
-    return jsonOk({ authorizeUrl: url.href, clientId, registered, scope: S8_SCOPE_READ }, request, env);
+    return jsonOk({ authorizeUrl: url.href, clientId, registered, scope }, request, env);
   } catch (e) {
     return jsonError(502, e.message || '無法連到 S8', request, env);
   }
@@ -319,7 +326,9 @@ async function handleS8Callback(request, env) {
     const data = await s8TokenRequest(env, meta, {
       grant_type: 'authorization_code', code, redirect_uri: state.ru, client_id: state.c, code_verifier: state.v, resource: s8McpUrl(env),
     });
-    const session = await s8Seal(env, s8SessionFrom(data, state.c));
+    const sessObj = s8SessionFrom(data, state.c);
+    if (!data.scope && state.sc) sessObj.s = state.sc;
+    const session = await s8Seal(env, sessObj);
     return callbackPage({ type: 's8-session', session, clientId: state.c }, state.u, '已連結 SUPER 8 Studio，可以關閉這個視窗。');
   } catch (e) {
     return callbackPage({ type: 's8-error', error: e.message }, state.u, e.message);
@@ -343,23 +352,79 @@ async function mcpRpc(env, token, sessionId, id, method, params) {
   const text = await r.text();
   return { status: r.status, sid: r.headers.get('Mcp-Session-Id') || sessionId, body: parseMcpBody(text, r.headers.get('Content-Type')), raw: text.slice(0, 300) };
 }
-async function mcpCallTools(env, token, calls) {
-  for (const c of calls) if (!S8_READ_TOOLS.has(c.name)) throw new Error(`工具 ${c.name} 不在允許名單內`);
+// ---- 工具白名單與參數把關（階段三：只建立草稿）----
+// 唯讀工具任何時候都可呼叫；其餘工具只有在「有 write 授權」且參數通過下面的把關時才會送出。
+// 程式裡沒有任何路徑能呼叫 resume、sendNow，也沒有省略 scheduleAt 的建立，也沒有「保留排程」。
+const S8_STAGE3_TOOLS = new Set(['media_upload_url', 'messaging_message_preview', 'broadcast_create', 'broadcast_get', 'broadcast_update']);
+const S8_FIXED_RECIPIENTS = { where: { platforms: ['line'] } };   // 全部 LINE 顧客，不加任何其他條件
+const S8_MIN_LEAD_MS = 23 * 60 * 60 * 1000;                       // scheduleAt 至少要在 23 小時之後（正常是 24 小時）
+const keysOf = o => Object.keys(o || {}).sort().join(',');
+function s8Guard(name, args, canWrite, now = Date.now()) {
+  if (S8_READ_TOOLS.has(name)) return;
+  if (!canWrite || !S8_STAGE3_TOOLS.has(name)) throw new Error(`工具 ${name} 不在允許名單內`);
+  const fail = why => { throw new Error(`${name} 參數被擋下：${why}`); };
+  const a = args || {};
+  if (name === 'broadcast_update') {
+    if (keysOf(a) !== 'action,orgId,taskId' || a.action !== 'pause') fail('只允許 {orgId, taskId, action:"pause"}');
+  } else if (name === 'broadcast_get') {
+    if (keysOf(a) !== 'orgId,taskId') fail('只允許 {orgId, taskId}');
+  } else if (name === 'media_upload_url') {
+    if (keysOf(a) !== 'contentType,filename,orgId,purpose' || a.contentType !== 'image/png' || a.purpose !== 'imagemap') fail('只允許上傳 image/png（purpose=imagemap）');
+  } else if (name === 'messaging_message_preview') {
+    if (keysOf(a) !== 'messages,orgId,platform' || a.platform !== 'line') fail('只允許 {orgId, platform:"line", messages}');
+    s8CheckMessages(a.messages, fail);
+  } else if (name === 'broadcast_create') {
+    if (keysOf(a) !== 'messages,orgId,platform,previewRef,recipients,scheduleAt') fail('只允許 {orgId, platform, recipients, previewRef, messages, scheduleAt}');
+    if (a.platform !== 'line') fail('平台只能是 line');
+    if (JSON.stringify(a.recipients) !== JSON.stringify(S8_FIXED_RECIPIENTS)) fail('發送對象只能是全部 LINE 顧客（不加條件）');
+    if (typeof a.previewRef !== 'string' || !a.previewRef) fail('缺少 previewRef');
+    if (typeof a.scheduleAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/.test(a.scheduleAt)) fail('scheduleAt 必須是台北時間（+08:00）的 RFC 3339 格式，且不可省略');
+    if (!(Date.parse(a.scheduleAt) >= now + S8_MIN_LEAD_MS)) fail('scheduleAt 必須在 23 小時之後（不得立即發送）');
+    s8CheckMessages(a.messages, fail);
+  }
+}
+function s8CheckMessages(messages, fail) {
+  if (!Array.isArray(messages) || messages.length < 1 || messages.length > 5) fail('訊息數量必須是 1 到 5 則');
+  for (const m of messages) {
+    if (!m || m.contentType !== 'application/x-template' || !m.data || m.data.templateType !== 'imagemap') fail('只允許圖文訊息（imagemap）');
+    if (typeof m.data.altText !== 'string' || !m.data.altText.trim()) fail('缺少推播通知（altText）');
+    const els = m.data.elements;
+    if (!Array.isArray(els) || els.length !== 1) fail('imagemap 必須剛好一個 element');
+    const el = els[0];
+    if (typeof el.imageUrl !== 'string' || !/^https:\/\/\S+$/.test(el.imageUrl)) fail('圖片網址必須是 https');
+    if (!Array.isArray(el.buttons) || !el.buttons.length) fail('缺少點擊區塊');
+    for (const b of el.buttons) if (b.type !== 'url' || typeof b.data !== 'string' || !/^https?:\/\/\S+$/.test(b.data)) fail('點擊區塊只允許網址連結');
+  }
+}
+
+function parseToolResult(r) {
+  const res = r.body.result || {};
+  const text = (res.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
+  let parsed = res.structuredContent;
+  if (parsed === undefined) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
+  return { isError: !!res.isError, data: parsed };
+}
+
+// 開一個 MCP 連線，之後可連續呼叫多個工具（每次呼叫都先過 s8Guard）。
+async function mcpOpen(env, token, canWrite = false) {
   const init = await mcpRpc(env, token, '', 1, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'line-push-pattern-tool', version: '1' } });
   if (!init.body || init.body.error) throw new Error(`MCP 初始化失敗：${(init.body && init.body.error && init.body.error.message) || init.status}`);
-  let sid = init.sid;
+  const sid = init.sid;
   await mcpRpc(env, token, sid, null, 'notifications/initialized', {}).catch(() => {});
-  const out = {};
   let n = 2;
-  for (const c of calls) {
-    const r = await mcpRpc(env, token, sid, n++, 'tools/call', { name: c.name, arguments: c.args || {} });
-    if (!r.body || r.body.error) throw new Error(`${c.name} 失敗：${(r.body && r.body.error && r.body.error.message) || r.status}`);
-    const res = r.body.result || {};
-    const text = (res.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
-    let parsed = res.structuredContent;
-    if (parsed === undefined) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
-    out[c.name] = { isError: !!res.isError, data: parsed };
-  }
+  return {
+    async call(name, args) {
+      s8Guard(name, args, canWrite);
+      const r = await mcpRpc(env, token, sid, n++, 'tools/call', { name, arguments: args || {} });
+      if (!r.body || r.body.error) throw new Error(`${name} 失敗：${(r.body && r.body.error && r.body.error.message) || r.status}`);
+      return parseToolResult(r);
+    },
+  };
+}
+async function mcpCallTools(env, token, calls) {
+  const mcp = await mcpOpen(env, token, false);
+  const out = {};
+  for (const c of calls) out[c.name] = await mcp.call(c.name, c.args || {});
   return out;
 }
 
@@ -401,6 +466,194 @@ async function handleS8Audience(request, env) {
     return jsonOk({ ok: true, org: { id: org.id, name: orgName }, result: res.broadcast_audience_preview }, request, env);
   } catch (e) {
     return jsonError(e.status === 401 ? 401 : 502, e.message || '無法呼叫 S8', request, env);
+  }
+}
+
+// ---- 階段三：上傳圖片、預覽、建立草稿 ----
+const S8_PREPARE_TTL_MS = 20 * 60 * 1000;
+const S8_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const taipeiIso = ms => new Date(ms + 8 * 3600 * 1000).toISOString().slice(0, 19) + '+08:00';
+const toolText = r => (typeof r.data === 'string' ? r.data : JSON.stringify(r.data)).slice(0, 600);
+const walkStrings = (o, path = '', out = []) => { if (typeof o === 'string') out.push([path, o]); else if (o && typeof o === 'object') for (const k of Object.keys(o)) walkStrings(o[k], `${path}.${k}`, out); return out; };
+
+// media_upload_url 的回傳欄位名稱文件沒寫，這裡寬鬆解析；對不上就整段回報，不猜。
+function pickUploadInfo(data, allowHttp = false) {
+  const urls = walkStrings(data).filter(([, v]) => (allowHttp ? /^https?:\/\/\S+$/ : /^https:\/\/\S+$/).test(v));
+  const up = urls.find(([k]) => /upload|presign|put|signed/i.test(k)) || (urls.length === 1 ? urls[0] : null);
+  if (!up) return null;
+  const rest = urls.filter(x => x !== up);
+  const asset = (rest.find(([k, v]) => /asset|public|final|download|cdn|file|image|url/i.test(k) || /assets\.no8\.io/.test(v)) || [null, up[1].split('?')[0]])[1];
+  let headers = {};
+  const h = walkStrings(data).filter(([k]) => /headers\./i.test(k));
+  for (const [k, v] of h) headers[k.split('.').pop()] = v;
+  return { uploadUrl: up[1], assetUrl: asset, headers };
+}
+
+async function s8LoadSession(request, env) {
+  let sess = await s8Open(env, request.headers.get('X-S8-Session'));
+  if (!sess || !sess.a) return { error: jsonError(401, '尚未連結 S8（或連結資料無效），請重新連結', request, env) };
+  let refreshed = null;
+  if (sess.e < Date.now() + 60 * 1000) {
+    if (!sess.r) return { error: jsonError(401, '憑證已過期，請重新連結', request, env) };
+    const meta = await s8Metadata(env);
+    const data = await s8TokenRequest(env, meta, { grant_type: 'refresh_token', refresh_token: sess.r, client_id: sess.c, resource: s8McpUrl(env) });
+    sess = s8SessionFrom(data, sess.c, sess);
+    refreshed = await s8Seal(env, sess);
+  }
+  return { sess, refreshed };
+}
+const s8HasWrite = sess => /insightark-mcp:write/.test(sess.s || '');
+
+async function s8ResolveOrg(mcp, orgKey) {
+  const name = S8_ORG_NAMES[orgKey];
+  if (!name) throw badInput('org 只能是 news 或 ent');
+  const r = await mcp.call('auth_organizations', {});
+  const org = ((r.data && r.data.organizations) || []).find(o => o.displayName === name);
+  if (!org || !org.id) throw new Error(`S8 帳號下找不到組織「${name}」`);
+  return org;
+}
+async function s8AudienceTotal(mcp, orgId) {
+  const r = await mcp.call('broadcast_audience_preview', { orgId, platform: 'line', recipients: S8_FIXED_RECIPIENTS, includeSample: false });
+  const total = r.data && r.data.total;
+  if (r.isError || !Number.isFinite(total) || !r.data.previewRef) throw new Error(`試算人數失敗：${toolText(r)}`);
+  return { total, previewRef: r.data.previewRef };
+}
+
+function s8BuildMessages(pages, altText, imageUrls) {
+  return pages.map((pg, i) => ({
+    contentType: 'application/x-template',
+    data: {
+      templateType: 'imagemap', altText,
+      elements: [{
+        title: String(pg.title || `第${i + 1}則`).slice(0, 60), imageUrl: imageUrls[i], size: { width: pg.width, height: pg.height }, messageTemplateType: 'ImagemapTemplate1',
+        buttons: pg.buttons.map((b, j) => ({ title: String(b.title || `項目${j + 1}`).slice(0, 40), type: 'url', data: b.url, tags: [], x: b.x, y: b.y, width: b.width, height: b.height })),
+      }],
+    },
+  }));
+}
+const PCT = /^(?:100(?:\.0{1,2})?|(?:0|[1-9]\d?)(?:\.\d{1,2})?)%$/;
+const PCT_POS = /^(?:100(?:\.0{1,2})?|(?:0?\.(?:0[1-9]|[1-9]\d?)|[1-9]\d?(?:\.\d{1,2})?))%$/;
+const badInput = msg => Object.assign(new Error(msg), { status: 400 });
+function s8ValidatePages(pages) {
+  if (!Array.isArray(pages) || pages.length < 1 || pages.length > 2) throw badInput('頁數必須是 1 到 2');
+  for (const pg of pages) {
+    if (!(pg.width === 1040 && (pg.height === 800 || pg.height === 1040))) throw badInput('圖片尺寸必須是 1040×800 或 1040×1040');
+    if (!Array.isArray(pg.buttons) || pg.buttons.length < 1 || pg.buttons.length > 6) throw badInput('每頁點擊區塊必須是 1 到 6 個');
+    for (const b of pg.buttons) {
+      if (typeof b.url !== 'string' || !/^https?:\/\/\S+$/.test(b.url) || b.url.length > 2000) throw badInput('連結格式不正確');
+      if (!PCT.test(b.x) || !PCT.test(b.y) || !PCT_POS.test(b.width) || !PCT_POS.test(b.height)) throw badInput('點擊區塊座標格式不正確');
+    }
+  }
+}
+
+async function handleS8Prepare(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  let body;
+  try { const raw = await request.text(); if (raw.length > 12 * 1024 * 1024) return jsonError(413, '內容太大', request, env); body = JSON.parse(raw); } catch { return jsonError(400, '格式不正確', request, env); }
+  try {
+    const loaded = await s8LoadSession(request, env); if (loaded.error) return loaded.error;
+    const { sess, refreshed } = loaded;
+    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請先在「連結 S8」視窗按「升級為可建立草稿」', request, env);
+    const altText = typeof body.altText === 'string' ? body.altText.trim().slice(0, 400) : '';
+    if (!altText) return jsonError(400, '缺少推播通知文字', request, env);
+    s8ValidatePages(body.pages);
+    const images = Array.isArray(body.images) ? body.images : [];
+    if (images.length !== body.pages.length) return jsonError(400, '圖片數量和頁數不一致', request, env);
+    const mcp = await mcpOpen(env, sess.a, true);
+    const org = await s8ResolveOrg(mcp, body.org);
+    const { total } = await s8AudienceTotal(mcp, org.id);
+    // 上傳圖片
+    const imageUrls = [];
+    for (let i = 0; i < images.length; i++) {
+      const bytes = Uint8Array.from(atob(String(images[i] || '')), c => c.charCodeAt(0));
+      if (!bytes.length || bytes.length >= S8_MAX_IMAGE_BYTES) return jsonError(400, `第 ${i + 1} 張圖片大小不符（必須小於 2MB）`, request, env);
+      if (!(bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)) return jsonError(400, `第 ${i + 1} 張不是 PNG`, request, env);
+      const up = await mcp.call('media_upload_url', { orgId: org.id, filename: `${String(body.name || 'push').replace(/[^\w一-鿿-]/g, '').slice(0, 40) || 'push'}_p${i + 1}.png`, contentType: 'image/png', purpose: 'imagemap' });
+      if (up.isError) throw new Error(`取得上傳網址失敗：${toolText(up)}`);
+      const info = pickUploadInfo(up.data, !!(env && env.ALLOW_HTTP === '1'));   // 正式環境只收 https（ALLOW_HTTP 只給本機測試）
+      if (!info) throw new Error(`看不懂 media_upload_url 的回應，請把這段貼給維護者：${toolText(up)}`);
+      const put = await fetch(info.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png', ...info.headers }, body: bytes });
+      if (!put.ok) throw new Error(`上傳圖片失敗（${put.status}）`);
+      imageUrls.push(info.assetUrl);
+    }
+    const messages = s8BuildMessages(body.pages, altText, imageUrls);
+    const prev = await mcp.call('messaging_message_preview', { orgId: org.id, platform: 'line', messages });
+    if (prev.isError) throw new Error(`產生預覽失敗：${toolText(prev)}`);
+    const prepareToken = await s8Seal(env, { t: 'prepare', org: body.org, orgId: org.id, messages, x: Date.now() + S8_PREPARE_TTL_MS });
+    return jsonOk({ ok: true, org: { id: org.id, name: org.displayName }, total, preview: prev.data, imageUrls, prepareToken, expiresInMinutes: S8_PREPARE_TTL_MS / 60000, session: refreshed }, request, env);
+  } catch (e) {
+    return jsonError(e.status === 401 || e.status === 400 ? e.status : 502, e.message || '無法呼叫 S8', request, env);
+  }
+}
+
+function pickTaskId(data) {
+  const found = walkStrings(data).find(([k]) => /(^|\.)(taskId|id|_id)$/i.test(k));
+  return found ? found[1] : '';
+}
+const pickField = (data, re) => { const f = walkStrings(data).find(([k]) => re.test(k)); return f ? f[1] : ''; };
+
+async function pauseToDraft(mcp, orgId, taskId) {
+  const g1 = await mcp.call('broadcast_get', { orgId, taskId });
+  const allowed = (g1.data && g1.data.allowedActions) || [];
+  if (!Array.isArray(allowed) || !allowed.includes('pause')) return { ok: false, why: `目前不能暫停（allowedActions：${JSON.stringify(allowed)}，狀態：${pickField(g1.data, /(^|\.)(status|phase)$/i)}）`, get: g1.data };
+  const upd = await mcp.call('broadcast_update', { orgId, taskId, action: 'pause' });
+  if (upd.isError) return { ok: false, why: `暫停失敗：${toolText(upd)}`, get: g1.data };
+  const g2 = await mcp.call('broadcast_get', { orgId, taskId });
+  const status = pickField(g2.data, /(^|\.)status$/i), phase = pickField(g2.data, /(^|\.)phase$/i);
+  return { ok: status === 'draft' || phase === 'draft', status, phase, get: g2.data };
+}
+
+async function handleS8Create(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  let body = {};
+  try { body = JSON.parse((await request.text()) || '{}'); } catch { return jsonError(400, '格式不正確', request, env); }
+  const prep = await s8Open(env, body.prepareToken);
+  if (!prep || prep.t !== 'prepare' || !prep.x || prep.x < Date.now()) return jsonError(400, '預覽已過期或無效，請重新「上傳並產生預覽」', request, env);
+  let created = null;
+  try {
+    const loaded = await s8LoadSession(request, env); if (loaded.error) return loaded.error;
+    const { sess, refreshed } = loaded;
+    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請先升級', request, env);
+    const mcp = await mcpOpen(env, sess.a, true);
+    // 人數確認：重新試算，必須和使用者輸入的人數幾乎一致
+    const { total, previewRef } = await s8AudienceTotal(mcp, prep.orgId);
+    const typed = Number(body.confirmTotal);
+    if (!Number.isFinite(typed) || Math.abs(typed - total) > Math.max(5, Math.round(total * 0.01))) {
+      return jsonError(409, `確認人數不符：S8 現在試算是 ${total} 人，你輸入的是 ${body.confirmTotal}。沒有建立任何東西。`, request, env);
+    }
+    // 排程時間由 Worker 決定：建立當下 + 24 小時（台北時間）。建立後馬上暫停成草稿。
+    const scheduleAt = taipeiIso(Date.now() + 24 * 3600 * 1000);
+    created = await mcp.call('broadcast_create', { orgId: prep.orgId, platform: 'line', recipients: S8_FIXED_RECIPIENTS, previewRef, messages: prep.messages, scheduleAt });
+    if (created.isError) throw new Error(`建立失敗：${toolText(created)}`);
+    const taskId = pickTaskId(created.data);
+    if (!taskId) return jsonOk({ ok: false, created: true, warning: `群發已建立（排程在 ${scheduleAt}），但我找不到 taskId，無法自動暫停。請立即到 Super 8 Console 暫停或刪除這筆群發！`, scheduleAt, total, raw: created.data, session: refreshed }, request, env);
+    const paused = await pauseToDraft(mcp, prep.orgId, taskId);
+    if (!paused.ok) return jsonOk({ ok: false, created: true, taskId, warning: `群發已建立，但沒有成功暫停成草稿（${paused.why || '狀態：' + paused.status}）。它仍排在 ${scheduleAt} 發送，請立即到 Super 8 Console 暫停或刪除，或按「重試暫停」。`, scheduleAt, total, session: refreshed }, request, env);
+    return jsonOk({ ok: true, taskId, status: paused.status, phase: paused.phase, scheduledWas: scheduleAt, total, orgId: prep.orgId, session: refreshed }, request, env);
+  } catch (e) {
+    const extra = created && !created.isError ? `（注意：群發可能已建立，請到 Console 確認：${toolText(created)}）` : '';
+    return jsonError(e.status === 401 ? 401 : 502, `${e.message || '無法呼叫 S8'}${extra}`, request, env);
+  }
+}
+
+async function handleS8Pause(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  let body = {};
+  try { body = JSON.parse((await request.text()) || '{}'); } catch { return jsonError(400, '格式不正確', request, env); }
+  if (typeof body.taskId !== 'string' || !/^[\w-]{6,64}$/.test(body.taskId)) return jsonError(400, 'taskId 格式不正確', request, env);
+  try {
+    const loaded = await s8LoadSession(request, env); if (loaded.error) return loaded.error;
+    const { sess, refreshed } = loaded;
+    if (!s8HasWrite(sess)) return jsonError(403, '目前只有唯讀授權，請先升級', request, env);
+    const mcp = await mcpOpen(env, sess.a, true);
+    const org = await s8ResolveOrg(mcp, body.org);
+    const paused = await pauseToDraft(mcp, org.id, body.taskId);
+    return jsonOk({ ok: paused.ok, taskId: body.taskId, status: paused.status, phase: paused.phase, why: paused.why, session: refreshed }, request, env);
+  } catch (e) {
+    return jsonError(e.status === 401 || e.status === 400 ? e.status : 502, e.message || '無法呼叫 S8', request, env);
   }
 }
 
@@ -452,6 +705,9 @@ export default {
     if (path === '/s8/status') return handleS8Status(request, env);
     if (path === '/s8/tools') return handleS8Tools(request, env);
     if (path === '/s8/audience') return handleS8Audience(request, env);
+    if (path === '/s8/prepare') return handleS8Prepare(request, env);
+    if (path === '/s8/create') return handleS8Create(request, env);
+    if (path === '/s8/pause') return handleS8Pause(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 
     const articleParam = new URL(request.url).searchParams.get('url');
