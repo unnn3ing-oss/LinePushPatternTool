@@ -1817,17 +1817,20 @@ function renderTo(ctx, renderMode, pageState, opts = {}) {
   }
   if (opts.showActiveBorder && cellSelected && activeCard != null && activeCard >= 0 && activeCard < CELL_COUNT) {
     const cell = cellRect(activeCard, pageState.showHeader);
-    // 新聞: the frame marks the photo you can see — from the top of the cell down to the top
-    // of the first headline line (the bottom edge of the small tag), not over the text area.
-    let frameH = cell.h;
+    // 新聞: the frame marks the photo you can see, not the text area. Bottom = top of the first
+    // headline line (the small tag's lower edge). Top = the very top of the cell for the upper row;
+    // for the lower row it is where the upper row's black text band really ends — that band runs a
+    // little past the grid line, which is what TAG_TOP_LIMITS already encodes (434 / 416).
+    let frameTop = cell.y, frameBottom = cell.y + cell.h;
     if (mode === 'news') {
       const f = computeCardFit(ctx, cell, pageState.cards[activeCard]);
-      frameH = clamp(newsTagLimitBottom(cell, f) - cell.y, 24, cell.h);
+      if (cell.y > NEWS_H * 0.4) frameTop = newsTagLimitTop(cell);
+      frameBottom = clamp(newsTagLimitBottom(cell, f), frameTop + 24, cell.y + cell.h);
     }
     ctx.save();
     ctx.strokeStyle = 'rgba(0,74,173,0.9)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(cell.x + 1.5, cell.y + 1.5, cell.w - 3, frameH - 3);
+    ctx.strokeRect(cell.x + 1.5, frameTop + 1.5, cell.w - 3, frameBottom - frameTop - 3);
     ctx.restore();
   }
 }
