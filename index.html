@@ -1708,6 +1708,19 @@ function computeCardFit(ctx, cell, state) {
   return result;
 }
 
+// The headline block of a 新聞 cell hangs from this y (its bottom edge). Bottom row: the cell's own bottom.
+// Top row: the headline sits in the black band that runs on below the cell, down to where the lower row's
+// photo starts to show (measured off the template PNGs: 432 with the yellow bar, 414 without), so it is
+// moved down to end TOP_ROW_TEXT_GAP px above that edge. Tags, the blue/red frames and the copy button
+// are all measured from the headline, so they follow.
+const TOP_ROW_TEXT_GAP = 5;
+const NEWS_BAND_EDGE = { [ROW_EDGES_HEADER[0]]: 432, [ROW_EDGES_PLAIN[0]]: 414 };
+function newsTextBottom(cell) {
+  const edge = NEWS_BAND_EDGE[cell.y];
+  // The ink of the last line ends 6px above this y (4px padding + the glyph's own side bearing), so
+  // y = edge - (gap - 5) leaves exactly `gap` px of black below the text.
+  return edge === undefined ? cell.y + cell.h : edge - (TOP_ROW_TEXT_GAP - 5);
+}
 function drawCellText(ctx, cell, state) {
   const paddingBottom = 4;
   const centerX = cell.x + cell.w / 2;
@@ -1717,7 +1730,7 @@ function drawCellText(ctx, cell, state) {
   // have shrunk to fit long text) so line 1 and line 2 land at the exact
   // same height in every cell of a row — a cell with a long, shrunk title
   // still lines up with its neighbors instead of sitting lower/higher.
-  const bottomAnchor = cell.y + cell.h - paddingBottom - BASE_FONT_SIZE * 0.5;
+  const bottomAnchor = newsTextBottom(cell) - paddingBottom - BASE_FONT_SIZE * 0.5;
   const lineGap = BASE_FONT_SIZE * 1.18;
 
   let baseY1 = null, baseY2 = null;
@@ -1782,9 +1795,10 @@ function newsTagLayout(ctx, cell, state, n) {
 // this is the y just above the headline block, where tag 1 sits by default
 // and the lowest a tag may reach.
 function newsTagLimitBottom(cell, f) {
-  const topLineBaseline = f.line1 ? cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5 - (f.line2 ? BASE_FONT_SIZE * 1.18 : 0)
-    : f.line2 ? cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5
-    : cell.y + cell.h - 4;
+  const tb = newsTextBottom(cell);
+  const topLineBaseline = f.line1 ? tb - 4 - BASE_FONT_SIZE * 0.5 - (f.line2 ? BASE_FONT_SIZE * 1.18 : 0)
+    : f.line2 ? tb - 4 - BASE_FONT_SIZE * 0.5
+    : tb - 4;
   const topLineFontSize = f.line1 ? f.fontSize1 : f.fontSize2;
   return topLineBaseline - topLineFontSize * 0.5 - TAG_GAP;
 }
@@ -1797,11 +1811,12 @@ function newsPhotoFrame(ctx, cell, state, showHeader) {
   // Measured from the standard font size (like the headline's own baseline), not this cell's possibly
   // shrunk one, so the frames of a row all end at the same height.
   const hasLine1 = !!(state.line1 || '').trim(), hasLine2 = !!(state.line2 || '').trim();
-  const bottomAnchor = cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5;
+  const tb = newsTextBottom(cell);
+  const bottomAnchor = tb - 4 - BASE_FONT_SIZE * 0.5;
   const topLineBaseline = hasLine1 ? bottomAnchor - (hasLine2 ? BASE_FONT_SIZE * 1.18 : 0)
-    : hasLine2 ? bottomAnchor : cell.y + cell.h - 4;
+    : hasLine2 ? bottomAnchor : tb - 4;
   const bottom = topLineBaseline - BASE_FONT_SIZE * 0.5 - TAG_GAP;
-  return { top, bottom: clamp(bottom, top + 24, cell.y + cell.h) };
+  return { top, bottom: clamp(bottom, top + 24, tb) };
 }
 
 // Topmost tag under the point (tag 2 is drawn last, so it wins).
@@ -4073,7 +4088,7 @@ function copyBtnAnchor(i) {
     return { x: c.cx, y: y + ENT_INK_DY - ENT_BASE_FONT_SIZE * 0.5 };
   }
   const cell = cellRect(i, activePage().showHeader);
-  const bottomAnchor = cell.y + cell.h - 4 - BASE_FONT_SIZE * 0.5;
+  const bottomAnchor = newsTextBottom(cell) - 4 - BASE_FONT_SIZE * 0.5;
   const baseY = has1 ? bottomAnchor - (has2 ? BASE_FONT_SIZE * 1.18 : 0) : bottomAnchor;
   return { x: cell.x + cell.w / 2, y: baseY - BASE_FONT_SIZE * 0.5 };
 }
