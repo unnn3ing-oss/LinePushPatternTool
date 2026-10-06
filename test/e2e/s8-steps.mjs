@@ -165,8 +165,14 @@ check((await page.textContent('#s8ConfirmMark')) === '', '還沒輸入：數字�
 await page.fill('#s8ConfirmTotal', '999');
 check(!(await vis('#s8Step4')), '人數輸入錯誤：不出現步驟 4');
 check((await page.textContent('#s8ConfirmMark')) === '✗' && (await page.getAttribute('#s8ConfirmMark', 'class')).includes('bad'), '打錯數字：數字框後面出現紅色 ✗');
+const markCss = () => page.evaluate(() => { const c = getComputedStyle(document.getElementById('s8ConfirmMark')); const r = document.getElementById('s8ConfirmMark').getBoundingClientRect(); return { bg: c.backgroundColor, color: c.color, radius: c.borderTopLeftRadius, w: Math.round(r.width), h: Math.round(r.height) }; });
+let mk = await markCss();
+check(mk.bg === 'rgb(220, 38, 38)' && mk.color === 'rgb(255, 255, 255)' && mk.w === mk.h && parseFloat(mk.radius) >= mk.w / 2, `✗ 包在紅底圓圈內（${JSON.stringify(mk)}）`);
 await page.fill('#s8ConfirmTotal', '1,234');
 check((await page.textContent('#s8ConfirmMark')) === '✓' && (await page.getAttribute('#s8ConfirmMark', 'class')).includes('ok'), '打對數字：數字框後面變成綠色 ✓');
+mk = await markCss();
+check(mk.bg === 'rgb(22, 163, 74)' && mk.color === 'rgb(255, 255, 255)' && mk.w === mk.h && parseFloat(mk.radius) >= mk.w / 2, `✓ 包在綠底圓圈內（${JSON.stringify(mk)}）`);
+await page.mouse.move(0, 0);
 const cap = await page.evaluate(() => { const g = id => { const c = getComputedStyle(document.getElementById(id)); return `${c.backgroundColor}|${c.borderTopLeftRadius}|${c.fontWeight}`; }; return { count: g('s8CountBtn'), draft: g('s8PickDraft'), sched: g('s8PickSched'), conf: g('s8ConfirmBox'), copy: g('s8CopyName'), create: g('s8CreateBtn') }; });
 check(['draft', 'sched', 'conf', 'copy', 'create'].every(k => cap[k] === cap.count), `步驟 2～5 的膠囊與「計算符合條件的客戶數」同款（背景／圓角／粗細）：${JSON.stringify(cap)}`);
 check(await vis('#s8Step4') && !(await vis('#s8Step5')), '人數輸入正確：出現步驟 4，步驟 5 還沒出現');
@@ -211,6 +217,11 @@ await page.click('#s8CopyName');
 const wantText = `${want.y}-${pad2(want.mo)}-${pad2(want.d)} ${pad2(want.h)}:${pad2(want.mi)}`;
 check((await page.textContent('#s8CreateBtn')).includes(`建立排程（${wantText} 發送）`), `步驟 5 按鈕寫出確切時間：${wantText}`);
 check((await page.textContent('#s8Tip')).includes('不會暫停') && (await page.textContent('#s8Tip')).includes(wantText) && (await page.textContent('#s8Tip')).includes('1,234'), '步驟 5 提示寫出「不會暫停、何時實際發送給幾人」');
+const sizes = await page.evaluate(() => ['s8PrepBtn', 's8PreviewBtn', 's8PickDraft', 's8PickSched', 's8ConfirmBox', 's8CopyName', 's8CreateBtn'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { id, w: Math.round(r.width), h: Math.round(r.height), clipped: e.scrollWidth > e.clientWidth + 1 }; }));
+check(sizes.every(x => x.w === sizes[0].w && x.h === sizes[0].h), `步驟裡所有按鈕尺寸一致：${sizes.map(x => `${x.id}=${x.w}×${x.h}`).join('、')}`);
+check(sizes.every(x => !x.clipped), '最長的內容（排程時間選單、建立排程文字）都放得下，沒有被裁切');
+const rowTops = await page.evaluate(() => ['s8PickDraft', 's8PickSched'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().top)));
+check(rowTops[0] === rowTops[1], '步驟 2 的兩個按鈕仍並排在同一列');
 await shot('s8-5-step5-schedule');
 
 // ===== 7. 建立排程：確認視窗、送出指定時間、紅字橫幅、暫停 =====

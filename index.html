@@ -176,14 +176,21 @@
   .s8-status.bad { color: #b91c1c; }
   .s8-pair { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   .s8-pair button.sel, .s8-pillbox.sel { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
-  .s8-pillbox { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; flex-wrap: wrap; }
   .s8-pillbox.pick { cursor: pointer; }
   .s8-pillbox select { width: auto; min-width: 58px; margin: 0; padding: 3px 6px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
   .s8-pillbox input[type="text"] { width: 8.5em; margin: 0; padding: 3px 12px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
-  .s8-mark { min-width: 1.1em; font-weight: 800; }
-  .s8-mark.ok { color: var(--success); }
-  .s8-mark.bad { color: #dc2626; }
   .s8-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  /* 步驟裡所有按鈕／膠囊同一個尺寸（寬高都取最大的那一個：「設定排程」膠囊）*/
+  .s8-steps { --s8-ctl-w: 330px; --s8-ctl-h: 44px; }
+  .s8-steps button, .s8-pillbox { box-sizing: border-box; width: var(--s8-ctl-w); max-width: 100%; height: var(--s8-ctl-h); display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; padding-top: 0; padding-bottom: 0; }
+  .s8-pillbox { padding-left: 14px; padding-right: 14px; gap: 4px; }
+  .s8-pillbox select { min-width: 50px; padding: 3px 3px 3px 6px; }
+  .s8-pillbox input[type="text"] { width: 7em; }
+  /* 確認人數的 ✓／✗：圓圈＋綠／紅底 */
+  .s8-mark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff; }
+  .s8-mark:empty { display: none; }
+  .s8-mark.ok { background: var(--success); }
+  .s8-mark.bad { background: #dc2626; }
   .s8-whenmsg[hidden] { display: none; }
   .s8-whenmsg.bad { color: #b91c1c; font-weight: 600; }
   .s8-copymsg { font-size: 13px; color: var(--muted); margin-left: 6px; }
