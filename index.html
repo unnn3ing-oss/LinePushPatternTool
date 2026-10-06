@@ -257,10 +257,12 @@
   .gap-tip.show { opacity: 1; }
   .gap-tip[hidden] { display: none; }
   .gap-tip b { display: block; font-size: 14px; margin-bottom: 2px; }
-  .dock-chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  /* Same size as the buttons beside it in the dock. */
+  .dock-chip { box-sizing: border-box; font-size: 14px; font-weight: 700; padding: 9px 18px; border: 1px solid transparent; border-radius: 99px; white-space: nowrap; }
   .dock-chip[hidden] { display: none; }
   .dock-chip.bad { background: #fee2e2; color: #b91c1c; }
-  .dock-chip.warn { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 2px; }
+  .dock-chip .warn-dot { width: 18px; height: 18px; font-size: 12px; }
+  .dock-chip.warn { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 6px; }
   /* 全部下載 asks "typos checked, no photo showing white?" in a small popover above the button. */
   .dl-confirm {
     position: absolute;
