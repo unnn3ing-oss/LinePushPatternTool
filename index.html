@@ -196,7 +196,20 @@
   .s8-cb-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 9px; line-height: 1; color: var(--muted); cursor: pointer; user-select: none; }
   /* 確認人數：數字框跟旁邊的按鈕一樣大（同寬同高、白底、陰影） */
   .s8-seg.confirm { gap: 14px; }
-  .s8-steps .s8-segbtn.lbl { width: var(--s8-btn-w); padding: 0; }
+  .s8-steps .s8-segbtn.col1 { width: var(--s8-btn-w); padding: 0; }   /* 第一欄的按鈕（傳送資料／存成草稿／確認人數）同寬，文字位置一致 */
+  .s8-segbody input[type="text"]::placeholder { color: var(--muted); font-weight: 600; opacity: 1; }
+  /* 傳送資料：還沒有狀態時，灰框貼齊按鈕；有狀態更新時往右彈開顯示文字 */
+  .s8-seg.hug { overflow: hidden; width: calc(var(--s8-btn-w) + var(--s8-inset) * 2); transition: width .4s cubic-bezier(.3, .9, .3, 1); }
+  .s8-seg.hug.open { width: var(--s8-ctl-w); }
+  .s8-step.old { display: none; }   /* 完成一個步驟就隱藏前一個步驟 */
+  .s8-steps .s8-segbtn[data-state="busy"] { background: #fbf0cf; color: var(--text); }   /* 米黃：傳送中／建立中 */
+  .s8-steps .s8-segbtn[data-state="warn"] { background: #facc15; color: #1f2328; }   /* 黃：建立失敗 */
+  .s8-steps .s8-segbtn:disabled[data-state] { opacity: 1; cursor: default; }
+  /* 建立失敗：下方彈出的問題說明 */
+  .s8-problem { margin-top: 0; padding: 0 16px; border: 1px solid transparent; border-radius: 14px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; white-space: pre-wrap; max-height: 0; opacity: 0; overflow: hidden; transition: max-height .35s ease, opacity .3s ease, padding .35s ease, margin .35s ease, border-color .3s ease; }
+  .s8-problem.show { margin-top: 10px; padding: 12px 16px; max-height: 360px; opacity: 1; border-color: #facc15; }
+  .s8-problem[hidden] { display: none; }
+  .s8-note-body { font-size: 14px; line-height: 1.75; white-space: pre-wrap; }
   .s8-segbody { padding: 0; gap: 10px; }
   .s8-segbody input[type="text"] { box-sizing: border-box; width: var(--s8-btn-w); align-self: stretch; margin: 0; padding: 0 12px; border: none; border-radius: 99px; background: var(--knob); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .s8-segbody input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -1259,8 +1272,8 @@
       <div class="s8-steps" id="s8Steps">
         <div class="s8-step on" id="s8Step1">
           <div class="s8-sbody">
-            <div class="s8-seg" id="s8PrepTrack">
-              <button type="button" class="s8-segbtn" id="s8PrepBtn">傳送資料</button>
+            <div class="s8-seg hug" id="s8PrepTrack">
+              <button type="button" class="s8-segbtn col1" id="s8PrepBtn">傳送資料</button>
               <div class="s8-segstatus" id="s8PrepOut" hidden><span id="s8PrepMsg"></span></div>
             </div>
           </div>
@@ -1268,7 +1281,7 @@
         <div class="s8-step" id="s8Step2" hidden>
           <div class="s8-sbody">
             <div class="s8-seg pair" id="s8Seg2"><span class="s8-knob" aria-hidden="true"></span>
-              <button type="button" class="s8-segbtn" id="s8PickDraft">存成草稿</button>
+              <button type="button" class="s8-segbtn col1" id="s8PickDraft">存成草稿</button>
               <div class="s8-segbtn s8-segpill" id="s8PickSched" role="group" tabindex="0" aria-label="設定排程時間">設定排程
                 <span class="s8-cb"><input type="text" id="s8Mo" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="月"><span class="s8-cb-btn" data-for="s8Mo" aria-hidden="true">▾</span></span>月<span class="s8-cb"><input type="text" id="s8Dd" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="日"><span class="s8-cb-btn" data-for="s8Dd" aria-hidden="true">▾</span></span>日<span class="s8-cb"><input type="text" id="s8Hh" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="時"><span class="s8-cb-btn" data-for="s8Hh" aria-hidden="true">▾</span></span><span>:</span><span class="s8-cb"><input type="text" id="s8Mi" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="分"><span class="s8-cb-btn" data-for="s8Mi" aria-hidden="true">▾</span></span>
               </div>
@@ -1279,7 +1292,7 @@
         <div class="s8-step" id="s8Step3" hidden>
           <div class="s8-sbody">
             <div class="s8-seg confirm" id="s8ConfirmBox">
-              <span class="s8-segbtn lbl" id="s8ConfirmLabel">確認人數</span>
+              <span class="s8-segbtn col1" id="s8ConfirmLabel">確認人數</span>
               <div class="s8-segbody">
                 <input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入數字" aria-label="確認人數">
                 <span class="s8-mark" id="s8ConfirmMark" aria-live="polite"></span>
@@ -1295,16 +1308,26 @@
         <div class="s8-step" id="s8Step5" hidden>
           <div class="s8-sbody">
             <div class="s8-seg" id="s8CreateTrack"><button type="button" class="s8-segbtn solo" id="s8CreateBtn">建立草稿</button></div>
-            <p class="s8-tip" id="s8Tip"></p>
           </div>
         </div>
       </div>
+      <div class="s8-problem" id="s8Problem" role="alert" hidden></div>
       <div id="s8CreateOut" class="s8c-out" hidden></div>
       <div id="s8SchedBanners"></div>
       <div class="btn-row" id="s8RetryRow" hidden style="margin-top:8px"><button type="button" id="s8RetryPause">重試暫停成草稿</button></div>
       <div class="btn-row" style="justify-content:flex-end; margin-top:14px">
         <button type="button" id="s8CancelBtn">關閉</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="s8NoteOverlay">
+  <div class="modal" style="max-width:440px" role="dialog" aria-labelledby="s8NoteTitle">
+    <div class="modal-head"><h2 id="s8NoteTitle"></h2></div>
+    <div class="modal-body">
+      <div class="s8-note-body" id="s8NoteBody"></div>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:16px"><button type="button" class="primary" id="s8NoteOk">知道了</button></div>
     </div>
   </div>
 </div>
@@ -5107,9 +5130,10 @@ const s8Out = (id, text, bad) => { const o = document.getElementById(id); o.hidd
 const $s8 = id => document.getElementById(id);
 const pad2 = n => String(n).padStart(2, '0');
 const S8_MIN_LEAD_MIN = 30, S8_MAX_LEAD_DAYS = 7;   // 與 Worker 的限制一致（Worker 才是最後把關）
-function s8PrepSet(text, bad, ok) {
+function s8PrepSet(text, bad, ok, busy) {
   const btn = $s8('s8PrepBtn');
-  if (bad) btn.dataset.state = 'bad'; else if (ok) btn.dataset.state = 'ok'; else delete btn.dataset.state;   // 傳送完成→綠、失敗→紅
+  if (bad) btn.dataset.state = 'bad'; else if (ok) btn.dataset.state = 'ok'; else if (busy) btn.dataset.state = 'busy'; else delete btn.dataset.state;   // 傳送完成→綠、失敗→紅、傳送中→米黃
+  $s8('s8PrepTrack').classList.toggle('open', !!text);   // 有狀態才把灰框往右彈開
   const box = $s8('s8PrepOut');
   box.hidden = !text; box.classList.toggle('bad', !!bad);
   $s8('s8PrepMsg').textContent = text || '';
@@ -5140,7 +5164,7 @@ function s8FitControls() {
     if (tweak) tweak(c);
     probe.appendChild(c);
   };
-  add('s8PrepTrack', c => { const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = '✓ 傳送完成　可發送 000,000 人'; });
+  add('s8PrepTrack', c => { c.classList.add('open'); const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = '✓ 傳送完成　可發送 000,000 人'; });
   add('s8Seg2');
   add('s8ConfirmBox', c => { c.querySelector('.s8-mark').textContent = '✓'; });
   add('s8CopyTrack');
@@ -5157,9 +5181,36 @@ function s8PlaceSegs() {
 }
 window.addEventListener('resize', () => { if (typeof s8PlaceSegs === 'function') s8PlaceSegs(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { s8FitControls(); });
+// 建立失敗時下方彈出的問題說明（黃色）
+let s8ProblemTimer = null;
+function s8ShowProblem(text) {
+  const el = $s8('s8Problem');
+  clearTimeout(s8ProblemTimer);
+  el.textContent = text; el.hidden = false;
+  void el.offsetWidth;
+  el.classList.add('show');
+}
+function s8HideProblem() {
+  const el = $s8('s8Problem');
+  el.classList.remove('show');
+  clearTimeout(s8ProblemTimer);
+  s8ProblemTimer = setTimeout(() => { if (!el.classList.contains('show')) el.hidden = true; }, 400);
+}
+// 成功後的提醒彈窗
+function s8Note(title, text) {
+  $s8('s8NoteTitle').textContent = title;
+  $s8('s8NoteBody').textContent = text;
+  $s8('s8NoteOverlay').classList.add('open');
+  setTimeout(() => $s8('s8NoteOk').focus(), 0);
+}
+const s8NoteClose = () => $s8('s8NoteOverlay').classList.remove('open');
+$s8('s8NoteOk').addEventListener('click', s8NoteClose);
+$s8('s8NoteOverlay').addEventListener('mousedown', e => { if (e.target === $s8('s8NoteOverlay')) s8NoteClose(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $s8('s8NoteOverlay').classList.contains('open')) { e.stopImmediatePropagation(); s8NoteClose(); } }, true);
 function s8ResetCreate() {
   s8Prepared = null;
   s8Flow = { choice: '', copied: false };
+  s8HideProblem();
   $s8('s8ConfirmTotal').value = '';
   clearTimeout(s8CopyTimer); s8CopyFlash = ''; s8RenderCopyBtn();
   s8SetWhen(s8DefaultWhenMs());
@@ -5272,8 +5323,10 @@ function s8UpdateSteps() {
   const confirmOk = prepared && !!choice && s8Digits($s8('s8ConfirmTotal').value) === s8Prepared.total;
   const ready = confirmOk && timeOk;
   if (!ready) s8Flow.copied = false;
-  const show = (id, on) => { $s8(id).hidden = !on; };
-  show('s8Step2', prepared); show('s8Step3', prepared && !!choice); show('s8Step4', ready); show('s8Step5', ready && s8Flow.copied);
+  // 哪些步驟已經到了；到了才出現。完成一個步驟後，再前一個步驟的項目就隱藏（只留「剛完成的」和「目前這一步」）
+  const reached = [true, prepared, prepared && !!choice, ready, ready && s8Flow.copied];
+  let cur = 1; reached.forEach((r, i) => { if (r) cur = i + 1; });
+  for (let n = 1; n <= 5; n++) { const el = $s8(`s8Step${n}`); el.hidden = !reached[n - 1]; el.classList.toggle('old', n < cur - 1); }
   const mark = (id, done, on) => {
     const el = $s8(id); el.classList.toggle('done', !!done); el.classList.toggle('on', !done && !!on);
     const n = id.slice(-1), dot = $s8(`s8Dot${n}`), line = $s8(`s8Line${n}`);   // 水平步驟列：圓圈跟連線同步
@@ -5301,18 +5354,14 @@ function s8UpdateSteps() {
   const setSt = (el, st) => { if (st) el.dataset.state = st; else delete el.dataset.state; };
   setSt($s8('s8ConfirmLabel'), !raw ? '' : (typedOk ? 'ok' : 'bad'));
   setSt($s8('s8CopyName'), s8Flow.copied ? (s8Flow.copyOk ? 'ok' : 'bad') : '');
-  setSt($s8('s8CreateBtn'), s8Flow.createBad ? 'bad' : '');
+  setSt($s8('s8CreateBtn'), s8Flow.createState || '');
   s8PlaceSegs();
   s8RenderCopyBtn();
-  const name = $s8('s8Name').value.trim();
-  const btn = $s8('s8CreateBtn'), tip = $s8('s8Tip');
-  if (choice === 'schedule' && when && !when.err && prepared) {
-    btn.textContent = `建立排程（${when.text} 發送）`;
-    tip.textContent = `⚠ 這筆群發不會暫停，將在 ${when.text} 實際發送給 ${s8Prepared.total.toLocaleString()} 人（全部 LINE 顧客）。\n建立後請到 S8 Console，貼上剛剛複製的「${name}」，手動為這筆群發命名（S8 的建立工具沒有名稱欄位）。`;
-  } else {
-    btn.textContent = '建立草稿';
-    tip.textContent = `建立後請到 S8 Console，貼上剛剛複製的「${name}」，手動為這筆群發命名（S8 的建立工具沒有名稱欄位）。`;
-  }
+  $s8('s8ConfirmTotal').placeholder = prepared ? `輸入 ${s8Prepared.total.toLocaleString()}` : '輸入數字';   // 在框內提示正確人數
+  const btn = $s8('s8CreateBtn'), cst = s8Flow.createState || '';
+  const sched = choice === 'schedule' && when && !when.err && prepared;
+  btn.textContent = cst === 'busy' ? '建立中…' : (cst === 'ok' ? (choice === 'schedule' ? '已建立排程' : '已建立草稿') : (sched ? `建立排程（${when.text} 發送）` : '建立草稿'));
+  btn.disabled = cst === 'busy' || cst === 'ok' || !!s8Flow.createdOnce;
 }
 s8InitWhen();
 $s8('s8PickDraft').addEventListener('click', () => { s8Flow.choice = 'draft'; s8Flow.copied = false; s8UpdateSteps(); });
@@ -5344,7 +5393,7 @@ $s8('s8PrepBtn').addEventListener('click', async () => {
   if (errs.length) { s8PrepSet(`✗ 還不能傳送：${errs.join('；')}`, true); return; }
   if (d.target !== 'all') { s8PrepSet('✗ 傳送目前只支援「全部 LINE 顧客」，請選上面的「全部 LINE 顧客」。', true); return; }
   if (!s8Get(S8_SESSION_KEY) || !s8CanWrite()) { s8PrepSet('✗ 需要先在右上角「S8」視窗按「連結 S8」完成授權（讀取＋寫入）。', true); return; }
-  btn.disabled = true; s8PrepSet('傳送中…（約數秒）');
+  btn.disabled = true; s8PrepSet('傳送中…（約數秒）', false, false, true);
   try {
     const body = {
       org: mode, name: d.name, altText: d.alt,
@@ -5398,40 +5447,43 @@ function s8AddScheduleBanner(r, org, name) {
   box.appendChild(el);
 }
 $s8('s8CreateBtn').addEventListener('click', async () => {
-  if (!s8Prepared || !s8Flow.choice || !s8Flow.copied) return;
-  const btn = $s8('s8CreateBtn');
+  if (!s8Prepared || !s8Flow.choice || !s8Flow.copied || s8Flow.createdOnce || s8Flow.createState === 'busy' || s8Flow.createState === 'ok') return;
   const cmode = s8Flow.choice, org = mode, total = s8Prepared.total, name = $s8('s8Name').value.trim();
-  let scheduleAt;
+  let scheduleAt, whenText = '';
   if (cmode === 'schedule') {
     const w = s8WhenValue();
     if (w.err) { s8UpdateSteps(); return; }
-    scheduleAt = w.iso;
+    scheduleAt = w.iso; whenText = w.text;
     if (!window.confirm(`這筆群發「不會暫停」。\n\n將在 ${w.text}（台北時間）實際發送給 ${total.toLocaleString()} 人（全部 LINE 顧客）。\n\n確定要建立排程嗎？（建立後仍可按「暫停成草稿」）`)) return;
   }
-  btn.disabled = true; $s8('s8RetryRow').hidden = true;
-  s8Flow.createBad = false; s8UpdateSteps();
-  s8Out('s8CreateOut', cmode === 'schedule' ? '建立排程中…' : '建立草稿中…（建立後立刻暫停）');
+  $s8('s8RetryRow').hidden = true; s8Out('s8CreateOut', ''); s8HideProblem();
+  s8Flow.createState = 'busy'; s8UpdateSteps();   // 剛送出：米黃色
   const prepared = s8Prepared;
   try {
     const body = { prepareToken: prepared.prepareToken, confirmTotal: s8Digits($s8('s8ConfirmTotal').value), mode: cmode };
     if (cmode === 'schedule') body.scheduleAt = scheduleAt;
     const r = await s8Api('/s8/create', body, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
-    // 一次預覽只建立一筆群發；要再建立請重新「傳送資料」
-    s8Prepared = null; s8Flow = { choice: '', copied: false };
-    $s8('s8ConfirmTotal').value = ''; clearTimeout(s8CopyTimer); s8CopyFlash = ''; s8PrepSet('');
-    s8UpdateSteps();
-    if (r.ok && r.mode === 'schedule') {
-      s8Out('s8CreateOut', '');
-      s8AddScheduleBanner(r, org, name);
-    } else if (r.ok) {
-      s8Out('s8CreateOut', `✓ 草稿已建立並確認狀態為 ${r.status || 'draft'}\ntaskId：${r.taskId}\n可發送人數：${r.total.toLocaleString()} 人\n不會發送，除非有人在 Console 手動 resume。\n請到 Super 8 Console 貼上剛剛複製的名稱「${name}」，手動為這筆草稿命名。`);
+    if (r.ok) {
+      // 成功：按鈕變綠、不能再按（一次預覽只建立一筆；要再建立請重新「傳送資料」），並用彈窗提醒到 S8 後台確認與命名
+      s8Flow.createState = 'ok'; s8Flow.createdOnce = true; s8UpdateSteps();
+      if (r.mode === 'schedule') {
+        s8AddScheduleBanner(r, org, name);
+        s8Note('排程已建立', `將在 ${s8FmtScheduleAt(r.scheduleAt)}（台北時間）實際發送給 ${Number(r.total).toLocaleString()} 人。\n\n請到 S8 後台（Console）：\n1. 確認這筆排程是否成功建立\n2. 貼上剛剛複製的名稱「${name}」，為這筆群發命名\n\n如果要取消，可按下方紅色橫幅的「暫停成草稿」。\ntaskId：${r.taskId}`);
+      } else {
+        s8Out('s8CreateOut', `✓ 草稿已建立並確認狀態為 ${r.status || 'draft'}\ntaskId：${r.taskId}\n可發送人數：${r.total.toLocaleString()} 人\n不會發送，除非有人在 Console 手動 resume。`);
+        s8Note('草稿已建立', `請到 S8 後台（Console）：\n1. 確認草稿已出現在群發清單\n2. 貼上剛剛複製的名稱「${name}」，為這筆群發命名\n\n這是草稿，不會發送，除非有人在 Console 手動 resume。\ntaskId：${r.taskId}`);
+      }
     } else {
-      s8Out('s8CreateOut', `⚠ ${r.warning}${r.taskId ? `\ntaskId：${r.taskId}` : ''}`, true);
+      // 失敗：按鈕變黃色、下方彈出問題說明；如果群發其實已建立（只是暫停失敗），不能再按建立，只能重試暫停
+      s8Flow.createState = 'warn'; s8Flow.createdOnce = r.created === true; s8UpdateSteps();
+      s8ShowProblem(`⚠ ${r.warning}${r.taskId ? `\ntaskId：${r.taskId}` : ''}`);
       if (r.taskId) { $s8('s8RetryRow').hidden = false; $s8('s8RetryRow').dataset.taskId = r.taskId; }
     }
-  } catch (e) { s8Out('s8CreateOut', e.message, true); s8Flow.createBad = true; s8UpdateSteps(); }
-  btn.disabled = false;
+  } catch (e) {
+    s8Flow.createState = 'warn'; s8Flow.createdOnce = /可能已建立/.test(e.message || ''); s8UpdateSteps();
+    s8ShowProblem(`⚠ ${e.message}`);
+  }
 });
 $s8('s8RetryPause').addEventListener('click', async () => {
   const taskId = $s8('s8RetryRow').dataset.taskId;
