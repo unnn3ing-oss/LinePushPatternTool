@@ -54,6 +54,49 @@
 
 > 若 S8 不接受 `workers.dev` 當跳轉位址，視窗會顯示 S8 回報的原因，請把那段文字貼給維護者。
 
+## LINE 官方帳號直接發送（試驗，不經過 S8）
+
+網頁的「排入 S8」視窗最下面有一個可展開的「LINE 官方帳號直接發送（試驗）」。它**不用 S8 的額度**，改用官方帳號自己的 Messaging API，把同一份預覽內容（兩頁圖文訊息、每格連結、推播標題）發給該帳號的**全部好友**。
+
+> ⚠️ **沒有草稿、沒有排程**：LINE 的群發呼叫成功就是已經發出，無法收回。所以預設**只允許測試帳號**，正式帳號要多道手續（見下）。
+
+### 設定（只做一次）
+
+1. **Secret（Worker → Settings → Variables and Secrets → Secret）**
+
+   | 名稱 | 內容 |
+   |---|---|
+   | `LINE_CHANNEL_ID_TEST`、`LINE_CHANNEL_SECRET_TEST` | 測試官方帳號的 Channel ID 與 Channel secret（LINE Developers Console → 該頻道 → Basic settings） |
+   | `LINE_CHANNEL_ID_NEWS`、`LINE_CHANNEL_SECRET_NEWS` | TVBS新聞正式帳號（先不要設，測試穩定後再說） |
+   | `LINE_CHANNEL_ID_ENT`、`LINE_CHANNEL_SECRET_ENT` | TVBS娛樂頭條正式帳號（同上） |
+   | `LINE_ALLOW_OFFICIAL` | 填 `1` 才允許發正式帳號；**沒設就一律拒絕** |
+
+   **Channel secret 等同密碼，不要貼在對話或程式碼裡。**
+2. **R2 圖片空間**：Cloudflare → R2 → 建立一個 bucket（名稱隨意）；再到 Worker → Settings → Bindings → Add → **R2 bucket**，**變數名稱必須填 `LINE_IMG`**，選剛建的 bucket → Deploy。LINE 的 imagemap 要求圖片放在你自己的 HTTPS 網址，並提供 240／300／460／700／1040 五種寬度；網頁會縮好五種寬度，Worker 存進 R2，再由 `GET /line-img/<id>/<寬度>`（公開、網址不含副檔名）提供給 LINE 抓。**圖片要一直留著**（使用者每次開啟訊息 LINE 都會抓），不要清掉 bucket。
+3. 貼上最新的 `og-image-proxy.js` 並 Deploy。
+
+### 怎麼運作
+
+| 端點 | 作用 |
+|---|---|
+| `POST /line/status` | 用 Channel ID＋secret 現場換一個 15 分鐘的 stateless token，唯讀查帳號名稱、好友數（LINE 昨日統計）、本月訊息額度與已用 |
+| `POST /line/prepare` | 檢查內容、把每頁 5 種寬度的圖片存進 R2、封存要發的內容（30 分鐘有效） |
+| `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
+| `POST /line/send` | 再 validate 一次、確認額度與人數後 `broadcast` 給全部好友 |
+
+發送的安全規則（`POST /line/send`）：
+
+- 一定先 `validate`，沒通過就不發；每次帶 `X-Line-Retry-Key`（UUID），同一個 key 重送 LINE 不會重複發；
+- 本月額度（上限－已用）不夠好友數就不發；
+- **正式帳號**另外要求：Worker 設了 `LINE_ALLOW_OFFICIAL=1`；**同一份內容先成功發過測試帳號**（Worker 回的 `testToken`，1 小時有效）；內容的版型要和帳號對得上（新聞內容只能發新聞帳號）；使用者輸入的好友數和 LINE 回報的相差在 2%（至少 50 人）以內；查不到好友數就不發；
+- Worker 只允許呼叫 7 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、validate、broadcast），**沒有** push／multicast／narrowcast、不改頻道設定、不重發長效 token。
+
+### 絕對不要做的事（會讓 S8 的串接中斷）
+
+- 不要在 LINE 後台**重新發行 Channel secret** 或**長效 channel access token**：正式帳號的頻道是 S8 在用的，重發會讓舊的立刻失效。
+- 不要改頻道的 **Webhook URL**。
+- 這個功能發出的訊息，S8 後台不一定看得到（推論）；額度則和 S8 發送共用同一個官方帳號的每月訊息額度。
+
 ## 自動測試
 
 ```bash
@@ -62,6 +105,7 @@ python3 -m http.server 8960 &               # 前端（Playwright，Worker 回�
 NODE_PATH=$(npm root -g) node test/e2e/s8-steps.mjs      # 步驟流程、顏色、尺寸、選擇器
 NODE_PATH=$(npm root -g) node test/e2e/s8-per-mode.mjs   # 新聞／娛樂各自保留進度
 NODE_PATH=$(npm root -g) node test/e2e/s8-connect.mjs    # 連結彈窗
+NODE_PATH=$(npm root -g) node test/e2e/line-direct.mjs   # LINE 直接發送區塊
 NODE_PATH=$(npm root -g) node test/e2e/lab-toggle-pos.mjs # 試驗功能按鈕位置
 NODE_PATH=$(npm root -g) node test/e2e/badge-anchor.mjs  # 步驟 2 的「!」位置
 ```

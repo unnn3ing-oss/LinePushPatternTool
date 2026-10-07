@@ -27,6 +27,7 @@
 //   POST /s8/create       → （需 write 授權）重新試算人數後建立群發，先以「建立當下 + 24 小時」排程；body.mode 只接受 'draft'（預設，立刻暫停成草稿）或 'schedule'（明確選擇不暫停、保留 +1 天排程，改用 broadcast_get 確認狀態）；絕不立即發送，沒有 resume／sendNow
 //   POST /s8/pause        → 把排程暫停成草稿（broadcast_update 只允許 pause，沒有 resume／立即發送）
 //   POST /s8/tools        → 列出 S8 工具的名稱與欄位定義（MCP tools/list，唯讀，不執行任何工具）
+// 另有「LINE 官方帳號直連」（試驗，使用者已授權；預設只允許測試帳號）：POST /line/status、/line/prepare、/line/validate、/line/send 與公開的 GET /line-img/<id>/<寬度>，說明見下方該段與 worker/README.md。
 // S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
 
 const ALLOWED_HOST_SUFFIXES = ['tvbs.com.tw'];
@@ -741,6 +742,225 @@ async function handleS8Status(request, env) {
   }
 }
 
+// ===========================================================================
+// LINE 官方帳號直連（試驗）：準備、檢查，以及（使用者已授權）對「全部好友」broadcast。沒有排程、沒有草稿：發送成功就是已經發出。
+//   POST /line/status    → 檢查帳號（名稱、好友數、本月額度與已用）— 全部唯讀
+//   POST /line/prepare   → 把 5 種寬度的圖片存進 R2（綁定名稱 LINE_IMG），封存要用的內容（30 分鐘有效）
+//   POST /line/validate  → 把準備好的內容交給 LINE 的 validate/broadcast 檢查格式（只檢查，不會發送）
+//   POST /line/send      → validate 通過後 broadcast 給全部好友。預設只允許測試帳號；正式帳號要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
+//   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{寬度}，網址不能有副檔名）
+// 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
+//   LINE_CHANNEL_ID_NEWS / _SECRET_NEWS、LINE_CHANNEL_ID_ENT / _SECRET_ENT（正式帳號）。
+// 每次呼叫現場用 channel ID＋secret 換 15 分鐘的 stateless token（可無限發行、不會讓別人（例如 S8）的 token 失效），不存任何 token。
+// ===========================================================================
+const LINE_API = 'https://api.line.me';
+const LINE_CHANNEL_SUFFIX = { test: 'TEST', news: 'NEWS', ent: 'ENT' };
+const LINE_IMG_WIDTHS = [240, 300, 460, 700, 1040];
+const LINE_PREPARE_TTL_MS = 30 * 60 * 1000;
+const LINE_MAX_IMG_BYTES = 4 * 1024 * 1024;
+// Worker 只能對 LINE 做這幾件事（方法＋路徑），其他一律不給：沒有 push／multicast／narrowcast、沒有改頻道設定、沒有重發長效 token。
+const LINE_ALLOWED_CALLS = [
+  /^POST \/oauth2\/v3\/token$/,
+  /^GET \/v2\/bot\/info$/,
+  /^GET \/v2\/bot\/message\/quota$/,
+  /^GET \/v2\/bot\/message\/quota\/consumption$/,
+  /^GET \/v2\/bot\/insight\/followers$/,
+  /^POST \/v2\/bot\/message\/validate\/broadcast$/,
+  /^POST \/v2\/bot\/message\/broadcast$/,   // 只有 handleLineSend 會用到
+];
+const lineTokenCache = new Map();   // channel key → { id, promise(token), exp }
+
+function lineChannelCreds(env, key) {
+  const suf = LINE_CHANNEL_SUFFIX[key];
+  if (!suf) throw badInput('channel 只能是 test、news 或 ent');
+  const id = env && env[`LINE_CHANNEL_ID_${suf}`], secret = env && env[`LINE_CHANNEL_SECRET_${suf}`];
+  if (!id || !secret) throw Object.assign(new Error(`尚未設定 ${suf} 帳號的 LINE_CHANNEL_ID_${suf} / LINE_CHANNEL_SECRET_${suf}（Worker Secret）`), { status: 503 });
+  return { id: String(id).trim(), secret: String(secret).trim() };
+}
+async function lineAccessToken(env, key) {
+  const { id, secret } = lineChannelCreds(env, key);
+  const hit = lineTokenCache.get(key);
+  if (hit && hit.id === id && hit.exp > Date.now() + 60 * 1000) return hit.promise;   // 同時多個請求共用同一次發行（也可能是還在進行中的）
+  const promise = (async () => {
+    const res = await fetch(`${LINE_API}/oauth2/v3/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret }).toString(),
+    });
+    let data = {}; try { data = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok || !data.access_token) throw Object.assign(new Error(`LINE 不接受這組 Channel ID／secret（${res.status} ${data.error_description || data.error || ''}）`.trim()), { status: 502 });
+    lineTokenCache.set(key, { id, promise: Promise.resolve(data.access_token), exp: Date.now() + (Number(data.expires_in) || 900) * 1000 });
+    return data.access_token;
+  })();
+  lineTokenCache.set(key, { id, promise, exp: Date.now() + 10 * 60 * 1000 });   // 發行中：先佔位，成功後換成真正的到期時間
+  promise.catch(() => { if (lineTokenCache.get(key) && lineTokenCache.get(key).promise === promise) lineTokenCache.delete(key); });
+  return promise;
+}
+// 對 LINE 呼叫一次；不管狀態碼都回 { status, data, requestId }（不丟例外），但方法＋路徑必須在白名單內。
+async function lineCall(env, key, method, path, body, extraHeaders) {
+  const base = path.split('?')[0];
+  if (!LINE_ALLOWED_CALLS.some(re => re.test(`${method} ${base}`))) throw new Error(`不允許的 LINE 呼叫：${method} ${base}`);
+  const token = await lineAccessToken(env, key);
+  const res = await fetch(`${LINE_API}${path}`, {
+    method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(extraHeaders || {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {}; const text = await res.text(); try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 300) }; }
+  return { status: res.status, data, requestId: res.headers.get('x-line-request-id') || '' };
+}
+const lineErrText = r => {
+  const d = r.data || {};
+  const detail = Array.isArray(d.details) && d.details.length ? `（${d.details.map(x => `${x.property || ''} ${x.message || ''}`.trim()).join('；')}）` : '';
+  return `LINE 回應 ${r.status}：${d.message || d.raw || '沒有說明'}${detail}`;
+};
+const lineYesterdayYmd = () => new Date(Date.now() + 8 * 3600e3 - 24 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+const lineStatusCode = e => (e && e.status >= 400 && e.status < 600 ? e.status : 502);
+
+async function lineAccountInfo(env, key) {
+  const [info, quota, used, fol] = await Promise.all([
+    lineCall(env, key, 'GET', '/v2/bot/info'),
+    lineCall(env, key, 'GET', '/v2/bot/message/quota'),
+    lineCall(env, key, 'GET', '/v2/bot/message/quota/consumption'),
+    lineCall(env, key, 'GET', `/v2/bot/insight/followers?date=${lineYesterdayYmd()}`),
+  ]);
+  const followers = fol.status === 200 && fol.data && fol.data.status === 'ready' && Number.isFinite(fol.data.followers) ? fol.data : null;
+  return {
+    bot: info.status === 200 ? { displayName: info.data.displayName || '', basicId: info.data.basicId || '' } : null,
+    quota: quota.status === 200 ? { type: quota.data.type || '', value: Number.isFinite(quota.data.value) ? quota.data.value : null } : null,
+    used: used.status === 200 && Number.isFinite(used.data.totalUsage) ? used.data.totalUsage : null,
+    followers,
+    notes: [info, quota, used, fol].filter(r => r.status !== 200).map(lineErrText),
+  };
+}
+async function lineReadBody(request, env, max = 1024 * 1024) {
+  try { const raw = await request.text(); if (raw.length > max) return { error: jsonError(413, '內容太大', request, env) }; const b = JSON.parse(raw || '{}'); if (!b || typeof b !== 'object' || Array.isArray(b)) throw 0; return { body: b }; }
+  catch { return { error: jsonError(400, '格式不正確', request, env) }; }
+}
+
+async function handleLineStatus(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const info = await lineAccountInfo(env, body.channel);
+    return jsonOk({ ok: true, channel: body.channel, r2Ready: !!(env && env.LINE_IMG && typeof env.LINE_IMG.put === 'function'), ...info }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '無法呼叫 LINE', request, env); }
+}
+
+const lineHex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
+function lineDecodeImage(b64, w) {
+  let bytes; try { bytes = Uint8Array.from(atob(String(b64 || '')), c => c.charCodeAt(0)); } catch { throw badInput(`${w}px 圖片不是有效的 base64`); }
+  if (!bytes.length || bytes.length > LINE_MAX_IMG_BYTES) throw badInput(`${w}px 圖片大小不符（必須小於 4MB）`);
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  const jpg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (!png && !jpg) throw badInput(`${w}px 圖片必須是 PNG 或 JPEG`);
+  return { bytes, type: png ? 'image/png' : 'image/jpeg' };
+}
+async function handleLinePrepare(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env, 24 * 1024 * 1024); if (error) return error;
+  try {
+    if (!env || !env.LINE_IMG || typeof env.LINE_IMG.put !== 'function') throw Object.assign(new Error('Worker 尚未綁定 R2（綁定變數名稱必須是 LINE_IMG），圖片沒地方放。請見 worker/README.md「LINE 直連」'), { status: 503 });
+    if (body.org !== 'news' && body.org !== 'ent') throw badInput('org 只能是 news 或 ent');
+    const altText = typeof body.altText === 'string' ? body.altText.trim().slice(0, 400) : '';
+    if (!altText) throw badInput('缺少推播通知文字');
+    s8ValidatePages(body.pages);
+    const pages = [];
+    for (const pg of body.pages) {
+      const imgs = pg.images && typeof pg.images === 'object' ? pg.images : {};
+      const decoded = LINE_IMG_WIDTHS.map(w => [w, lineDecodeImage(imgs[w], w)]);
+      const pid = lineHex(16);
+      for (const [w, { bytes, type }] of decoded) {
+        await env.LINE_IMG.put(`line/${pid}/${w}`, bytes, { httpMetadata: { contentType: type, cacheControl: 'public, max-age=31536000, immutable' } });
+      }
+      const px = v => Math.round(parseFloat(v) / 100 * 1040);
+      pages.push({
+        pid, width: 1040, height: pg.height,
+        areas: pg.buttons.map(b => ({ url: b.url, x: px(b.x), y: Math.round(parseFloat(b.y) / 100 * pg.height), width: px(b.width), height: Math.round(parseFloat(b.height) / 100 * pg.height) })),
+      });
+    }
+    const id = lineHex(12);
+    const prepareToken = await s8Seal(env, { t: 'line-prepare', id, org: body.org, altText, pages, x: Date.now() + LINE_PREPARE_TTL_MS });
+    return jsonOk({ ok: true, id, prepareToken, expiresInMinutes: LINE_PREPARE_TTL_MS / 60000, pages: pages.length }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '準備失敗', request, env); }
+}
+
+async function handleLineImage(request, env) {
+  const m = new URL(request.url).pathname.match(/^\/line-img\/([0-9a-f]{32})\/(\d{3,4})$/);
+  if (!m || !LINE_IMG_WIDTHS.includes(Number(m[2]))) return new Response('not found', { status: 404 });
+  if (!env || !env.LINE_IMG || typeof env.LINE_IMG.get !== 'function') return new Response('not configured', { status: 503 });
+  const obj = await env.LINE_IMG.get(`line/${m[1]}/${m[2]}`);
+  if (!obj) return new Response('not found', { status: 404 });
+  const type = (obj.httpMetadata && obj.httpMetadata.contentType) || 'image/png';
+  return new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } });
+}
+
+// 把準備好的內容組成 LINE 的 imagemap 訊息物件（階段一只拿來做格式檢查）
+function lineBuildMessages(prep, origin) {
+  return prep.pages.map(pg => ({
+    type: 'imagemap', baseUrl: `${origin}/line-img/${pg.pid}`, altText: prep.altText,
+    baseSize: { width: 1040, height: pg.height },
+    actions: pg.areas.map(a => ({ type: 'uri', linkUri: a.url, area: { x: a.x, y: a.y, width: a.width, height: a.height } })),
+  }));
+}
+async function handleLineValidate(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const prep = await s8Open(env, body.prepareToken);
+    if (!prep || prep.t !== 'line-prepare' || !prep.x || prep.x < Date.now()) throw badInput('準備好的內容已過期或無效，請重新「上傳圖片」');
+    const messages = lineBuildMessages(prep, new URL(request.url).origin);
+    const v = await lineCall(env, body.channel, 'POST', '/v2/bot/message/validate/broadcast', { messages });
+    if (v.status === 200) return jsonOk({ ok: true, valid: true, pages: messages.length, note: '只檢查格式，沒有發送任何東西' }, request, env);
+    if (v.status === 400) return jsonOk({ ok: true, valid: false, message: lineErrText(v) }, request, env);
+    throw Object.assign(new Error(lineErrText(v)), { status: 502 });
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '檢查失敗', request, env); }
+}
+
+// ---- 發送（使用者已明確授權）。預設只允許測試帳號；正式帳號要 Worker 設定 LINE_ALLOW_OFFICIAL=1，且同一份內容先成功發過測試帳號、輸入正確好友數 ----
+const LINE_OFFICIAL = new Set(['news', 'ent']);
+const LINE_TESTED_TTL_MS = 60 * 60 * 1000;
+const LINE_RETRY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function handleLineSend(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const key = body.channel;
+    if (!LINE_CHANNEL_SUFFIX[key]) throw badInput('channel 只能是 test、news 或 ent');
+    if (typeof body.retryKey !== 'string' || !LINE_RETRY_KEY.test(body.retryKey)) throw badInput('缺少 retryKey（UUID），用來避免重複發送。沒有發送任何東西。');
+    const prep = await s8Open(env, body.prepareToken);
+    if (!prep || prep.t !== 'line-prepare' || !prep.x || prep.x < Date.now()) throw badInput('準備好的內容已過期或無效，請重新「上傳圖片」。沒有發送任何東西。');
+    const official = LINE_OFFICIAL.has(key);
+    if (official) {
+      if (!env || env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。'), { status: 403 });
+      if (key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能發到這個正式帳號。沒有發送任何東西。');
+      const tested = await s8Open(env, body.testToken);
+      if (!tested || tested.t !== 'line-tested' || tested.id !== prep.id || !tested.x || tested.x < Date.now()) throw badInput('發正式帳號前，同一份內容必須先成功發到測試帳號。沒有發送任何東西。');
+    }
+    lineChannelCreds(env, key);
+    const messages = lineBuildMessages(prep, new URL(request.url).origin);
+    const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
+    if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有發送任何東西。`), { status: 400 });
+    const info = await lineAccountInfo(env, key);
+    const friends = info.followers ? info.followers.followers : null;
+    if (official) {
+      if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不發送。沒有發送任何東西。'), { status: 409 });
+      const typed = Number(body.confirmTotal);
+      if (!Number.isFinite(typed) || Math.abs(typed - friends) > Math.max(50, Math.round(friends * 0.02))) throw Object.assign(new Error(`確認人數不符：LINE 回報好友數約 ${friends} 人，你輸入的是 ${body.confirmTotal}。沒有發送任何東西。`), { status: 409 });
+    }
+    if (info.quota && info.quota.type === 'limited' && info.quota.value !== null && info.used !== null && friends !== null && info.quota.value - info.used < friends) {
+      throw Object.assign(new Error(`本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發約 ${friends} 則。沒有發送任何東西。`), { status: 409 });
+    }
+    const sent = await lineCall(env, key, 'POST', '/v2/bot/message/broadcast', { messages }, { 'X-Line-Retry-Key': body.retryKey });
+    if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502 });
+    const out = { ok: true, channel: key, official, sentAt: taipeiIso(Date.now()), requestId: sent.requestId, retryKey: body.retryKey, alreadyAccepted: sent.status === 409, friends, pages: messages.length };
+    if (!official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
+    return jsonOk(out, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
@@ -755,6 +975,11 @@ export default {
     if (path === '/s8/prepare') return handleS8Prepare(request, env);
     if (path === '/s8/create') return handleS8Create(request, env);
     if (path === '/s8/pause') return handleS8Pause(request, env);
+    if (path === '/line/status') return handleLineStatus(request, env);
+    if (path === '/line/prepare') return handleLinePrepare(request, env);
+    if (path === '/line/validate') return handleLineValidate(request, env);
+    if (path === '/line/send') return handleLineSend(request, env);
+    if (path.startsWith('/line-img/') && (request.method === 'GET' || request.method === 'HEAD')) return handleLineImage(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 
     const articleParam = new URL(request.url).searchParams.get('url');
