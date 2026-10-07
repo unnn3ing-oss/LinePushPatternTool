@@ -201,7 +201,9 @@
   .s8-mark.bad { background: #dc2626; }
   .s8-whenmsg[hidden] { display: none; }
   .s8-whenmsg.bad { color: #b91c1c; font-weight: 600; }
-  .s8-copymsg { font-size: 13px; color: var(--muted); margin-left: 6px; }
+  #s8CopyName { position: relative; }
+  .s8-btnok { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; background: var(--success); color: #fff; display: grid; place-items: center; font-size: 14px; font-weight: 800; }
+  .s8-btnok[hidden] { display: none; }
   .s8-tip { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fef3c7; color: #78350f; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
   .s8-tip:empty { display: none; }
 
@@ -1272,7 +1274,7 @@
         <div class="s8-step" id="s8Step4" hidden>
           <i>4</i>
           <div class="s8-sbody">
-            <div><button type="button" id="s8CopyName">複製群發名稱</button> <span class="s8-copymsg" id="s8CopyMsg"></span></div>
+            <div><button type="button" id="s8CopyName"><span id="s8CopyTxt">複製群發名稱</span><span class="s8-btnok" id="s8CopyOk" aria-label="已複製" hidden>✓</span></button></div>
           </div>
         </div>
         <div class="s8-step" id="s8Step5" hidden>
@@ -5145,7 +5147,7 @@ function s8ResetCreate() {
   s8Prepared = null;
   s8Flow = { choice: '', copied: false };
   $s8('s8ConfirmTotal').value = '';
-  $s8('s8CopyMsg').textContent = '';
+  clearTimeout(s8CopyTimer); s8CopyFlash = ''; s8RenderCopyBtn();
   s8SetWhen(s8DefaultWhenMs());
   $s8('s8RetryRow').hidden = true;
   s8PrepSet('');
@@ -5279,6 +5281,7 @@ function s8UpdateSteps() {
   cm.className = `s8-mark${!raw ? '' : (typedOk ? ' ok' : ' bad')}`;
   cm.title = !raw ? '' : (typedOk ? '人數正確' : '人數不符');
   s8PlaceSegs();
+  s8RenderCopyBtn();
   const name = $s8('s8Name').value.trim();
   const btn = $s8('s8CreateBtn'), tip = $s8('s8Tip');
   if (choice === 'schedule' && when && !when.err && prepared) {
@@ -5296,11 +5299,19 @@ const s8PickSchedule = () => { if (s8Flow.choice !== 'schedule') { s8Flow.choice
 $s8('s8PickSched').addEventListener('click', s8PickSchedule);
 $s8('s8PickSched').addEventListener('keydown', e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); s8PickSchedule(); } });
 $s8('s8ConfirmTotal').addEventListener('input', () => { s8Flow.copied = false; s8UpdateSteps(); });
+// 「複製群發名稱」：按下後按鈕短暫改成「已複製名稱」，之後回到「複製群發名稱」，按鈕右側的綠色圓形打勾圖示會一直留著
+let s8CopyTimer = null, s8CopyFlash = '';
+function s8RenderCopyBtn() {
+  $s8('s8CopyTxt').textContent = s8CopyFlash || '複製群發名稱';
+  $s8('s8CopyOk').hidden = !(s8Flow.copied && s8Flow.copyOk);
+}
 $s8('s8CopyName').addEventListener('click', async () => {
   const name = $s8('s8Name').value.trim();
   const ok = await copyText(name);
-  s8Flow.copied = true;
-  $s8('s8CopyMsg').textContent = ok ? `✓ 已複製「${name}」` : `這個瀏覽器無法自動複製，請手動記下：${name}`;
+  s8Flow.copied = true; s8Flow.copyOk = !!ok;
+  s8CopyFlash = ok ? '已複製名稱' : `無法自動複製，請手動記下：${name}`;
+  clearTimeout(s8CopyTimer);
+  s8CopyTimer = setTimeout(() => { s8CopyFlash = ''; s8RenderCopyBtn(); }, ok ? 1500 : 4000);
   s8UpdateSteps();
 });
 $s8('s8PrepBtn').addEventListener('click', async () => {
@@ -5385,7 +5396,7 @@ $s8('s8CreateBtn').addEventListener('click', async () => {
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
     // 一次預覽只建立一筆群發；要再建立請重新「傳送資料」
     s8Prepared = null; s8Flow = { choice: '', copied: false };
-    $s8('s8ConfirmTotal').value = ''; $s8('s8CopyMsg').textContent = ''; s8PrepSet('');
+    $s8('s8ConfirmTotal').value = ''; clearTimeout(s8CopyTimer); s8CopyFlash = ''; s8PrepSet('');
     s8UpdateSteps();
     if (r.ok && r.mode === 'schedule') {
       s8Out('s8CreateOut', '');
