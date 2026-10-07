@@ -757,7 +757,7 @@ const LINE_API = 'https://api.line.me';
 const LINE_CHANNEL_SUFFIX = { test: 'TEST', news: 'NEWS', ent: 'ENT' };
 const LINE_IMG_WIDTHS = [240, 300, 460, 700, 1040];
 const LINE_PREPARE_TTL_MS = 30 * 60 * 1000;
-const LINE_MAX_IMG_BYTES = 4 * 1024 * 1024;
+const LINE_MAX_IMG_BYTES = 8 * 1024 * 1024;   // LINE 上限是 10MB
 // Worker 只能對 LINE 做這幾件事（方法＋路徑），其他一律不給：沒有 push／multicast／narrowcast、沒有改頻道設定、沒有重發長效 token。
 const LINE_ALLOWED_CALLS = [
   /^POST \/oauth2\/v3\/token$/,
@@ -849,7 +849,7 @@ async function handleLineStatus(request, env) {
 const lineHex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
 function lineDecodeImage(b64, w) {
   let bytes; try { bytes = Uint8Array.from(atob(String(b64 || '')), c => c.charCodeAt(0)); } catch { throw badInput(`${w}px 圖片不是有效的 base64`); }
-  if (!bytes.length || bytes.length > LINE_MAX_IMG_BYTES) throw badInput(`${w}px 圖片大小不符（必須小於 4MB）`);
+  if (!bytes.length || bytes.length > LINE_MAX_IMG_BYTES) throw badInput(`${w}px 圖片大小不符（必須小於 8MB）`);
   const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
   const jpg = bytes[0] === 0xff && bytes[1] === 0xd8;
   if (!png && !jpg) throw badInput(`${w}px 圖片必須是 PNG 或 JPEG`);
@@ -858,7 +858,7 @@ function lineDecodeImage(b64, w) {
 async function handleLinePrepare(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
-  const { body, error } = await lineReadBody(request, env, 24 * 1024 * 1024); if (error) return error;
+  const { body, error } = await lineReadBody(request, env, 48 * 1024 * 1024); if (error) return error;
   try {
     if (!env || !env.LINE_IMG || typeof env.LINE_IMG.put !== 'function') throw Object.assign(new Error('Worker 尚未綁定 R2（綁定變數名稱必須是 LINE_IMG），圖片沒地方放。請見 worker/README.md「LINE 直連」'), { status: 503 });
     if (body.org !== 'news' && body.org !== 'ent') throw badInput('org 只能是 news 或 ent');

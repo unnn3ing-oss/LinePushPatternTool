@@ -5573,13 +5573,30 @@ function lineRender() {
   lineRenderOut();
 }
 function lineInvalidateIfChanged() { const st = lineByMode[mode]; if (st && st.prep && st.prep.sig !== lineSig()) { st.prep = null; st.testToken = ''; st.sent = { test: false, official: false }; lineOut('內容有更動，已作廢上傳的資料，請重新「上傳圖片並檢查格式」。', 'bad'); } lineRender(); }
-async function lineScaledPng(blob, w) {
-  const bmp = await createImageBitmap(blob);
-  if (bmp.width === w) { bmp.close && bmp.close(); return blob; }
-  const c = document.createElement('canvas'); c.width = w; c.height = Math.round(bmp.height * w / bmp.width);
+// LINE 的圖要自己準備 5 種寬度，最大 1040（LINE 規定）。1040 這張用「不壓縮」的 PNG 直接從畫面重畫（不像 S8 那邊為了 2MB 上限可能降過色階）；
+// 比較小的寬度從這張大圖逐步對半縮小再微調到目標寬度，比一次縮小清楚，文字邊緣不會糊掉。
+const lineCanvasPng = c => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('產生圖片失敗')), 'image/png'));
+function lineResizeCanvas(src, w) {
+  const c = document.createElement('canvas'); c.width = w; c.height = Math.round(src.height * w / src.width);
   const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(bmp, 0, 0, c.width, c.height); bmp.close && bmp.close();
-  return await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('縮圖失敗')), 'image/png'));
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+function lineScaleTo(src, w) {
+  let c = src;
+  while (c.width / 2 >= w) c = lineResizeCanvas(c, Math.ceil(c.width / 2));
+  return c.width === w ? c : lineResizeCanvas(c, w);
+}
+async function linePageImages(pageIndex) {
+  const off = renderPageToOffscreen(pages[pageIndex], 'final');
+  if (off.width !== 1040) throw new Error(`頁面圖寬度是 ${off.width}，LINE 直發需要 1040`);
+  const images = {};
+  for (const w of LINE_WIDTHS) {
+    const blob = await lineCanvasPng(w === 1040 ? off : lineScaleTo(off, w));
+    if (blob.size > 8 * 1024 * 1024) throw new Error(`第 ${pageIndex + 1} 頁 ${w}px 圖片超過 8MB（LINE 上限 10MB），請換掉細節很多的照片`);
+    images[w] = await blobToBase64(blob);
+  }
+  return images;
 }
 async function lineRun(fn) {
   if (lineBusy) return;
@@ -5608,15 +5625,16 @@ $line('linePrepBtn').addEventListener('click', () => lineRun(async () => {
   const d = s8Collect(), errs = s8Validate(d);
   if (errs.length) throw new Error(`還不能上傳：${errs.join('；')}`);
   const st = lineSt(); st.prep = null; st.testToken = ''; st.sent = { test: false, official: false }; st.retryKey = { test: '', official: '' };
-  lineOut('縮圖並上傳中…（每頁 5 種寬度）');
+  lineOut('重畫圖片、縮圖並上傳中…（每頁 5 種寬度，1040 為不壓縮 PNG）');
   const sig = lineSig();
-  const pages = [];
+  if (s8State.sig !== s8Signature()) throw new Error('畫面內容和這個視窗開啟時不同，請關閉視窗後重新開啟');
+  await ensureAssetsReady();
+  const payload = [];
   for (let p = 0; p < d.pages.length; p++) {
-    const images = {};
-    for (const w of LINE_WIDTHS) images[w] = await blobToBase64(await lineScaledPng(s8State.images[p].blob, w));
-    pages.push({ width: L().exportW, height: L().exportH, images, buttons: d.pages[p].cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })) });
+    const images = await linePageImages(p);
+    payload.push({ width: L().exportW, height: L().exportH, images, buttons: d.pages[p].cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })) });
   }
-  const pr = await s8Api('/line/prepare', { org: mode, name: d.name, altText: d.alt, pages });
+  const pr = await s8Api('/line/prepare', { org: mode, name: d.name, altText: d.alt, pages: payload });
   lineOut('圖片已上傳，請 LINE 檢查格式中…');
   const vr = await s8Api('/line/validate', { prepareToken: pr.prepareToken, channel: lineChannel() });
   if (!vr.valid) { lineOut(`✗ LINE 說格式不對，沒有發送任何東西：\n${vr.message}`, 'bad'); return; }

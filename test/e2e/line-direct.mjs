@@ -79,6 +79,16 @@ check(pb.org === 'news' && pb.altText === '測試推播標題' && pb.pages.lengt
 check(pb.pages.every(p => ['240', '300', '460', '700', '1040'].every(w => typeof p.images[w] === 'string' && p.images[w].length > 100)), '每頁都送出 240／300／460／700／1040 五種寬度');
 check(pb.pages.every(p => p.width === 1040 && p.height === 800 && p.buttons.length === 6 && p.buttons.every(b => /^\d+(\.\d+)?%$/.test(b.x) && /^https:\/\/example\.com\//.test(b.url))), '每頁 1040×800、6 個點擊區塊（百分比座標、連結）');
 check(await page.evaluate(async (b64s) => { const sizes = []; for (const b of b64s) { const im = new Image(); im.src = 'data:image/png;base64,' + b; await im.decode(); sizes.push(im.naturalWidth); } return sizes.join(); }, [240, 300, 460, 700, 1040].map(w => pb.pages[0].images[w])) === '240,300,460,700,1040', '縮出來的圖寬度真的是 240／300／460／700／1040');
+const same = await page.evaluate(async (b64) => {
+  const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();
+  const a = document.createElement('canvas'); a.width = im.naturalWidth; a.height = im.naturalHeight; a.getContext('2d').drawImage(im, 0, 0);
+  const ref = renderPageToOffscreen(pages[0], 'final');
+  const x = a.getContext('2d').getImageData(0, 0, a.width, a.height).data, y = ref.getContext('2d').getImageData(0, 0, ref.width, ref.height).data;
+  if (x.length !== y.length) return `size ${a.width}x${a.height} vs ${ref.width}x${ref.height}`;
+  let diff = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++;
+  return diff === 0 ? 'identical' : `diff ${diff}`;
+}, pb.pages[0].images['1040']);
+check(same === 'identical', `1040 這張與畫面重畫的結果逐像素相同（不降色階、不壓縮）：${same}`);
 check(reqs.validate.length === 1 && reqs.validate[0].channel === 'test' && reqs.validate[0].prepareToken === 'ptok1', '上傳後立刻請 LINE 檢查格式（validate）');
 check(reqs.send.length === 0, '到這一步沒有發送任何東西');
 check(!(await page.isDisabled('#lineSendBtn')), '檢查通過後「發送」才可以按');
