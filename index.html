@@ -5544,7 +5544,6 @@ $s8('s8RetryPause').addEventListener('click', async () => {
 // ---- LINE 官方帳號直接發送（試驗）----
 // 網頁只負責：把預覽裡的兩張圖縮成 LINE imagemap 要求的 5 種寬度、交給 Worker 存進 R2、請 LINE 檢查格式，然後在你按下「發送」時才呼叫 Worker 的 /line/send。
 // 每個版型（新聞／娛樂）各自一份狀態。沒有草稿、沒有排程：發送成功就是已經發出。
-const LINE_WIDTHS = [240, 300, 460, 700, 1040];
 const lineByMode = { news: null, ent: null };
 let lineBusy = false;
 const $line = id => document.getElementById(id);
