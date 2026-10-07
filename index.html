@@ -224,6 +224,16 @@
   .line-box .s8c-out.ok { background: #dcfce7; color: #14532d; }
   .line-box .s8c-out.bad { background: #fef3c7; color: #78350f; }
   .line-box[hidden], .line-row[hidden] { display: none; }
+  .line-hist { margin: 14px 0 14px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.08); }
+  .line-sub { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+  .line-hist select { max-width: 100%; }
+  .line-note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+  .line-tbl { width: 100%; border-collapse: collapse; margin: 10px 0 0; font-size: 13px; }
+  .line-tbl th, .line-tbl td { padding: 6px 8px; border-bottom: 1px solid rgba(0,0,0,.08); text-align: left; vertical-align: top; }
+  .line-tbl th { font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .line-tbl td.num, .line-tbl th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .line-tbl tr.sum td { font-weight: 700; }
+  .line-tbl .dim { color: var(--muted); }
   .s8-segbody { padding: 0; gap: 10px; }
   .s8-segbody input[type="text"] { box-sizing: border-box; width: var(--s8-btn-w); align-self: stretch; margin: 0; padding: 0 12px; border: none; border-radius: 99px; background: var(--knob); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .s8-segbody input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -1343,6 +1353,16 @@
         </div>
         <div class="btn-row"><button type="button" class="line-send" id="lineSendBtn" disabled>發送給全部好友</button></div>
         <div class="s8c-out" id="lineOut" hidden></div>
+        <div class="line-hist">
+          <div class="line-sub">發送紀錄與點擊次數</div>
+          <div class="line-row"><select id="lineHist" aria-label="發送紀錄"></select></div>
+          <div class="btn-row">
+            <button type="button" id="lineClicksBtn" disabled>查詢點擊次數</button>
+            <button type="button" id="lineCopyBtn" disabled>複製成表格</button>
+          </div>
+          <div id="lineClicksOut"></div>
+          <div class="line-note">用發送時 LINE 回的 request id 查，每個連結一列。LINE 的規定：只保留發送後約 14 天；數字小於 20（或實際人數小於 20）時 LINE 不提供，會顯示「—」；統計會隨時間更新，剛發完可能還是空的。紀錄存在這台瀏覽器裡（最近 30 筆），換電腦或清除瀏覽資料就沒有了。</div>
+        </div>
       </details>
       <div class="btn-row" style="justify-content:flex-end; margin-top:14px">
         <button type="button" id="s8CancelBtn">關閉</button>
@@ -5569,6 +5589,7 @@ function lineRender() {
   $line('lineSendBtn').disabled = !ready;
   $line('lineSendBtn').textContent = st.sent[ch] ? '已發送（要再發請重新上傳圖片）' : `發送給全部好友（${lineIsOfficial() ? S8_ACCOUNT[mode] + '正式帳號' : '測試帳號'}）`;
   $line('lineStatusBtn').disabled = lineBusy; $line('linePrepBtn').disabled = lineBusy;
+  if (typeof lineHistLoad === 'function') { $line('lineClicksBtn').disabled = !lineHistLoad().length || lineBusy; $line('lineCopyBtn').disabled = !lineLastTable; }
   lineRenderOut();
 }
 function lineInvalidateIfChanged() { const st = lineByMode[mode]; if (st && st.prep && st.prep.sig !== lineSig()) { st.prep = null; st.testToken = ''; st.sent = { test: false, official: false }; lineOut('內容有更動，已作廢上傳的資料，請重新「上傳圖片並檢查格式」。', 'bad'); } lineRender(); }
@@ -5639,9 +5660,81 @@ $line('lineSendBtn').addEventListener('click', () => lineRun(async () => {
   const r = await s8Api('/line/send', body);
   st.sent[ch] = true;
   if (r.testToken) st.testToken = r.testToken;
+  lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: lineChannel(), mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
   lineOut(`✓ 已發送到${account}${Number.isFinite(r.friends) ? `（好友約 ${r.friends.toLocaleString()} 人）` : ''}\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}${r.testToken ? '\n\n測試帳號已發送。確認 LINE 裡的版面與連結沒問題後，才能選「正式帳號」發送。' : ''}`, 'ok');
 }));
 document.querySelectorAll('input[name="lineChannel"]').forEach(r => r.addEventListener('change', lineRender));
+
+// ---- 發送紀錄與點擊次數 ----
+// 每次發送成功，把 LINE 回的 request id 和「哪一頁哪一格是哪個連結」記在這台瀏覽器（最近 30 筆）；之後用 request id 向 LINE 查每個連結的點擊次數。
+const LINE_HIST_KEY = 'lineSends';
+const lineHistLoad = () => { try { const a = JSON.parse(localStorage.getItem(LINE_HIST_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+const lineHistStore = a => { try { localStorage.setItem(LINE_HIST_KEY, JSON.stringify(a.slice(0, 30))); } catch (e) { /* ok */ } };
+function lineLinksNow() {
+  const d = s8Collect(), out = [];
+  d.pages.forEach(pg => pg.cells.forEach(c => out.push({ page: pg.page, label: c.label, title: c.title, url: c.url })));
+  return out;
+}
+function lineSaveSend(rec) {
+  if (!rec.requestId) { lineOut($line('lineOut').textContent + '\n\n⚠ LINE 沒有回 request id，這次發送沒辦法之後查點擊次數。', 'bad'); return; }
+  lineHistStore([rec, ...lineHistLoad().filter(x => x.requestId !== rec.requestId)]);
+  lineHistRender(rec.requestId);
+}
+const lineChName = r => (r.channel === 'test' ? '測試帳號' : (S8_ACCOUNT[r.channel] || r.channel));
+function lineHistRender(selectId) {
+  const sel = $line('lineHist'), list = lineHistLoad();
+  const keep = selectId || sel.value;
+  sel.textContent = '';
+  if (!list.length) { const o = document.createElement('option'); o.textContent = '還沒有發送紀錄（發送成功後會出現在這裡）'; o.value = ''; sel.appendChild(o); }
+  list.forEach(r => { const o = document.createElement('option'); o.value = r.requestId; o.textContent = `${String(r.sentAt || '').slice(5, 16).replace('T', ' ')} · ${lineChName(r)} · ${String(r.alt || '').slice(0, 24)}`; sel.appendChild(o); });
+  if (keep && list.some(r => r.requestId === keep)) sel.value = keep;
+  $line('lineClicksBtn').disabled = !list.length || lineBusy;
+  $line('lineCopyBtn').disabled = !lineLastTable;
+}
+let lineLastTable = null;   // { rows: string[][] } 目前顯示的表格，給「複製成表格」用
+const lineNum = v => (Number.isFinite(v) ? v.toLocaleString() : '—');
+function lineRenderClicks(rec, r) {
+  const box = $line('lineClicksOut'); box.textContent = ''; lineLastTable = null;
+  if (r.unavailable) { const p = document.createElement('div'); p.className = 's8c-out bad'; p.textContent = r.message; box.appendChild(p); lineHistRender(); return; }
+  const byUrl = new Map((r.clicks || []).map(c => [c.url, c]));
+  const used = new Set();
+  const rows = [['頁／位置', '標題', '點擊次數', '點擊人數']];
+  rec.links.forEach(l => { const c = byUrl.get(l.url); if (c) used.add(l.url); rows.push([`第 ${l.page} 頁 ${l.label}`, l.title, c ? lineNum(c.click) : '—', c ? lineNum(c.uniqueClick) : '—']); });
+  const others = (r.clicks || []).filter(c => !used.has(c.url));
+  others.forEach(c => rows.push(['（其他連結）', c.url, lineNum(c.click), lineNum(c.uniqueClick)]));
+  const ov = r.overview || {};
+  const imp = (r.messages || []).map(m => `第 ${m.seq} 頁顯示 ${lineNum(m.impression)} 次`).join('、');
+  const t = document.createElement('table'); t.className = 'line-tbl';
+  const head = document.createElement('tr'); rows[0].forEach((h, i) => { const th = document.createElement('th'); th.textContent = h; if (i >= 2) th.className = 'num'; head.appendChild(th); }); t.appendChild(head);
+  rows.slice(1).forEach(row => { const tr = document.createElement('tr'); row.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; if (v === '—') td.classList.add('dim'); tr.appendChild(td); }); t.appendChild(tr); });
+  const sum = document.createElement('tr'); sum.className = 'sum';
+  [['整則訊息', `發送 ${lineNum(ov.delivered)} 則、開啟 ${lineNum(ov.uniqueImpression)} 人`, '', lineNum(ov.uniqueClick)]].forEach(row => row.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; sum.appendChild(td); }));
+  t.appendChild(sum);
+  box.appendChild(t);
+  const note = document.createElement('div'); note.className = 'line-note';
+  note.textContent = `${lineChName(rec)} · ${rec.sentAt} 發送 · ${rec.alt}${imp ? `\n${imp}` : ''}\n「—」表示 LINE 沒提供（數字小於 20）、或這個連結目前沒有點擊。最後一列的點擊人數是「點了任何連結的不重複人數」。`;
+  note.style.whiteSpace = 'pre-wrap';
+  box.appendChild(note);
+  lineLastTable = { rows: [...rows, ['整則訊息', `發送 ${lineNum(ov.delivered)} 則、開啟 ${lineNum(ov.uniqueImpression)} 人`, '', lineNum(ov.uniqueClick)]] };
+  lineHistRender();
+}
+$line('lineClicksBtn').addEventListener('click', async () => {
+  const rec = lineHistLoad().find(r => r.requestId === $line('lineHist').value);
+  if (!rec) return;
+  const box = $line('lineClicksOut'); box.textContent = ''; const wait = document.createElement('div'); wait.className = 's8c-out'; wait.textContent = '向 LINE 查詢中…'; box.appendChild(wait);
+  $line('lineClicksBtn').disabled = true;
+  try { lineRenderClicks(rec, await s8Api('/line/clicks', { channel: rec.channel, requestId: rec.requestId })); }
+  catch (e) { box.textContent = ''; const bad = document.createElement('div'); bad.className = 's8c-out bad'; bad.textContent = `✗ ${e.message || e}`; box.appendChild(bad); }
+  lineHistRender();
+});
+$line('lineCopyBtn').addEventListener('click', async () => {
+  if (!lineLastTable) return;
+  const tsv = lineLastTable.rows.map(r => r.map(v => String(v).replace(/[\t\n]+/g, ' ')).join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(tsv); $line('lineCopyBtn').textContent = '已複製'; setTimeout(() => { $line('lineCopyBtn').textContent = '複製成表格'; }, 1500); }
+  catch (e) { statusEl.show('無法複製，請手動選取表格', 'error'); }
+});
+$line('lineHist').addEventListener('change', () => { $line('lineClicksOut').textContent = ''; lineLastTable = null; lineHistRender(); });
+lineHistRender();
 
 // ---- 試驗功能：連結 S8（OAuth，階段一：只讀）----
 // The Worker does the OAuth work and keeps the S8 credentials sealed; this page only holds an opaque string

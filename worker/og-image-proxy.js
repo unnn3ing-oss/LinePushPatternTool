@@ -27,7 +27,7 @@
 //   POST /s8/create       → （需 write 授權）重新試算人數後建立群發，先以「建立當下 + 24 小時」排程；body.mode 只接受 'draft'（預設，立刻暫停成草稿）或 'schedule'（明確選擇不暫停、保留 +1 天排程，改用 broadcast_get 確認狀態）；絕不立即發送，沒有 resume／sendNow
 //   POST /s8/pause        → 把排程暫停成草稿（broadcast_update 只允許 pause，沒有 resume／立即發送）
 //   POST /s8/tools        → 列出 S8 工具的名稱與欄位定義（MCP tools/list，唯讀，不執行任何工具）
-// 另有「LINE 官方帳號直連」（試驗，使用者已授權；預設只允許測試帳號）：POST /line/status、/line/prepare、/line/validate、/line/send 與公開的 GET /line-img/<id>/<寬度>，說明見下方該段與 worker/README.md。
+// 另有「LINE 官方帳號直連」（試驗，使用者已授權；預設只允許測試帳號）：POST /line/status、/line/prepare、/line/validate、/line/send、/line/clicks 與公開的 GET /line-img/<id>/<寬度>，說明見下方該段與 worker/README.md。
 // S8 憑證只以加密形式存在，網頁拿到的是看不懂的字串，只有這個 Worker 能解開。
 
 const ALLOWED_HOST_SUFFIXES = ['tvbs.com.tw'];
@@ -747,6 +747,7 @@ async function handleS8Status(request, env) {
 //   POST /line/status    → 檢查帳號（名稱、好友數、本月額度與已用）— 全部唯讀
 //   POST /line/prepare   → 把每頁 1040 寬的圖片存進 R2（綁定名稱 LINE_IMG），封存要用的內容（30 分鐘有效）
 //   POST /line/validate  → 把準備好的內容交給 LINE 的 validate/broadcast 檢查格式（只檢查，不會發送）
+//   POST /line/clicks    → 用發送時的 request id 查這次群發每個連結的點擊次數／人數（唯讀）
 //   POST /line/send      → validate 通過後 broadcast 給全部好友。預設只允許測試帳號；正式帳號要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
 //   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
 // 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
@@ -767,6 +768,7 @@ const LINE_ALLOWED_CALLS = [
   /^GET \/v2\/bot\/insight\/followers$/,
   /^POST \/v2\/bot\/message\/validate\/broadcast$/,
   /^POST \/v2\/bot\/message\/broadcast$/,   // 只有 handleLineSend 會用到
+  /^GET \/v2\/bot\/insight\/message\/event$/,   // 查某次群發的開啟／點擊統計（唯讀）
 ];
 const lineTokenCache = new Map();   // channel key → { id, promise(token), exp }
 
@@ -959,6 +961,24 @@ async function handleLineSend(request, env) {
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
 }
 
+// 查某次群發的互動統計（每個連結的點擊次數／點擊人數）。唯讀；requestId 是發送時 LINE 回的 x-line-request-id。
+// LINE 規定：統計只在發送後 14 天內更新；數值小於 20（或實際人數小於 20）會顯示 null；每小時最多 60 次查詢。
+async function handleLineClicks(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    if (typeof body.requestId !== 'string' || !LINE_RETRY_KEY.test(body.requestId)) throw badInput('requestId 格式不正確（應該是發送時 LINE 回的 UUID）');
+    const r = await lineCall(env, body.channel, 'GET', `/v2/bot/insight/message/event?requestId=${encodeURIComponent(body.requestId)}`);
+    if (r.status === 200) {
+      const d = r.data || {};
+      return jsonOk({ ok: true, overview: d.overview || null, messages: Array.isArray(d.messages) ? d.messages : [], clicks: Array.isArray(d.clicks) ? d.clicks : [] }, request, env);
+    }
+    if (r.status === 400 || r.status === 404) return jsonOk({ ok: true, unavailable: true, message: `LINE 還沒有這次發送的統計（${lineErrText(r)}）。統計通常要等一段時間，且只保留發送後約 14 天。` }, request, env);
+    throw Object.assign(new Error(lineErrText(r)), { status: 502 });
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '查詢失敗', request, env); }
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
@@ -977,6 +997,7 @@ export default {
     if (path === '/line/prepare') return handleLinePrepare(request, env);
     if (path === '/line/validate') return handleLineValidate(request, env);
     if (path === '/line/send') return handleLineSend(request, env);
+    if (path === '/line/clicks') return handleLineClicks(request, env);
     if (path.startsWith('/line-img/') && (request.method === 'GET' || request.method === 'HEAD')) return handleLineImage(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 

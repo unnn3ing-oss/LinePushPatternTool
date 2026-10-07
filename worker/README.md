@@ -83,13 +83,18 @@
 | `POST /line/prepare` | 檢查內容、把每頁 1040 寬的圖片存進 R2、封存要發的內容（30 分鐘有效） |
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
 | `POST /line/send` | 再 validate 一次、確認額度與人數後 `broadcast` 給全部好友 |
+| `POST /line/clicks` | 用發送時 LINE 回的 request id，查這次群發每個連結的點擊次數與人數（`GET /v2/bot/insight/message/event`，唯讀） |
 
 發送的安全規則（`POST /line/send`）：
 
 - 一定先 `validate`，沒通過就不發；每次帶 `X-Line-Retry-Key`（UUID），同一個 key 重送 LINE 不會重複發；
 - 本月額度（上限－已用）不夠好友數就不發；
 - **正式帳號**另外要求：Worker 設了 `LINE_ALLOW_OFFICIAL=1`；**同一份內容先成功發過測試帳號**（Worker 回的 `testToken`，1 小時有效）；內容的版型要和帳號對得上（新聞內容只能發新聞帳號）；使用者輸入的好友數和 LINE 回報的相差在 2%（至少 50 人）以內；查不到好友數就不發；
-- Worker 只允許呼叫 7 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、validate、broadcast），**沒有** push／multicast／narrowcast、不改頻道設定、不重發長效 token。
+- Worker 只允許呼叫 8 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate、broadcast），**沒有** push／multicast／narrowcast、不改頻道設定、不重發長效 token。
+
+### 發送後查點擊次數
+
+每次發送成功，網頁會把 LINE 回的 request id 與「第幾頁哪一格是哪個連結」記在這台瀏覽器（最近 30 筆）。在「發送紀錄與點擊次數」選一筆按「查詢點擊次數」，會列出每個連結的點擊次數、點擊人數，最後一列是整則訊息的發送數、開啟人數與點了任何連結的人數，可「複製成表格」貼到試算表。LINE 的限制（官方文件）：**統計只在發送後 14 天內更新**；**數字小於 20（或實際人數小於 20）時 LINE 不提供**，會顯示「—」（測試帳號好友很少，所以幾乎都是「—」）；每小時最多查 60 次。
 
 ### 絕對不要做的事（會讓 S8 的串接中斷）
 

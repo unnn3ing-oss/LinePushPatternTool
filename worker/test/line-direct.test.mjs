@@ -20,7 +20,7 @@ const page = (h = 800) => ({ width: 1040, height: h, images: imagesB64(), button
 const prepBody = (extra = {}) => ({ org: 'news', name: 'x', altText: '測試推播', pages: [page(), page()], ...extra });
 
 // 假 LINE：記錄每一次呼叫；followers / quota 可調
-function installFakeLine({ followers = 1000, quota = { type: 'limited', value: 100000 }, used = 10, validateStatus = 200, broadcastStatus = 200, tokenStatus = 200 } = {}) {
+function installFakeLine({ clicks = 'ok', followers = 1000, quota = { type: 'limited', value: 100000 }, used = 10, validateStatus = 200, broadcastStatus = 200, tokenStatus = 200 } = {}) {
   const calls = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
@@ -35,6 +35,7 @@ function installFakeLine({ followers = 1000, quota = { type: 'limited', value: 1
     if (key === 'GET /v2/bot/message/quota') return json(quota);
     if (key === 'GET /v2/bot/message/quota/consumption') return json({ totalUsage: used });
     if (key === 'GET /v2/bot/insight/followers') return followers === null ? json({ status: 'unready' }) : json({ status: 'ready', followers, targetedReaches: followers - 5, blocks: 5 });
+    if (key === 'GET /v2/bot/insight/message/event') return clicks === 'none' ? json({ message: 'not ready' }, 404) : json({ overview: { requestId: u.searchParams.get('requestId'), delivered: 287091, uniqueImpression: 90000, uniqueClick: 41000 }, messages: [{ seq: 1, impression: 80000 }, { seq: 2, impression: 60000 }], clicks: [{ seq: 1, url: 'https://example.com/a', click: 1234, uniqueClick: 1000, uniqueClickOfRequest: 1000 }, { seq: 2, url: 'https://example.com/b', click: null, uniqueClick: null, uniqueClickOfRequest: null }] });
     if (key === 'POST /v2/bot/message/validate/broadcast') return validateStatus === 200 ? json({}) : json({ message: 'The request body has 1 error(s)', details: [{ message: 'must be valid', property: 'messages[0].baseUrl' }] }, validateStatus);
     if (key === 'POST /v2/bot/message/broadcast') return broadcastStatus === 200 || broadcastStatus === 409 ? json({}, broadcastStatus) : json({ message: 'You have reached your monthly limit.' }, broadcastStatus);
     throw new Error(`unexpected LINE call ${key}`);
@@ -55,7 +56,7 @@ const FORBIDDEN_PATHS = /push|multicast|narrowcast|richmenu|webhook|oauth2\/v2|r
 
 test('所有 /line 端點都要試驗功能憑證', async () => {
   const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
-  for (const p of ['/line/status', '/line/prepare', '/line/validate', '/line/send']) {
+  for (const p of ['/line/status', '/line/prepare', '/line/validate', '/line/send', '/line/clicks']) {
     const r = await req(env, p, {}, { auth: false });
     assert.equal(r.status, 401, p);
   }
@@ -324,5 +325,37 @@ test('token 會快取：連續呼叫不會每次重新發行', async () => {
     await req(env, '/line/status', { channel: 'test' });
     await req(env, '/line/status', { channel: 'test' });
     assert.equal(line.count('POST /oauth2/v3/token'), 1);
+  } finally { line.restore(); }
+});
+
+test('clicks：用 requestId 查每個連結的點擊次數；null（不足 20）原樣保留', async () => {
+  const line = installFakeLine();
+  try {
+    const rid = '123e4567-e89b-12d3-a456-426614174999';
+    const r = await req(BASE_ENV, '/line/clicks', { channel: 'news', requestId: rid });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.overview.requestId, rid);
+    assert.equal(r.json.clicks[0].click, 1234);
+    assert.equal(r.json.clicks[1].click, null);
+    assert.equal(r.json.messages.length, 2);
+    const c = line.calls.find(x => x.path === '/v2/bot/insight/message/event');
+    assert.equal(c.method, 'GET');
+    assert.equal(c.search, `?requestId=${rid}`);
+    assert.equal(c.headers.Authorization, 'Bearer tok-222', '用該帳號自己的憑證查');
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0, '查詢不會發送任何東西');
+  } finally { line.restore(); }
+});
+
+test('clicks：統計還沒好 → unavailable 並說明；requestId 格式不對 → 400 且不呼叫 LINE', async () => {
+  const line = installFakeLine({ clicks: 'none' });
+  try {
+    const r = await req(BASE_ENV, '/line/clicks', { channel: 'test', requestId: '123e4567-e89b-12d3-a456-426614174999' });
+    assert.equal(r.status, 200); assert.equal(r.json.unavailable, true); assert.match(r.json.message, /14 天/);
+    const before = line.calls.length;
+    for (const bad of ['abc', '', undefined, '123e4567-e89b-12d3-a456-426614174999&x=1', '../x']) {
+      const b = await req(BASE_ENV, '/line/clicks', { channel: 'test', requestId: bad });
+      assert.equal(b.status, 400, String(bad));
+    }
+    assert.equal(line.calls.length, before);
   } finally { line.restore(); }
 });

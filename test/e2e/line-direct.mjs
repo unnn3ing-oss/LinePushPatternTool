@@ -25,7 +25,8 @@ const dialogs = []; let dialogAnswer = true;
 page.on('dialog', async d => { dialogs.push(d.message()); await (dialogAnswer ? d.accept() : d.dismiss()); });
 
 // ---- 假 Worker ----
-const reqs = { status: [], prepare: [], validate: [], send: [] };
+const reqs = { status: [], prepare: [], validate: [], send: [], clicks: [] };
+let clicksUnavailable = false;
 let validateOk = true, sendFail = '', followers = 287091;
 await page.route(`${WORKER}/**`, async route => {
   const url = new URL(route.request().url());
@@ -35,11 +36,16 @@ await page.route(`${WORKER}/**`, async route => {
   if (url.pathname === '/line/status') { reqs.status.push(body); return json({ ok: true, channel: body.channel, r2Ready: true, bot: { displayName: body.channel === 'test' ? '測試官方帳號' : 'TVBS新聞', basicId: '@abc' }, quota: { type: 'limited', value: 100000000 }, used: 17266349, followers: body.channel === 'test' ? null : { status: 'ready', followers, targetedReaches: followers - 5, blocks: 5 }, notes: [] }); }
   if (url.pathname === '/line/prepare') { reqs.prepare.push(body); return json({ ok: true, id: 'prep' + reqs.prepare.length, prepareToken: 'ptok' + reqs.prepare.length, expiresInMinutes: 30, pages: body.pages.length }); }
   if (url.pathname === '/line/validate') { reqs.validate.push(body); return json(validateOk ? { ok: true, valid: true, pages: 2 } : { ok: true, valid: false, message: 'LINE 回應 400：baseUrl 不對' }); }
+  if (url.pathname === '/line/clicks') {
+    reqs.clicks.push(body);
+    if (clicksUnavailable) return json({ ok: true, unavailable: true, message: 'LINE 還沒有這次發送的統計（…）。只保留發送後約 14 天。' });
+    return json({ ok: true, overview: { requestId: body.requestId, delivered: 287091, uniqueImpression: 90000, uniqueClick: 41000 }, messages: [{ seq: 1, impression: 80000 }, { seq: 2, impression: null }], clicks: [{ seq: 1, url: 'https://example.com/p1/n1?utm_source=x', click: 1234, uniqueClick: 1000, uniqueClickOfRequest: 1000 }, { seq: 1, url: 'https://example.com/p1/n2?utm_source=x', click: null, uniqueClick: null }, { seq: 2, url: 'https://elsewhere.example/z', click: 25, uniqueClick: 22 }] });
+  }
   if (url.pathname === '/line/send') {
     reqs.send.push(body);
     if (sendFail === '403') return json({ error: '正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。' }, 403);
     const official = body.channel !== 'test';
-    return json({ ok: true, channel: body.channel, official, sentAt: '2026-10-07T12:00:00+08:00', requestId: 'req-xyz', retryKey: body.retryKey, friends: official ? followers : 1, pages: 2, ...(official ? {} : { testToken: 'ttok' }) });
+    return json({ ok: true, channel: body.channel, official, sentAt: '2026-10-07T12:00:00+08:00', requestId: body.channel === 'test' ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222', retryKey: body.retryKey, friends: official ? followers : 1, pages: 2, ...(official ? {} : { testToken: 'ttok' }) });
   }
   return json({ error: `unexpected ${url.pathname}` }, 404);
 });
@@ -110,6 +116,33 @@ await page.waitForFunction(() => /已發送到正式帳號/.test(document.getEle
 const sent2 = reqs.send[1];
 check(sent2 && sent2.channel === 'news' && sent2.testToken === 'ttok' && sent2.confirmTotal === 100, '正式帳號：帶 testToken 與使用者輸入的好友數（由 Worker 檢查是否相符）');
 await page.screenshot({ path: path.join(SHOTS, 'line-2-official.png'), fullPage: false });
+
+// ---- 發送紀錄與點擊次數 ----
+const hist = await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends')));
+check(hist.length === 2 && hist[0].channel === 'news' && hist[1].channel === 'test' && hist[0].requestId === '22222222-2222-4222-8222-222222222222', '每次發送成功都記下 request id、帳號、發送時間（最新的在最前面）');
+check(hist[0].links.length === 12 && hist[0].links[0].page === 1 && hist[0].links[0].url === 'https://example.com/p1/n1?utm_source=x' && hist[0].links[0].label === '左上', '紀錄裡有每頁每格的連結，之後才能對回哪一格');
+const opts = await page.$$eval('#lineHist option', os => os.map(o => o.textContent));
+check(opts.length === 2 && opts[0].includes('TVBS新聞') && opts[0].includes('測試推播標題') && opts[1].includes('測試帳號'), `下拉選單列出發送紀錄：${opts[0]}`);
+await page.click('#lineClicksBtn');
+await page.waitForSelector('#lineClicksOut table');
+const rows = await page.$$eval('#lineClicksOut table tr', trs => trs.map(tr => [...tr.children].map(c => c.textContent)));
+check(reqs.clicks[0].channel === 'news' && reqs.clicks[0].requestId === '22222222-2222-4222-8222-222222222222', '用該次發送的帳號與 request id 查詢');
+check(rows[0].join('|') === '頁／位置|標題|點擊次數|點擊人數', '表格欄位：頁／位置、標題、點擊次數、點擊人數');
+check(rows[1][0] === '第 1 頁 左上' && rows[1][2] === '1,234' && rows[1][3] === '1,000', '第 1 頁左上：點擊 1,234 次、1,000 人');
+check(rows[2][2] === '—' && rows[3][2] === '—', 'LINE 回 null（不足 20）顯示「—」，沒點擊的連結也是「—」');
+check(rows.some(r => r[0] === '（其他連結）' && r[2] === '25'), '不在我們紀錄裡的連結另外列在「其他連結」');
+check(rows.at(-1)[1].includes('發送 287,091 則') && rows.at(-1)[1].includes('開啟 90,000 人') && rows.at(-1)[3] === '41,000', '最後一列是整則訊息：發送數、開啟人數、點了任何連結的人數');
+check((await txt('#lineClicksOut .line-note')).includes('第 1 頁顯示 80,000 次') && (await txt('#lineClicksOut .line-note')).includes('第 2 頁顯示 —'), '顯示每頁的顯示次數（null 一樣是「—」）');
+await page.evaluate(() => { window.__copied = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async t => { window.__copied = t; } }, configurable: true }); });
+await page.click('#lineCopyBtn');
+const copied = await page.evaluate(() => window.__copied);
+check(copied.split('\n')[0] === '頁／位置\t標題\t點擊次數\t點擊人數' && copied.split('\n')[1].startsWith('第 1 頁 左上\t'), '「複製成表格」複製成 Tab 分隔，可直接貼到試算表');
+await page.evaluate(() => document.getElementById('lineClicksOut').scrollIntoView({ block: 'center' }));
+await page.screenshot({ path: path.join(SHOTS, 'line-3-clicks.png'), fullPage: false });
+clicksUnavailable = true;
+await page.click('#lineClicksBtn');
+await page.waitForFunction(() => /14 天/.test(document.getElementById('lineClicksOut').textContent));
+check(await page.isDisabled('#lineCopyBtn'), '統計還沒好：顯示說明，不給複製');
 
 // 內容更動 → 作廢
 await page.evaluate(() => { s8State.urls[0][0] = 'https://example.com/changed'; s8Refresh(); });
