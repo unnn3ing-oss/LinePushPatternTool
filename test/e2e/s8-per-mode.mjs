@@ -57,7 +57,7 @@ await page.fill('#s8Name', '261007早（娛樂）');
 await sendData();
 check((await page.textContent('#s8PrepMsg')).includes('81,334'), '娛樂：傳送後人數是娛樂的 81,334');
 await page.click('#s8PickSched');
-const entTime = await page.evaluate(() => ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].map(id => document.getElementById(id).value).join());
+const entTime = await page.evaluate(() => ['s8Date', 's8Time'].map(id => document.getElementById(id).value).join());
 await closeS8();
 
 // ===== 回到新聞：進度還在 =====
@@ -75,7 +75,7 @@ await closeS8();
 await gotoMode('ent');
 await openS8(4);
 check((await page.inputValue('#s8Name')) === '261007早（娛樂）' && await page.evaluate(() => document.getElementById('s8PickSched').classList.contains('active')), '娛樂：名稱與「設定排程」選擇還在');
-check((await page.evaluate(() => ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].map(id => document.getElementById(id).value).join())) === entTime, '娛樂：排程時間還在');
+check((await page.evaluate(() => ['s8Date', 's8Time'].map(id => document.getElementById(id).value).join())) === entTime, '娛樂：排程時間還在');
 check((await page.textContent('#s8PrepMsg')).includes('81,334') && (await page.getAttribute('#s8ConfirmTotal', 'placeholder')) === '輸入 81,334', '娛樂：傳送結果與人數提示是娛樂自己的');
 await closeS8();
 

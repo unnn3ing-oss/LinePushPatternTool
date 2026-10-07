@@ -188,14 +188,10 @@
   .s8-steps .s8-segbtn[data-state="bad"] { background: #dc2626; color: #fff; }
   /* 存成草稿／設定排程：被選中的那一段變透明，底下的綠／紅旋鈕滑過去 */
   .s8-steps .s8-seg.pair > .s8-segbtn.active { background: transparent; box-shadow: none; color: #fff; filter: none; }
-  .s8-steps .s8-seg.pair > .s8-segbtn.active input { color: var(--text); }
-  .s8-steps .s8-segbtn.s8-segpill { flex: 1 1 auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+  .s8-steps .s8-segbtn.s8-segpill { flex: 1 1 auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
   .s8-segstatus, .s8-segbody { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--text); }
   .s8-segstatus[hidden] { display: none; }
   .s8-segstatus.bad { color: #b91c1c; }
-  .s8-cb { position: relative; display: inline-flex; align-items: center; }
-  .s8-cb input[type="text"] { width: 2.5em; margin: 0; padding: 3px 13px 3px 4px; text-align: center; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
-  .s8-cb-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 9px; line-height: 1; color: var(--muted); cursor: pointer; user-select: none; }
   /* 確認人數：數字框跟旁邊的按鈕一樣大（同寬同高、白底、陰影） */
   .s8-seg.confirm { gap: 14px; }
   .s8-steps .s8-segbtn.col1 { width: var(--s8-btn-w); padding: 0; }   /* 第一欄的按鈕（傳送資料／存成草稿／確認人數）同寬，文字位置一致 */
@@ -216,11 +212,9 @@
   .s8-segbody { padding: 0; gap: 10px; }
   .s8-segbody input[type="text"] { box-sizing: border-box; width: var(--s8-btn-w); align-self: stretch; margin: 0; padding: 0 12px; border: none; border-radius: 99px; background: var(--knob); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .s8-segbody input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .s8-cblist { position: fixed; z-index: 100000; max-height: 220px; overflow: auto; padding: 4px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
-  .s8-cblist[hidden] { display: none; }
-  .s8-cblist div { padding: 4px 14px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 14px; cursor: pointer; }
-  .s8-cblist div:hover { background: var(--track); }
-  .s8-cblist div.cur { background: var(--accent); color: #fff; }
+  /* 排程日期（MM/DD）與時間（HH:MM）：看起來是白色小膠囊，點下去開原生的日期／時間選擇器 */
+  .s8-pk { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 72px; padding: 4px 14px; line-height: 1.2; border-radius: 99px; background: var(--card-bg); color: var(--text); font-weight: 700; cursor: pointer; }
+  .s8-pk input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
   .s8-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
   /* 確認人數的 ✓／✗：圓圈＋綠／紅底 */
   .s8-mark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff; }
@@ -1286,7 +1280,8 @@
             <div class="s8-seg pair" id="s8Seg2"><span class="s8-knob" aria-hidden="true"></span>
               <button type="button" class="s8-segbtn col1" id="s8PickDraft">存成草稿</button>
               <div class="s8-segbtn s8-segpill" id="s8PickSched" role="group" tabindex="0" aria-label="設定排程時間">設定排程
-                <span class="s8-cb"><input type="text" id="s8Mo" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="月"><span class="s8-cb-btn" data-for="s8Mo" aria-hidden="true">▾</span></span>月<span class="s8-cb"><input type="text" id="s8Dd" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="日"><span class="s8-cb-btn" data-for="s8Dd" aria-hidden="true">▾</span></span>日<span class="s8-cb"><input type="text" id="s8Hh" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="時"><span class="s8-cb-btn" data-for="s8Hh" aria-hidden="true">▾</span></span><span>:</span><span class="s8-cb"><input type="text" id="s8Mi" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="分"><span class="s8-cb-btn" data-for="s8Mi" aria-hidden="true">▾</span></span>
+                <label class="s8-pk" id="s8DateBox"><span id="s8DateTxt">MM/DD</span><input type="date" id="s8Date" aria-label="日期"></label>
+                <label class="s8-pk" id="s8TimeBox"><span id="s8TimeTxt">HH:MM</span><input type="time" id="s8Time" step="60" aria-label="時間"></label>
               </div>
             </div>
             <div class="s8-whenmsg" id="s8WhenMsg" hidden></div>
@@ -5067,7 +5062,7 @@ function s8SaveState() {
     sig: s8State.sig, images: s8State.images, urls: s8State.urls, sp: s8State.sp,
     name: $s8('s8Name').value, target: $s8('s8TargetTag').checked ? 'tag' : 'all', tag: $s8('s8Tag').value,
     prepared: s8Prepared, flow: Object.assign({}, s8Flow), confirm: $s8('s8ConfirmTotal').value,
-    when: ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].map(id => $s8(id).value),
+    when: [$s8('s8Date').value, $s8('s8Time').value],
     prep: { text: $s8('s8PrepMsg').textContent, bad: $s8('s8PrepOut').classList.contains('bad'), ok: $s8('s8PrepBtn').dataset.state === 'ok' },
     createOut: $s8('s8CreateOut').hidden ? '' : $s8('s8CreateOut').textContent,
     problem: $s8('s8Problem').classList.contains('show') ? $s8('s8Problem').textContent : '',
@@ -5082,7 +5077,7 @@ function s8RestoreProgress(sv) {
   s8Prepared = sv.prepared;
   s8Flow = Object.assign({}, sv.flow);
   $s8('s8ConfirmTotal').value = sv.confirm;
-  ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].forEach((id, n) => { $s8(id).value = sv.when[n]; });
+  $s8('s8Date').value = sv.when[0]; $s8('s8Time').value = sv.when[1]; s8ShowWhenText();
   s8PrepSet(sv.prep.text, sv.prep.bad, sv.prep.ok);
   if (sv.createOut) s8Out('s8CreateOut', sv.createOut);
   if (sv.problem) s8ShowProblem(sv.problem);
@@ -5310,86 +5305,48 @@ const taipeiParts = ms => { const x = new Date(ms + 8 * 3600e3); return { y: x.g
 const fromTaipei = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600e3;
 const s8FmtParts = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)} ${pad2(p.h)}:${pad2(p.mi)}`;
 const s8FmtScheduleAt = iso => String(iso || '').replace('T', ' ').slice(0, 16);   // 2026-10-07T21:30:00+08:00 → 2026-10-07 21:30
-const s8DefaultWhenMs = () => Math.ceil((Date.now() + 24 * 3600e3) / (5 * 60e3)) * 5 * 60e3;   // 預設 24 小時後（進位到 5 分鐘）
-// 月／日／時／分：每格都能直接打字，也能按 ▾（或點格子）從選單挑；↑↓ 鍵可加減
-const S8_WHEN_RANGE = { s8Mo: [1, 12], s8Dd: [1, 31], s8Hh: [0, 23], s8Mi: [0, 59] };
-const s8CbList = document.createElement('div');
-s8CbList.className = 's8-cblist'; s8CbList.hidden = true;
-document.body.appendChild(s8CbList);
-let s8CbFor = '';
-function s8CbHide() { s8CbList.hidden = true; s8CbFor = ''; }
-function s8CbShow(id) {
-  const inp = $s8(id), [lo, hi] = S8_WHEN_RANGE[id], cur = Number(inp.value);
-  s8CbList.textContent = '';
-  for (let v = lo; v <= hi; v++) {
-    const o = document.createElement('div'); o.textContent = pad2(v); o.dataset.v = String(v);
-    if (v === cur) o.className = 'cur';
-    s8CbList.appendChild(o);
-  }
-  const r = inp.getBoundingClientRect();
-  s8CbList.hidden = false; s8CbFor = id;
-  s8CbList.style.minWidth = `${Math.max(64, r.width)}px`;
-  const h = Math.min(220, s8CbList.scrollHeight), below = window.innerHeight - r.bottom - 8;
-  s8CbList.style.top = `${below >= h || r.top < h ? r.bottom + 4 : r.top - h - 4}px`;
-  s8CbList.style.left = `${Math.max(8, Math.min(window.innerWidth - 80, r.left))}px`;
-  const c = s8CbList.querySelector('.cur'); if (c) s8CbList.scrollTop = c.offsetTop - s8CbList.clientHeight / 2 + c.offsetHeight / 2;
+// 預設排程時間＝現在 + 3 小時（日期是那個時間所在的那一天，通常就是今天）
+const s8DefaultWhenMs = () => Math.floor((Date.now() + 3 * 3600e3) / 60e3) * 60e3;
+const s8Ymd = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)}`;
+const s8Hm = p => `${pad2(p.h)}:${pad2(p.mi)}`;
+// 日期顯示成 MM/DD、時間顯示成 HH:MM（底下是原生的日期／時間選擇器）
+function s8ShowWhenText() {
+  const d = $s8('s8Date').value, t = $s8('s8Time').value;
+  $s8('s8DateTxt').textContent = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}` : 'MM/DD';
+  $s8('s8TimeTxt').textContent = /^\d{2}:\d{2}$/.test(t) ? t : 'HH:MM';
 }
-function s8WhenTouched() { s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps(); }
+function s8WhenTouched() { s8ShowWhenText(); s8Flow.choice = 'schedule'; s8Flow.copied = false; s8UpdateSteps(); }
+function s8SetWhenBounds() {   // 日期選擇器只讓選今天到 7 天內（Worker 才是最後把關）
+  const now = Date.now();
+  $s8('s8Date').min = s8Ymd(taipeiParts(now));
+  $s8('s8Date').max = s8Ymd(taipeiParts(now + S8_MAX_LEAD_DAYS * 86400e3));
+}
 function s8InitWhen() {
-  Object.keys(S8_WHEN_RANGE).forEach(id => {
-    const inp = $s8(id), [lo, hi] = S8_WHEN_RANGE[id];
-    inp.addEventListener('focus', () => { inp.select(); s8CbShow(id); });
-    inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 2); s8WhenTouched(); if (s8CbFor === id) s8CbShow(id); });
-    inp.addEventListener('blur', () => {   // 離開時把 7 補成 07
-      const n = Number(inp.value);
-      if (inp.value !== '' && Number.isInteger(n) && n >= lo && n <= hi) inp.value = pad2(n);
-      setTimeout(() => { if (s8CbFor === id && document.activeElement !== inp) s8CbHide(); }, 120);
-      s8UpdateSteps();
-    });
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        let n = Number(inp.value); if (!Number.isInteger(n)) n = lo;
-        n += e.key === 'ArrowUp' ? 1 : -1; if (n > hi) n = lo; if (n < lo) n = hi;
-        inp.value = pad2(n); s8WhenTouched(); if (s8CbFor === id) s8CbShow(id);
-      } else if (e.key === 'Escape' && s8CbFor) { e.stopPropagation(); s8CbHide(); }
-      else if (e.key === 'Enter') { s8CbHide(); inp.blur(); }
-    });
+  ['s8Date', 's8Time'].forEach(id => {
+    const inp = $s8(id);
+    inp.addEventListener('input', s8WhenTouched);
+    inp.addEventListener('change', s8WhenTouched);
+    inp.addEventListener('click', () => { try { if (inp.showPicker) inp.showPicker(); } catch (e) { /* 部分瀏覽器不支援，改用輸入框本身 */ } });
   });
-  document.querySelectorAll('.s8-cb-btn').forEach(b => b.addEventListener('mousedown', e => {
-    e.preventDefault();
-    const id = b.dataset.for;
-    if (s8CbFor === id) s8CbHide(); else { $s8(id).focus(); s8CbShow(id); }
-  }));
-  s8CbList.addEventListener('mousedown', e => {
-    e.preventDefault();
-    const o = e.target.closest('[data-v]'); if (!o || !s8CbFor) return;
-    $s8(s8CbFor).value = pad2(Number(o.dataset.v));
-    s8CbHide(); s8WhenTouched();
-  });
-  // 選單開著時按 Esc 只收選單，不要連整個視窗一起關掉
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && s8CbFor) { e.stopImmediatePropagation(); s8CbHide(); } }, true);
-  document.addEventListener('mousedown', e => { if (s8CbFor && !s8CbList.contains(e.target) && !e.target.closest('.s8-cb')) s8CbHide(); });
   s8SetWhen(s8DefaultWhenMs());
 }
 function s8SetWhen(ms) {
   const p = taipeiParts(ms);
-  $s8('s8Mo').value = pad2(p.mo); $s8('s8Dd').value = pad2(p.d); $s8('s8Hh').value = pad2(p.h); $s8('s8Mi').value = pad2(p.mi);
+  s8SetWhenBounds();
+  $s8('s8Date').value = s8Ymd(p); $s8('s8Time').value = s8Hm(p);
+  s8ShowWhenText();
 }
-// 讀目前選的時間：回傳 { ms, iso, text, err }。err 有值就不能建立。年份不用選：預設當下（台北）年份，
-// 若選的月日已經明顯過去（例如 12 月底選了 1 月的日期），就當作明年。
+// 讀目前選的時間：回傳 { ms, iso, text, err }。err 有值就不能建立。
 function s8WhenValue() {
-  const raw = id => $s8(id).value.trim(), num = id => (/^\d{1,2}$/.test(raw(id)) ? Number(raw(id)) : NaN);
-  const mo = num('s8Mo'), d = num('s8Dd'), h = num('s8Hh'), mi = num('s8Mi');
-  const bad = Object.entries(S8_WHEN_RANGE).filter(([id, [lo, hi]]) => !(num(id) >= lo && num(id) <= hi)).map(([id]) => ({ s8Mo: '月（1–12）', s8Dd: '日（1–31）', s8Hh: '時（0–23）', s8Mi: '分（0–59）' }[id]));
-  if (bad.length) return { ms: NaN, iso: '', text: '', err: `請輸入有效的${bad.join('、')}` };
+  const d = $s8('s8Date').value, t = $s8('s8Time').value;
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d), tm = /^(\d{2}):(\d{2})$/.exec(t);
+  if (!dm || !tm) return { ms: NaN, iso: '', text: '', err: !dm ? '請選擇日期' : '請選擇時間' };
+  const y = +dm[1], mo = +dm[2], dd = +dm[3], h = +tm[1], mi = +tm[2];
   const now = Date.now();
-  let y = taipeiParts(now).y;
-  let ms = fromTaipei(y, mo, d, h, mi);
-  if (ms < now - 2 * 86400e3) { y += 1; ms = fromTaipei(y, mo, d, h, mi); }
+  const ms = fromTaipei(y, mo, dd, h, mi);
   const p = taipeiParts(ms);
-  const out = { ms, iso: `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}:00+08:00`, text: `${y}-${pad2(mo)}-${pad2(d)} ${pad2(h)}:${pad2(mi)}`, err: '' };
-  if (p.y !== y || p.mo !== mo || p.d !== d) out.err = `${mo} 月沒有 ${d} 日，請重選`;
+  const out = { ms, iso: `${d}T${t}:00+08:00`, text: `${d} ${t}`, err: '' };
+  if (p.y !== y || p.mo !== mo || p.d !== dd) out.err = `${mo} 月沒有 ${dd} 日，請重選`;
   else if (ms < now + S8_MIN_LEAD_MIN * 60e3) out.err = `排程時間要在 ${S8_MIN_LEAD_MIN} 分鐘之後（最早 ${s8FmtParts(taipeiParts(Math.ceil((now + S8_MIN_LEAD_MIN * 60e3) / 60e3) * 60e3))}）`;
   else if (ms > now + S8_MAX_LEAD_DAYS * 86400e3) out.err = `排程時間最晚只能設在 ${S8_MAX_LEAD_DAYS} 天之內（最晚 ${s8FmtParts(taipeiParts(now + S8_MAX_LEAD_DAYS * 86400e3))}）`;
   return out;
