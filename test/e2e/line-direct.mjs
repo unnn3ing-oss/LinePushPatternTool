@@ -381,6 +381,149 @@ await page.evaluate(() => { setTipCollapsed(true); });
 await page.waitForTimeout(150);
 const fabY = await page.evaluate(() => { const f = document.getElementById('tipFab').getBoundingClientRect(), d = document.getElementById('dock').getBoundingClientRect(); return { overlaps: f.left < d.right && f.right > d.left && f.top < d.bottom && f.bottom > d.top, y: document.getElementById('tipFab').classList.contains('tip-yield') }; });
 check(fabY.y === fabY.overlaps, `收合成「!」按鈕時同樣規則（碰到才隱藏：${fabY.overlaps}）`);
+// ===== 13. 測試帳號排程（不需要測試推播與確認人數）=====
+await page.setViewportSize({ width: 1100, height: 1500 });
+await ctx.route('https://example.com/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<title>ok</title>ok' }));
+await page.evaluate(() => { s8Md = 'line'; });
+await openDialog();
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.click('#linePrepBtn');
+await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+check(!(await vis('#lineTarget')), '還沒選「排程推播」：看不到「排程對象」');
+const tw = Date.now() + 2 * 3600e3;
+await setWhen(ymd(tw), hm(tw));
+await page.waitForTimeout(380);
+check(await vis('#lineTarget') && (await page.$$eval('#lineTarget .line-tbtn', b => b.map(x => x.textContent).join())) === '正式帳號,測試帳號' && await page.evaluate(() => document.getElementById('lineTgtOfficial').classList.contains('on')), '選了排程推播：出現「排程對象：正式帳號／測試帳號」，預設正式帳號');
+check(await vis('#lineStep3') && (await page.evaluate(() => !document.getElementById('lineDot3').hidden && !document.getElementById('lineDot4').hidden)), '正式帳號：照原本流程（要測試推播、確認人數）');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-13a-target-official.png') });
+await page.click('#lineTgtTest');
+await page.waitForTimeout(300);
+const tsUi = await page.evaluate(() => ({ d3: document.getElementById('lineDot3').hidden, d4: document.getElementById('lineDot4').hidden, l3: document.getElementById('lineLine3').hidden, n5: document.querySelector('#lineDot5 i').textContent, t5: document.getElementById('lineDot5Txt').textContent, s3: document.getElementById('lineStep3').hidden, s4: document.getElementById('lineStep4').hidden, s5: document.getElementById('lineStep5').hidden, go: document.getElementById('lineGoBtn').textContent, msg: document.getElementById('lineWhenMsg').textContent, on: document.getElementById('lineTgtTest').classList.contains('on') }));
+check(tsUi.d3 && tsUi.d4 && tsUi.l3 && tsUi.n5 === '3' && tsUi.t5 === '測試排程' && tsUi.s3 && tsUi.s4 && !tsUi.s5 && tsUi.go === '測試排程' && tsUi.on, '選「測試帳號」：略過測試推播與確認人數，步驟列變 ①②③，第 3 步叫「測試排程」');
+check(tsUi.msg.includes('測試帳號') && tsUi.msg.includes('不需要測試推播與確認人數'), '時間下方的說明寫明只推播到測試帳號');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-13b-target-test.png') });
+const sendsB = reqs.send.length, createsB = schedReqs.create.length;
+await page.click('#lineGoBtn');
+check((await go('lineGoBtn')) === '確定排程？' && (await bgOf('lineGoBtn')) === YELLOW, '測試排程：綠 → 黃「確定排程？」');
+await page.click('#lineGoBtn');
+check((await txt('.line-slabel')) === '滑動以排程到測試帳號', '滑動開關寫「滑動以排程到測試帳號」');
+{
+  const kb = await page.locator('#lineKnob').boundingBox(), sb = await page.locator('#lineSlider').boundingBox();
+  await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2); await page.mouse.down();
+  await page.mouse.move(kb.x + sb.width + 40, kb.y + kb.height / 2, { steps: 12 }); await page.mouse.up();
+}
+await page.waitForFunction(() => /已排程到測試帳號/.test(document.getElementById('lineWin').textContent), null, { timeout: 10000 });
+const tc = schedReqs.create[createsB];
+check(schedReqs.create.length === createsB + 1 && tc.channel === 'test' && tc.runAt === `${ymd(tw)}T${hm(tw)}:00+08:00` && tc.confirmTotal === undefined && tc.testToken === undefined && reqs.send.length === sendsB, '建立排程：channel=test、沒帶人數與測試憑證，也沒有立刻發送');
+await page.waitForFunction(() => [...document.querySelectorAll('#lineSchedList .line-srow')].some(r => r.textContent.includes('測試帳號')));
+const trow = await page.$$eval('#lineSchedList .line-srow', rs => rs.filter(r => r.textContent.includes('測試帳號')).map(r => ({ chips: [...r.querySelectorAll('.line-chip')].map(c => c.textContent), btns: [...r.querySelectorAll('button')].map(b => b.textContent) }))[0]);
+check(trow.chips.includes('測試帳號') && trow.chips.includes('待發送') && trow.btns.join() === '變更時間,刪除排程', '排程狀態：標示「測試帳號」「待發送」，一樣能變更時間、刪除');
+await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-13c-test-sched-list.png') });
+check((await go('lineGoBtn')) === '已排程' && await page.evaluate(() => document.getElementById('lineGoBtn').disabled), '完成後按鈕變「已排程」且不能再按（避免重複排）');
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.click('#linePrepBtn');
+await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await setWhen(ymd(tw), hm(tw)); await page.waitForTimeout(300);
+await page.click('#lineTgtTest'); await page.waitForTimeout(150); await page.click('#lineTgtOfficial'); await page.waitForTimeout(300);
+check(await page.evaluate(() => !document.getElementById('lineDot3').hidden && !document.getElementById('lineDot4').hidden && document.querySelector('#lineDot5 i').textContent === '5' && document.getElementById('lineDot5Txt').textContent === '正式排程'), '改回「正式帳號」：步驟列恢復成五步、第 5 步叫「正式排程」');
+check(await page.evaluate(() => !document.getElementById('lineStep5').hidden === false || document.getElementById('lineStep5').hidden), '改回正式帳號：不會直接跳到最後一步（還要測試推播與確認人數）');
+
+// ===== 14. 預覽連結旁的「打開網址」（新分頁）=====
+await page.evaluate(() => { s8Md = 'line'; });
+check(await page.evaluate(() => document.getElementById('s8CellOpen').disabled) && (await txt('#s8CellOpen')) === '打開網址', '還沒點格子：「打開網址」按鈕在連結欄後面，且不能按');
+const rowBox = await page.evaluate(() => { const i = document.getElementById('s8CellUrl').getBoundingClientRect(), b = document.getElementById('s8CellOpen').getBoundingClientRect(); return { after: b.left >= i.right - 1, sameRow: Math.abs((b.top + b.height / 2) - (i.top + i.height / 2)) < 3 }; });
+check(rowBox.after && rowBox.sameRow, '按鈕與連結欄同一列、在連結後方');
+await page.locator('#s8Stage .s8-cell').nth(0).click();
+check(await page.evaluate(() => !document.getElementById('s8CellOpen').disabled), '點了格子：「打開網址」可以按');
+await page.locator('.s8-linkrow').screenshot({ path: path.join(SHOTS, 'line-ui-14-open-url.png') });
+const mainUrl = page.url();
+const [pop] = await Promise.all([ctx.waitForEvent('page'), page.click('#s8CellOpen')]);
+await pop.waitForLoadState('domcontentloaded').catch(() => {});
+const want = await page.inputValue('#s8CellUrl');
+check(pop.url() === want && want.startsWith('https://example.com/p1/n1'), `用新分頁打開完整連結（${pop.url()}）`);
+check((await pop.evaluate(() => window.opener)) === null, '新分頁沒有 opener（noopener，不影響編輯頁）');
+await pop.close();
+check(page.url() === mainUrl && await vis('#s8Overlay'), '編輯頁沒有被導走，視窗還開著');
+await page.fill('#s8CellUrl', 'javascript:alert(1)');
+check(await page.evaluate(() => document.getElementById('s8CellOpen').disabled), '連結不是 http(s) 開頭：不能按（不會執行 javascript:）');
+await page.fill('#s8CellUrl', '');
+check(await page.evaluate(() => document.getElementById('s8CellOpen').disabled), '連結是空的：不能按');
+await page.click('.s8-ptab[data-sp="1"]'); await page.waitForTimeout(100);
+check(await page.evaluate(() => document.getElementById('s8CellOpen').disabled), '切到第 2 頁：還沒選格子，又變回不能按');
+await page.locator('#s8Stage .s8-cell').nth(2).click();
+const [pop2] = await Promise.all([ctx.waitForEvent('page'), page.click('#s8CellOpen')]);
+check(pop2.url().startsWith('https://example.com/p2/n3'), `第 2 頁第 3 格也能打開（${pop2.url()}）`);
+await pop2.close();
+await page.click('#s8ModeS8'); await page.waitForTimeout(150);
+check(await vis('#s8CellOpen') && await page.evaluate(() => !document.getElementById('s8CellOpen').disabled), 'S8推播分頁一樣有「打開網址」');
+await page.click('#s8ModeLine'); await page.waitForTimeout(150);
+
+// ===== 15. 關閉再重開：預覽不能卡在「圖片產生中…」=====
+// 真正的原因：上方「LINE原生推播／S8推播」切換鈕跟「第 1 頁／第 2 頁」共用 .s8-ptab 樣式，點它會把頁碼設成 NaN，之後預覽圖永遠取不到
+await page.click('#s8ModeS8'); await page.click('#s8ModeLine');
+check(await page.evaluate(() => Number.isInteger(s8State.sp) && document.querySelectorAll('#s8Stage img').length === 1), '點「S8推播／LINE原生推播」切換鈕：頁碼不會壞掉，預覽圖還在');
+check(await page.evaluate(() => Number(document.querySelector('#s8Ptabs .s8-ptab.active').dataset.sp) === s8State.sp && document.getElementById('s8ModeLine').classList.contains('active')), '切換後「目前這一頁」與「LINE原生推播」各自維持正確的選取狀態');
+await page.click('#s8CloseBtn');
+await page.evaluate(() => { openS8Dialog(); });
+await page.waitForFunction(() => document.querySelectorAll('#s8Stage img').length === 1, null, { timeout: 10000 });
+check(await page.evaluate(() => !document.getElementById('s8StagePh') && Number.isInteger(s8State.sp)), '切換過分頁後關閉再重開：預覽正常載入（不是「圖片產生中…」）');
+await page.evaluate(() => { s8State.sp = NaN; s8SaveState(); });   // 即使存進壞掉的頁碼，重開也會自動回到第 1 頁
+await page.click('#s8CloseBtn');
+await page.evaluate(() => { openS8Dialog(); });
+await page.waitForFunction(() => document.querySelectorAll('#s8Stage img').length === 1, null, { timeout: 10000 });
+check(await page.evaluate(() => s8State.sp === 0), '頁碼即使壞掉，重開也會回到第 1 頁並顯示預覽');
+await page.click('#s8CloseBtn');
+await page.evaluate(() => { window.__renders = 0; const orig = renderPageToOffscreen; window.__origRender = orig; renderPageToOffscreen = function (...a) { window.__renders++; return orig.apply(this, a); }; s8DropSaved(mode); s8JobKill(mode); });
+await page.evaluate(() => { openS8Dialog(); });
+await page.waitForTimeout(120);
+await page.click('#s8CloseBtn');           // 圖還在做就關掉
+await page.evaluate(() => { openS8Dialog(); });   // 馬上重開
+await page.waitForFunction(() => s8State && s8State.images.length === 2 && document.querySelectorAll('#s8Stage img').length === 1, null, { timeout: 60000 });
+check(await page.evaluate(() => !document.getElementById('s8StagePh')), '圖還在做就關掉、馬上重開：預覽正常出現，沒有卡在「圖片產生中…」');
+check((await page.evaluate(() => window.__renders)) === 2, `重開時接上原本那份工作，沒有重畫（共畫 ${await page.evaluate(() => window.__renders)} 張，應為 2）`);
+await page.click('#s8CloseBtn');
+await page.evaluate(() => { openS8Dialog(); });   // 做好之後關掉再開
+await page.waitForFunction(() => s8State && s8State.images.length === 2 && document.querySelectorAll('#s8Stage img').length === 1, null, { timeout: 10000 });
+check((await page.evaluate(() => window.__renders)) === 2, '做好之後關掉再開：直接用做好的圖，不重畫');
+// 卡住時的出路：超過 11 秒顯示「重新產生」
+await page.evaluate(() => { s8State.images = []; s8Jobs[mode].startedAt -= 20000; s8RenderStage(); });
+check(await vis('#s8Regen') && (await txt('#s8StagePh')).includes('比較久'), '超過 11 秒還沒好：顯示「圖片產生比較久…」與「重新產生」');
+await page.locator('#s8Stage').screenshot({ path: path.join(SHOTS, 'line-ui-15-regen.png') });
+await page.click('#s8Regen');
+await page.waitForFunction(() => s8State && s8State.images.length === 2 && document.querySelectorAll('#s8Stage img').length === 1, null, { timeout: 60000 });
+check((await page.evaluate(() => window.__renders)) === 4, '按「重新產生」：重畫一次後預覽恢復');
+await page.evaluate(() => { renderPageToOffscreen = window.__origRender; });
+await page.click('#s8CloseBtn');
+
+// ===== 16. 還正在編輯：防止誤關分頁 =====
+const guard = () => page.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return { prevented: e.defaultPrevented, editing: editingNow() }; });
+await page.evaluate(() => { editMarkClean('news'); });
+check(!(await guard()).prevented, '剛下載／推播完（沒有未完成的修改）：關分頁不會被攔');
+await page.evaluate(() => { pages[0].cards[0].line1 = '又改了一個標題'; });
+check((await guard()).prevented, '改了內容還沒下載或推播：關分頁會跳出離開確認（beforeunload）');
+await page.waitForTimeout(1700);
+check((await page.title()).startsWith('● '), `分頁標題前面出現「●」（${await page.title()}）`);
+await page.evaluate(() => { editMarkClean('news', 1); });
+check((await guard()).prevented, '只標記第 2 頁已完成：第 1 頁還是編輯中，仍會攔');
+await page.evaluate(() => { editMarkClean('news', 0); });
+check(!(await guard()).prevented, '兩頁都標記完成：不再攔');
+await page.waitForTimeout(1700);
+check(!(await page.title()).startsWith('● '), '分頁標題的「●」消失');
+await page.evaluate(() => { pages[0].cards[0].line1 = '標題 A'; });
+await page.evaluate(() => { pages[0].cards[0].line1 = '又改了一個標題'; });
+check(!(await guard()).prevented, '改過又改回原本的內容：視為沒有未完成的修改');
+await page.evaluate(() => { s8Md = 'line'; openS8Dialog(); });
+await page.waitForFunction(() => document.querySelectorAll('#s8Stage .s8-cell').length === 6, null, { timeout: 60000 });
+await page.evaluate(() => { const st = lineSt(); st.test = 'busy'; });
+check((await guard()).prevented, '推播傳送中：關分頁一定會攔');
+await page.evaluate(() => { const st = lineSt(); st.test = ''; lineUpdateSteps(); });
+await page.click('#s8CloseBtn');
+// 下載本頁／全部下載之後算完成
+await page.evaluate(() => { pages[1].cards[0].line1 = '第二頁新標題'; });
+check((await guard()).prevented, '（再改一頁內容）編輯中');
+await page.evaluate(() => { ensureAssetsReady().then(() => { editMarkClean(mode); }); });
+await page.waitForTimeout(300);
+check(!(await guard()).prevented, '標記完成後恢復');
 check(pageErrors.length === 0, `頁面沒有 JS 錯誤 ${pageErrors.join(' | ')}`);
 
 await browser.close();

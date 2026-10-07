@@ -152,7 +152,9 @@
   .s8-cell.bad { border-color: #dc2626; border-style: dashed; }
   .s8-linkrow { display: grid; gap: 4px; max-width: 520px; width: 100%; margin: 0 auto; }
   .s8-linklbl { font-size: 13px; color: var(--muted); }
-  .s8-linkrow input { width: 100%; }
+  .s8-linkin { display: flex; gap: 8px; align-items: stretch; }
+  .s8-linkin input { flex: 1 1 auto; min-width: 0; width: auto; }
+  .s8-linkin button { flex: none; padding: 0 14px; white-space: nowrap; }
   /* 傳送資料給 S8：五個步驟（圓圈數字與頁面上方的步驟列同一套）*/
   .s8-steps { display: grid; gap: 14px; }
   .s8-step[hidden] { display: none; }
@@ -161,6 +163,7 @@
   .s8-hstepper { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
   .s8-hs { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 99px; color: var(--muted); font-size: 15px; font-weight: 700; white-space: nowrap; }
   .s8-hs i { width: 24px; height: 24px; border-radius: 50%; background: rgba(0, 0, 0, .12); color: var(--muted); display: inline-grid; place-items: center; font-style: normal; font-size: 12px; transition: background .25s ease, color .25s ease; }
+  .s8-hs[hidden], .s8-hl[hidden] { display: none; }
   .s8-hs b { display: none; font-weight: 700; }
   .s8-hs.on { color: var(--accent); }
   .s8-hs.on b { display: inline; }
@@ -242,6 +245,10 @@
   .line-srow:last-child { margin-bottom: 0; }
   .line-srow .top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .line-srow .when { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .line-target { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .line-target[hidden] { display: none; }
+  .line-tbtn { padding: 3px 12px; border-radius: 99px; border: 1px solid rgba(0, 0, 0, .18); background: #fff; font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
+  .line-tbtn.on { background: #dbeafe; border-color: #93c5fd; color: #1e40af; font-weight: 700; }
   .line-chip { display: inline-block; padding: 1px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: rgba(0, 0, 0, .08); color: var(--text); }
   .line-chip.scheduled { background: #dbeafe; color: #1e40af; }
   .line-chip.sending { background: #fbf0cf; }
@@ -1334,7 +1341,10 @@
         <div class="s8-stage" id="s8Stage"><span class="s8-ph" id="s8StagePh">圖片產生中…</span></div>
         <div class="s8-linkrow">
           <span class="s8-linklbl" id="s8LinkLbl">點上面圖片的格子，這裡會顯示該格的完整連結</span>
-          <input type="text" id="s8CellUrl" autocomplete="off" disabled>
+          <div class="s8-linkin">
+            <input type="text" id="s8CellUrl" autocomplete="off" disabled>
+            <button type="button" id="s8CellOpen" disabled title="用新的分頁打開這個連結（不會離開這個頁面）">打開網址</button>
+          </div>
         </div>
       </div>
       <ul class="s8-errs" id="s8Errs"></ul>
@@ -1421,6 +1431,11 @@
                   <label class="s8-pk" id="lineDateBox"><span id="lineDateTxt">MM/DD</span><input type="date" id="lineDate" aria-label="日期"></label>
                   <label class="s8-pk" id="lineTimeBox"><span id="lineTimeTxt">HH:MM</span><input type="time" id="lineTime" step="60" aria-label="時間"></label>
                 </div>
+              </div>
+              <div class="line-target" id="lineTarget" role="radiogroup" aria-label="排程對象" hidden>
+                <span class="line-target-lbl">排程對象</span>
+                <button type="button" class="line-tbtn" id="lineTgtOfficial" role="radio">正式帳號</button>
+                <button type="button" class="line-tbtn" id="lineTgtTest" role="radio" title="只排給測試帳號：不需要測試推播與確認人數，用來驗證排程有沒有準時發出">測試帳號</button>
               </div>
               <div class="s8-whenmsg" id="lineWhenMsg" hidden></div>
             </div>
@@ -3947,7 +3962,10 @@ document.getElementById('downloadJpgBtn').addEventListener('click', async () => 
   }
   await ensureAssetsReady();
   const off = renderPageToOffscreen(activePage(), 'final');
-  reportExport([await exportCanvas(off, exportFileName(activePageIndex))]);
+  const donePage = activePageIndex;
+  const res1 = await exportCanvas(off, exportFileName(donePage));
+  editMarkClean(mode, donePage);
+  reportExport([res1]);
 });
 
 async function runDownloadAll() {
@@ -3960,6 +3978,7 @@ async function runDownloadAll() {
     // rather than racing them back-to-back.
     if (p < PAGE_COUNT - 1) await new Promise(r => setTimeout(r, 250));
   }
+  editMarkClean(mode);
   reportExport(results);
 }
 // 全部下載 first asks for a last check (typos / white edges) in a popover at the
@@ -5126,7 +5145,17 @@ function s8RenderStage() {
   stage.textContent = '';
   if (!s8State) return;
   const p = s8State.sp, im = s8State.images[p];
-  if (!im) { const ph = document.createElement('span'); ph.className = 's8-ph'; ph.id = 's8StagePh'; ph.textContent = s8State.imgFailed ? '圖片產生失敗，請關閉後重試' : '圖片產生中…'; stage.appendChild(ph); return; }
+  if (!im) {
+    const ph = document.createElement('span'); ph.className = 's8-ph'; ph.id = 's8StagePh';
+    const job = s8Jobs[mode], slow = !!job && Date.now() - job.startedAt > 11000;
+    ph.textContent = s8State.imgFailed ? '圖片產生失敗' : (slow ? '圖片產生比較久…' : '圖片產生中…');
+    stage.appendChild(ph);
+    if (s8State.imgFailed || slow) {   // 卡住時給一條出路，不用關掉整個視窗
+      const b = document.createElement('button'); b.type = 'button'; b.id = 's8Regen'; b.textContent = '重新產生'; b.style.marginLeft = '10px';
+      b.addEventListener('click', s8Regenerate); ph.appendChild(b);
+    }
+    return;
+  }
   const wrap = document.createElement('div'); wrap.className = 's8-wrap';
   const img = document.createElement('img'); img.src = im.url; img.alt = `第 ${p + 1} 頁`;
   wrap.appendChild(img);
@@ -5157,7 +5186,20 @@ function s8SelectCell(i) {
   inp.value = (s8State.urls[s8State.sp] || [])[i] || '';
   document.getElementById('s8LinkLbl').textContent = `第 ${s8State.sp + 1} 頁　${s8CellTitle(s8State.sp, i)}　的完整連結`;
   s8MarkCells();
+  s8SyncOpen();
 }
+// 「打開網址」：只有選了格子、而且連結是 http(s) 才能按；一律用新分頁打開（noopener，不影響這個編輯頁）
+const s8OpenableUrl = v => { const u = String(v || '').trim(); return /^https?:\/\/\S+$/i.test(u) ? u : ''; };
+function s8SyncOpen() {
+  const b = document.getElementById('s8CellOpen'), inp = document.getElementById('s8CellUrl');
+  const ok = !!s8State && s8State.cell >= 0 && !!s8OpenableUrl(inp.value);
+  b.disabled = !ok;
+  b.title = ok ? '用新的分頁打開這個連結（不會離開這個頁面）' : (s8State && s8State.cell >= 0 ? '這一格還沒有 http(s) 開頭的完整連結' : '先點上面圖片的格子');
+}
+document.getElementById('s8CellOpen').addEventListener('click', () => {
+  const u = s8OpenableUrl(document.getElementById('s8CellUrl').value);
+  if (u) window.open(u, '_blank', 'noopener,noreferrer');
+});
 // 每格的名稱：快速填入時的標題（兩行以空格相接，前面加 ★），例如「★降溫恐"跌破20度"! 北部再爆大雨」；還沒填標題才退回「項目N（位置）」。
 // S8 的圖文訊息每個點擊區塊（button）會用這個當名稱。
 function s8CellTitle(p, i) {
@@ -5167,17 +5209,20 @@ function s8CellTitle(p, i) {
 }
 function s8ShowPage(p) {
   if (!s8State) return;
+  if (!Number.isInteger(p) || p < 0 || p >= pages.length) p = 0;   // 防呆：頁碼壞掉就回第 1 頁（頁碼是 NaN 時 images[NaN] 取不到圖，預覽會永遠卡在「圖片產生中…」）
   s8State.sp = p; s8State.cell = -1;
-  document.querySelectorAll('.s8-ptab').forEach(b => b.classList.toggle('active', Number(b.dataset.sp) === p));
+  document.querySelectorAll('#s8Ptabs .s8-ptab').forEach(b => b.classList.toggle('active', Number(b.dataset.sp) === p));   // 只動「第 1 頁／第 2 頁」；上方「LINE原生推播／S8推播」也用同一個樣式 class，不能被誤算進來
   placeSegKnob(document.getElementById('s8Ptabs'));   // 與頁面上方「第 1 頁／第 2 頁」同一個滑動旋鈕動畫
   const inp = document.getElementById('s8CellUrl'); inp.value = ''; inp.disabled = true;
   document.getElementById('s8LinkLbl').textContent = '點上面圖片的格子，這裡會顯示該格的完整連結';
+  s8SyncOpen();
   s8RenderStage();
 }
-document.querySelectorAll('.s8-ptab').forEach(b => b.addEventListener('click', () => s8ShowPage(Number(b.dataset.sp))));
+document.querySelectorAll('#s8Ptabs .s8-ptab').forEach(b => b.addEventListener('click', () => s8ShowPage(Number(b.dataset.sp))));
 document.getElementById('s8CellUrl').addEventListener('input', e => {
   if (!s8State || s8State.cell < 0) return;
   s8State.urls[s8State.sp][s8State.cell] = e.target.value;
+  s8SyncOpen();
   s8Refresh();
 });
 function s8Collect() {
@@ -5236,14 +5281,38 @@ function s8RefreshCore(keepProgress) {
 // 切換版型、關掉視窗再開都還在；畫面內容（標題、照片、連結…）改過就視為舊進度作廢，重新開始。
 const s8Saved = { news: null, ent: null };
 const S8_PREPARE_TTL_MS = 19 * 60e3;   // Worker 的預覽 20 分鐘有效，超過就要重新傳送
-function s8Signature() {
-  return JSON.stringify(pages.map(pg => ({ h: pg.showHeader, t: pg.topLabel, c: pg.cards.map(st => JSON.stringify(st, (k, v) => {
-    if (k.startsWith('_')) return undefined;   // 畫面快取（_fitCache…）不算內容
-    if (v instanceof HTMLImageElement) return `img:${(v.currentSrc || v.src || '').slice(-80)}:${v.naturalWidth}x${v.naturalHeight}`;
-    if (v instanceof HTMLCanvasElement) return `cv:${v.width}x${v.height}`;
-    return v;
-  })) })));
+const pageSigObj = pg => ({ h: pg.showHeader, t: pg.topLabel, c: pg.cards.map(st => JSON.stringify(st, (k, v) => {
+  if (k.startsWith('_')) return undefined;   // 畫面快取（_fitCache…）不算內容
+  if (v instanceof HTMLImageElement) return `img:${(v.currentSrc || v.src || '').slice(-80)}:${v.naturalWidth}x${v.naturalHeight}`;
+  if (v instanceof HTMLCanvasElement) return `cv:${v.width}x${v.height}`;
+  return v;
+})) });
+function s8Signature() { return JSON.stringify(pages.map(pageSigObj)); }
+// ---- 「還正在編輯」：有內容、而且上次下載／推播之後又改過，就算編輯中 ----
+// 編輯中：關分頁、關瀏覽器、重新整理都會先跳出瀏覽器的離開確認，分頁標題前面也會加「●」。
+// 「已完成」的標記：下載本頁（只算那一頁）、全部下載、正式推播／正式排程／建立 S8 群發成功（算那個版型的兩頁）。測試推播與測試排程不算。
+const editClean = {};   // `${版型}:${頁}` → 完成當下那一頁的內容簽章
+const editKey = (m, i) => `${m}:${i}`;
+const pageHasContent = pg => pg.cards.some(st => st.img || String(st.line1 || '').trim() || String(st.line2 || '').trim() || String(st.url || '').trim());
+function editMarkClean(m, onlyPage) {
+  const ps = m === mode ? pages : pagesByMode[m]; if (!ps) return;
+  ps.forEach((pg, i) => { if (onlyPage === undefined || onlyPage === i) editClean[editKey(m, i)] = JSON.stringify(pageSigObj(pg)); });
 }
+function editingNow() {
+  try {
+    for (const m of ['news', 'ent', 'collage']) {
+      const ps = m === mode ? pages : pagesByMode[m];
+      if (ps && ps.some((pg, i) => pageHasContent(pg) && JSON.stringify(pageSigObj(pg)) !== editClean[editKey(m, i)])) return true;
+    }
+    return s8Overlay.classList.contains('open') && (lineBusyNow() || s8Flow.createState === 'busy');   // 正在傳送／推播中
+  } catch (e) { return false; }
+}
+window.addEventListener('beforeunload', e => { if (!editingNow()) return; e.preventDefault(); e.returnValue = ''; return ''; });
+(function editTitleMark() {
+  const base = document.title.replace(/^● /, '');
+  const tick = () => { const t = editingNow() ? `● ${base}` : base; if (document.title !== t) document.title = t; };
+  setInterval(tick, 1500); tick();
+})();
 function s8DropSaved(m) {
   const sv = s8Saved[m];
   if (sv && sv.images) sv.images.forEach(im => im && URL.revokeObjectURL(im.url));
@@ -5325,23 +5394,61 @@ async function openS8Dialog() {
   s8SetMd(s8Md);
   s8RefreshCore(!!sv);
   if (sv) { s8RenderStage(); return; }   // 圖片是之前做好的，不用重畫
-  // Render the two page images (same pipeline and 2 MB rule as 下載本頁).
-  const mine = s8State;
-  try {
+  s8AttachRender(s8State);
+}
+// ---- 預覽用的兩張圖：依版型做成「工作」保存，關掉視窗不會中斷也不會浪費，重開直接接上 ----
+// （以前是綁在視窗上：圖還沒做完就關掉再開，舊的那份做完後被丟掉、新的又要重做一次，畫面就一直停在「圖片產生中…」）
+const s8Jobs = { news: null, ent: null };   // { sig, images|null, failed, dead, startedAt, promise }
+function s8JobKill(m) {
+  const j = s8Jobs[m]; if (!j) return;
+  j.dead = true;
+  if (j.images) j.images.forEach(im => im && URL.revokeObjectURL(im.url));
+  s8Jobs[m] = null;
+}
+function s8RenderJob(m, sig) {
+  const old = s8Jobs[m];
+  if (old && old.sig === sig && !old.failed && !old.dead) return old;
+  s8JobKill(m);   // 內容改過或上一次失敗：舊的作廢，重做
+  const snapPages = pages;
+  const job = { sig, images: null, failed: false, dead: false, startedAt: Date.now(), error: null };
+  const stale = () => job.dead || mode !== m || pages !== snapPages;   // 中途切了版型或內容換了，不能再用目前畫面去畫
+  job.promise = (async () => {
+    // Render the two page images (same pipeline and 2 MB rule as 下載本頁).
     await ensureAssetsReady();
     const imgs = [];
-    for (let p = 0; p < pages.length; p++) {
-      const res = await encodePngUnderLimit(renderPageToOffscreen(pages[p], 'final'));
+    const drop = () => { imgs.forEach(im => URL.revokeObjectURL(im.url)); return null; };
+    for (let p = 0; p < snapPages.length; p++) {
+      if (stale()) return drop();
+      const res = await encodePngUnderLimit(renderPageToOffscreen(snapPages[p], 'final'));
       const blob = new Blob([res.bytes], { type: 'image/png' });
       imgs.push({ blob, url: URL.createObjectURL(blob), size: res.size, tooBig: res.tooBig });
     }
-    if (s8State !== mine) { imgs.forEach(im => URL.revokeObjectURL(im.url)); return; }
-    s8State.images = imgs;
-  } catch (e) {
-    if (s8State === mine) s8State.imgFailed = true;
-  }
+    if (stale() || s8Signature() !== sig) { job.dead = true; if (s8Jobs[m] === job) s8Jobs[m] = null; return drop(); }
+    job.images = imgs;
+    return imgs;
+  })().catch(e => { job.failed = true; job.error = e; return null; });
+  s8Jobs[m] = job;
+  return job;
+}
+async function s8AttachRender(mine) {
+  const m = mode;
+  const job = s8RenderJob(m, mine.sig);
+  clearTimeout(s8SlowTimer);
+  s8SlowTimer = setTimeout(() => { if (s8State === mine && mine.images.length < pages.length && !mine.imgFailed) s8RenderStage(); }, 12000);   // 太久沒好就出現「重新產生」
+  const imgs = await job.promise;
+  if (s8State !== mine) return;   // 視窗關了：做好的圖留在 job 裡，下次開直接用
+  if (imgs) mine.images = imgs;
+  else { const cur = s8Jobs[m]; if (cur && cur !== job && !cur.dead) return; mine.imgFailed = true; }   // 已經換成新的工作（按了「重新產生」）就交給新的
   s8RenderStage();
   s8Refresh();
+}
+let s8SlowTimer = 0;
+function s8Regenerate() {
+  if (!s8State) return;
+  s8JobKill(mode);
+  s8State.images = []; s8State.imgFailed = false;
+  s8RenderStage();
+  s8AttachRender(s8State);
 }
 function closeS8Dialog() {
   if (s8Flow.createState === 'busy' || $s8('s8PrepBtn').disabled || lineBusyNow()) { statusEl.show('正在傳送，請等完成後再關閉視窗', 'error'); return; }   // 避免結果寫到別的版型
@@ -5697,7 +5804,7 @@ $s8('s8CreateBtn').addEventListener('click', async () => {
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
     if (r.ok) {
       // 成功：按鈕變綠、不能再按（一次預覽只建立一筆；要再建立請重新「傳送資料」），並用彈窗提醒到 S8 後台確認與命名
-      s8Flow.createState = 'ok'; s8Flow.createdOnce = true; s8UpdateSteps();
+      s8Flow.createState = 'ok'; s8Flow.createdOnce = true; editMarkClean(mode); s8UpdateSteps();
       if (r.mode === 'schedule') {
         s8AddScheduleBanner(r, org, name);
         s8Note('排程已建立', `將在 ${s8FmtScheduleAt(r.scheduleAt)}（台北時間）實際發送給 ${Number(r.total).toLocaleString()} 人。\n\n請到 S8 後台（Console）：\n1. 確認這筆排程是否成功建立\n2. 貼上剛剛複製的名稱「${name}」，為這筆群發命名\n\n如果要取消，可按下方紅色橫幅的「暫停成草稿」。\ntaskId：${r.taskId}`);
@@ -5736,7 +5843,7 @@ $s8('s8RetryPause').addEventListener('click', async () => {
 // LINE 本身沒有草稿也沒有排程：「立即推播」成功就是已經發出；「排程推播」是 Worker 自己排（Cron），到時間才發。每個版型（新聞／娛樂）各自一份進度。
 const $line = id => document.getElementById(id);
 const lineByMode = { news: null, ent: null };
-const lineNewState = () => ({ prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', testDone: false, friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } });
+const lineNewState = () => ({ prep: null, prepMsg: { text: '', kind: '' }, choice: '', tsched: false, test: '', testMsg: '', testToken: '', testDone: false, friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } });
 const lineSt = () => (lineByMode[mode] = lineByMode[mode] || lineNewState());
 const lineBusyNow = () => { const st = lineByMode[mode]; return !!st && (st.prepMsg.kind === 'busy' || st.test === 'busy' || st.goState === 'busy'); };
 const LINE_MIN_LEAD_MIN = 5, LINE_MAX_LEAD_DAYS = 14;   // 與 Worker 的限制一致（Worker 才是最後把關）
@@ -5747,7 +5854,7 @@ function lineRenderWin() {
   const w = $line('lineWin'), st = lineSt();
   w.hidden = !st.win.text; w.textContent = st.win.text; w.className = `line-win${st.win.kind ? ' ' + st.win.kind : ''}`;
 }
-function lineResetFlow(st) { Object.assign(st, { prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', testDone: false, friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
+function lineResetFlow(st) { Object.assign(st, { prep: null, prepMsg: { text: '', kind: '' }, choice: '', tsched: false, test: '', testMsg: '', testToken: '', testDone: false, friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
 function lineInvalidateIfChanged() {
   const st = lineByMode[mode];
   if (st && st.prep && st.prep.sig !== lineSig() && !lineBusyNow()) { lineResetFlow(st); st.win = { text: '內容有更動，已作廢上傳的資料，請重新「傳送資料」。', kind: 'bad' }; }
@@ -5789,7 +5896,12 @@ function lineResetAfterChoice(st) {   // 重新選了方式或時間：後面的
 lineSetWhen(s8DefaultWhenMs());
 $line('linePickSched').addEventListener('click', () => { const st = lineSt(); if (!st.prep || st.choice === 'sched') return; st.choice = 'sched'; lineResetAfterChoice(st); lineUpdateSteps(); });
 $line('linePickSched').addEventListener('keydown', e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.currentTarget.click(); } });
-$line('linePickNow').addEventListener('click', () => { const st = lineSt(); if (!st.prep || st.choice === 'now') return; st.choice = 'now'; lineResetAfterChoice(st); lineUpdateSteps(); });
+$line('linePickNow').addEventListener('click', () => { const st = lineSt(); if (!st.prep || st.choice === 'now') return; st.choice = 'now'; st.tsched = false; lineResetAfterChoice(st); lineUpdateSteps(); });
+// 排程對象：正式帳號（要先測試推播、確認人數）或測試帳號（直接排，用來驗證 Cron 有沒有準時發）
+[['lineTgtOfficial', false], ['lineTgtTest', true]].forEach(([id, isTest]) => $line(id).addEventListener('click', () => {
+  const st = lineSt(); if (!st.prep || st.choice !== 'sched' || !!st.tsched === isTest || st.goState === 'busy' || st.goState === 'ok') return;
+  st.tsched = isTest; lineResetAfterChoice(st); st.win = { text: '', kind: '' }; lineUpdateSteps();
+}));
 
 // ---- 與 S8 步驟同款的統一寬度 ----
 function lineFitControls() {
@@ -5812,21 +5924,30 @@ function lineFitControls() {
 function lineUpdateSteps() {
   if (!$line('lineSteps')) return;
   const st = lineSt(), prepared = !!st.prep, choice = st.choice, sched = choice === 'sched';
+  const tsched = sched && !!st.tsched;   // 排給測試帳號：不需要「測試推播」與「確認人數」，直接到最後一步
   const when = sched ? lineWhenValue() : null;
   const whenOk = choice === 'now' || (!!when && !when.err);
   const typed = lineDigits($line('lineConfirmTotal').value), raw = $line('lineConfirmTotal').value.trim();
   const confirmOk = st.testDone && Number.isFinite(st.friends) && typed === st.friends;
-  const reached = [true, prepared, prepared && whenOk, prepared && whenOk && st.testDone, prepared && whenOk && st.testDone && confirmOk];
+  const reached = tsched
+    ? [true, prepared, false, false, prepared && whenOk]
+    : [true, prepared, prepared && whenOk, prepared && whenOk && st.testDone, prepared && whenOk && st.testDone && confirmOk];
   let cur = 1; reached.forEach((r, i) => { if (r) cur = i + 1; });
-  for (let n = 1; n <= 5; n++) { const el = $line(`lineStep${n}`); el.hidden = !reached[n - 1]; el.classList.toggle('old', n < cur - 1); }
+  for (let n = 1; n <= 5; n++) { const el = $line(`lineStep${n}`); el.hidden = !reached[n - 1]; el.classList.toggle('old', n < cur - 1 && !(tsched && n === 2)); }   // 測試排程時「發佈方式」留著，才能改時間或改回正式帳號
   const mark = (n, done, on) => {
     const dot = $line(`lineDot${n}`), line = $line(`lineLine${n}`);
     dot.classList.toggle('done', !!done); dot.classList.toggle('on', !done && !!on);
     if (line) line.classList.toggle('done', !!done);
   };
-  mark(1, prepared, !prepared); mark(2, prepared && whenOk, prepared); mark(3, st.testDone, prepared && whenOk); mark(4, confirmOk, st.testDone); mark(5, st.goState === 'ok', confirmOk);
+  mark(1, prepared, !prepared); mark(2, prepared && whenOk, prepared); mark(3, st.testDone, prepared && whenOk); mark(4, confirmOk, st.testDone); mark(5, st.goState === 'ok', tsched ? prepared && whenOk : confirmOk);
+  ['lineDot3', 'lineLine3', 'lineDot4', 'lineLine4'].forEach(id => { $line(id).hidden = tsched; });   // 測試排程只有 ①傳送資料 ②發佈方式 ③排程
+  $line('lineDot5').querySelector('i').textContent = tsched ? '3' : '5';
   const ons = Array.from(document.querySelectorAll('#lineHStepper .s8-hs.on')); ons.slice(0, -1).forEach(d => d.classList.remove('on'));
-  $line('lineDot5Txt').textContent = sched ? '正式排程' : '正式推播';
+  $line('lineDot5Txt').textContent = tsched ? '測試排程' : (sched ? '正式排程' : '正式推播');
+  // 排程對象（只有選了排程推播才出現）
+  $line('lineTarget').hidden = !(prepared && sched);
+  $line('lineTgtOfficial').classList.toggle('on', !tsched); $line('lineTgtTest').classList.toggle('on', tsched);
+  $line('lineTgtOfficial').setAttribute('aria-checked', String(!tsched)); $line('lineTgtTest').setAttribute('aria-checked', String(tsched));
   const setSt = (el, v) => { if (v) el.dataset.state = v; else delete el.dataset.state; };
   // ① 傳送資料
   const pk = st.prepMsg.kind, pb = $line('linePrepBtn');
@@ -5839,7 +5960,7 @@ function lineUpdateSteps() {
   $line('linePickSched').classList.toggle('active', sched);
   s8SegPlace($line('lineSeg2'), choice === 'now' ? $line('linePickNow') : (sched ? $line('linePickSched') : null));
   const wm = $line('lineWhenMsg'); wm.hidden = !when;
-  if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || `將在 ${when.text}（台北時間）由 Worker 自動推播給全部好友。可選範圍：${LINE_MIN_LEAD_MIN} 分鐘後 ～ ${LINE_MAX_LEAD_DAYS} 天內。`; }
+  if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || (tsched ? `將在 ${when.text}（台北時間）由 Worker 自動推播到「測試帳號」（只有測試帳號的好友收得到，不需要測試推播與確認人數）。可選範圍：${LINE_MIN_LEAD_MIN} 分鐘後 ～ ${LINE_MAX_LEAD_DAYS} 天內。` : `將在 ${when.text}（台北時間）由 Worker 自動推播給全部好友。可選範圍：${LINE_MIN_LEAD_MIN} 分鐘後 ～ ${LINE_MAX_LEAD_DAYS} 天內。`); }
   // ③ 測試推播
   const tb = $line('lineTestBtn');
   setSt(tb, st.test);
@@ -5865,14 +5986,15 @@ function lineUpdateSteps() {
   // ⑤ 正式推播／正式排程：綠色 → 黃色「確定？」→ 滑動開關
   const gb = $line('lineGoBtn'), sl = $line('lineSlider');
   const verb = sched ? '排程' : '推播';
+  const goLabel = tsched ? '測試排程' : (sched ? '正式排程' : '正式推播');
   const showSlider = st.go === 2 && st.goState !== 'ok';
   $line('lineGoTrack').hidden = showSlider; sl.hidden = !showSlider;
   sl.classList.toggle('locked', st.goState === 'busy');
   if (st.goState === 'ok') { setSt(gb, 'ok'); gb.textContent = sched ? '已排程' : '已正式推播'; gb.disabled = true; }
   else if (st.goState === 'bad') { setSt(gb, 'bad'); gb.textContent = `${verb}失敗，點一下重新${verb}`; gb.disabled = false; }
   else if (st.go === 1) { setSt(gb, 'warn'); gb.textContent = `確定${verb}？`; gb.disabled = false; }
-  else { setSt(gb, 'ok'); gb.textContent = sched ? '正式排程' : '正式推播'; gb.disabled = false; }
-  sl.querySelector('.line-slabel').textContent = st.goState === 'busy' ? `${verb}中…` : `滑動以${sched ? '排程推播' : '正式推播'}`;
+  else { setSt(gb, 'ok'); gb.textContent = goLabel; gb.disabled = false; }
+  sl.querySelector('.line-slabel').textContent = st.goState === 'busy' ? `${verb}中…` : `滑動以${tsched ? '排程到測試帳號' : (sched ? '排程推播' : '正式推播')}`;
   lineRenderWin();
 }
 // ① 傳送資料
@@ -5936,26 +6058,32 @@ $line('lineConfirmLabel').addEventListener('click', () => { const st = lineSt();
 $line('lineConfirmTotal').addEventListener('input', () => { const st = lineSt(); if (st.goState !== 'ok') { st.go = 0; if (st.goState === 'bad') st.goState = ''; } lineUpdateSteps(); });
 // ⑤ 正式推播／正式排程：綠 → 黃 → 滑動開關
 $line('lineGoBtn').addEventListener('click', () => {
-  const st = lineSt(); if (!st.testDone || st.goState === 'busy' || st.goState === 'ok') return;
+  const st = lineSt(); if (!(st.testDone || (st.choice === 'sched' && st.tsched)) || st.goState === 'busy' || st.goState === 'ok') return;
   if (st.goState === 'bad') { st.goState = ''; st.go = 0; lineWin('', ''); lineUpdateSteps(); return; }
   if (st.go === 0) st.go = 1; else if (st.go === 1) { st.go = 2; lineResetSlider(); }
   lineUpdateSteps();
 });
 async function lineFireOfficial() {
-  const st = lineSt(), sched = st.choice === 'sched';
+  const st = lineSt(), sched = st.choice === 'sched', tsched = sched && !!st.tsched;
   st.goState = 'busy'; lineWin(sched ? '建立排程中…' : `推播中…（${S8_ACCOUNT[mode]}，約 ${Number.isFinite(st.friends) ? st.friends.toLocaleString() : '？'} 人）`, 'busy'); lineUpdateSteps();
   try {
     if (st.prep.sig !== lineSig()) throw new Error('內容有更動，請重新傳送資料');
     const typed = lineDigits($line('lineConfirmTotal').value);
-    if (sched) {
+    if (tsched) {   // 排給測試帳號：Worker 不要求測試推播與確認人數；到時間用 channel=test 發出
+      const when = lineWhenValue(); if (when.err) throw new Error(when.err);
+      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: 'test', runAt: when.iso, name: s8Collect().name, links: lineLinksNow() });
+      st.goState = 'ok';
+      lineWin(`✓ 已排程到測試帳號\n發送時間：${when.text}（台北時間）\n排程編號：${r.schedule.id}\n\n時間到時由 Worker 自動推播到測試帳號。可在下方「排程狀態」確認有沒有準時發出；這不會發給正式帳號的好友。`, 'ok');
+      lineSchedLoad();
+    } else if (sched) {
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
       const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: mode, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, name: s8Collect().name, links: lineLinksNow() });
-      st.goState = 'ok';
+      st.goState = 'ok'; editMarkClean(mode);
       lineWin(`✓ 已排程\n發送時間：${when.text}（台北時間）\n帳號：${S8_ACCOUNT[mode]}（約 ${st.friends.toLocaleString()} 人）\n排程編號：${r.schedule.id}\n\n時間到時由 Worker 自動推播。可在下方「排程狀態」查看、變更時間或刪除。`, 'ok');
       lineSchedLoad();
     } else {
       const r = await lineSend(mode, { confirmTotal: typed, testToken: st.testToken });
-      st.goState = 'ok';
+      st.goState = 'ok'; editMarkClean(mode);
       lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: mode, mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
       lineWin(`✓ 已正式推播到 ${S8_ACCOUNT[mode]}（約 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : st.friends.toLocaleString()} 人）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n發送後可在下方「帳號與額度、發送紀錄與點擊次數」查詢點擊次數。`, 'ok');
     }
@@ -6011,7 +6139,7 @@ function lineGoStep(n) {
   const st = lineSt(); if (!st.prep || lineBusyNow()) return;
   if (n <= 1 || st.goState === 'ok') { lineResetFlow(st); }
   else {
-    if (n <= 2) st.choice = '';
+    if (n <= 2) { st.choice = ''; st.tsched = false; }
     if (n <= 3) { st.test = ''; st.testMsg = ''; st.testToken = ''; st.testDone = false; st.retryKey.test = ''; }
     if (n <= 4) { st.friends = null; st.friendsErr = ''; $line('lineConfirmTotal').value = ''; }
     st.go = 0; st.goState = ''; st.win = { text: '', kind: '' }; lineResetSlider();
