@@ -166,6 +166,8 @@
   .s8-hs.on b { display: inline; }
   .s8-hs.on i { background: var(--accent); color: #fff; }
   .s8-hs.done i { background: var(--success); color: #fff; }
+  .s8-hs.done, .s8-hs.on { cursor: pointer; }
+  .s8-hs.done:hover i { filter: brightness(.92); }
   .s8-hl { position: relative; width: 28px; height: 2px; border-radius: 2px; background: rgba(0, 0, 0, .14); overflow: hidden; }
   .s8-hl::after { content: ""; position: absolute; inset: 0; background: var(--success); transform: scaleX(0); transform-origin: left; transition: transform .45s ease; }
   .s8-hl.done::after { transform: scaleX(1); }
@@ -202,7 +204,8 @@
   .s8-seg.hug { overflow: hidden; width: calc(var(--s8-btn-w) + var(--s8-inset) * 2); transition: width .4s cubic-bezier(.3, .9, .3, 1); }
   .s8-seg.hug.open { width: var(--s8-ctl-w); }
   .s8-step.old { display: none; }   /* 完成一個步驟就隱藏前一個步驟 */
-  .s8-steps .s8-segbtn[data-state="busy"] { background: #fbf0cf; color: var(--text); }   /* 米黃：傳送中／建立中 */
+  .s8-steps .s8-segbtn[data-state="busy"] { background: #fbf0cf; color: var(--text); }   /* 米黃：傳送資料傳送中 */
+  .s8-steps #s8CreateBtn[data-state="busy"] { background: #3d7fe0; color: #fff; }   /* 淺藍（比選擇型的藍色淺一點）：建立中 */
   .s8-steps .s8-segbtn[data-state="warn"] { background: #facc15; color: #1f2328; }   /* 黃：建立失敗 */
   .s8-steps .s8-segbtn:disabled[data-state] { opacity: 1; cursor: default; }
   /* 建立失敗：下方彈出的問題說明 */
@@ -1313,7 +1316,7 @@
       </div>
       <div class="s8-problem" id="s8Problem" role="alert" hidden></div>
       <div id="s8CreateOut" class="s8c-out" hidden></div>
-      <div id="s8SchedBanners"></div>
+      <div id="s8SchedBanners"><div data-m="news"></div><div data-m="ent"></div></div>
       <div class="btn-row" id="s8RetryRow" hidden style="margin-top:8px"><button type="button" id="s8RetryPause">重試暫停成草稿</button></div>
       <div class="btn-row" style="justify-content:flex-end; margin-top:14px">
         <button type="button" id="s8CancelBtn">關閉</button>
@@ -5027,9 +5030,10 @@ function s8Validate(d) {
   s8State.images.forEach((im, p) => { if (im.tooBig) errs.push(`第 ${p + 1} 頁圖片超過 2MB，請換掉細節很多的照片後重做`); });
   return errs;
 }
-function s8Refresh() {
+function s8Refresh() { s8RefreshCore(false); }
+function s8RefreshCore(keepProgress) {
   if (!s8State) return;
-  if (typeof s8ResetCreate === 'function' && s8Prepared) s8ResetCreate();   // anything edited after the preview invalidates it
+  if (!keepProgress && typeof s8ResetCreate === 'function' && s8Prepared) s8ResetCreate();   // anything edited after the preview invalidates it
   const d = s8Collect();
   const errs = s8Validate(d);
   document.getElementById('s8Errs').innerHTML = '';
@@ -5039,24 +5043,99 @@ function s8Refresh() {
   ['s8Name', 's8Alt'].forEach(id => document.getElementById(id).classList.toggle('bad', !document.getElementById(id).value.trim()));
   document.getElementById('s8Tag').classList.toggle('bad', d.target === 'tag' && !d.tag);
 }
+// ---- 新聞／娛樂各自獨立保留「排入S8」的進度 ----
+// 每個版型各存一份：步驟進度、傳送結果、草稿／排程選擇、排程時間、確認人數、群發名稱、發送對象、預覽用的兩張圖與連結修改。
+// 切換版型、關掉視窗再開都還在；畫面內容（標題、照片、連結…）改過就視為舊進度作廢，重新開始。
+const s8Saved = { news: null, ent: null };
+const S8_PREPARE_TTL_MS = 19 * 60e3;   // Worker 的預覽 20 分鐘有效，超過就要重新傳送
+function s8Signature() {
+  return JSON.stringify(pages.map(pg => ({ h: pg.showHeader, t: pg.topLabel, c: pg.cards.map(st => JSON.stringify(st, (k, v) => {
+    if (k.startsWith('_')) return undefined;   // 畫面快取（_fitCache…）不算內容
+    if (v instanceof HTMLImageElement) return `img:${(v.currentSrc || v.src || '').slice(-80)}:${v.naturalWidth}x${v.naturalHeight}`;
+    if (v instanceof HTMLCanvasElement) return `cv:${v.width}x${v.height}`;
+    return v;
+  })) })));
+}
+function s8DropSaved(m) {
+  const sv = s8Saved[m];
+  if (sv && sv.images) sv.images.forEach(im => im && URL.revokeObjectURL(im.url));
+  s8Saved[m] = null;
+}
+function s8SaveState() {
+  if (!s8State) return;
+  s8Saved[mode] = {
+    sig: s8State.sig, images: s8State.images, urls: s8State.urls, sp: s8State.sp,
+    name: $s8('s8Name').value, target: $s8('s8TargetTag').checked ? 'tag' : 'all', tag: $s8('s8Tag').value,
+    prepared: s8Prepared, flow: Object.assign({}, s8Flow), confirm: $s8('s8ConfirmTotal').value,
+    when: ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].map(id => $s8(id).value),
+    prep: { text: $s8('s8PrepMsg').textContent, bad: $s8('s8PrepOut').classList.contains('bad'), ok: $s8('s8PrepBtn').dataset.state === 'ok' },
+    createOut: $s8('s8CreateOut').hidden ? '' : $s8('s8CreateOut').textContent,
+    problem: $s8('s8Problem').classList.contains('show') ? $s8('s8Problem').textContent : '',
+    retryTaskId: $s8('s8RetryRow').hidden ? '' : ($s8('s8RetryRow').dataset.taskId || ''),
+  };
+}
+function s8RestoreProgress(sv) {
+  const expired = sv.prepared && Date.now() - (sv.prepared.at || 0) > S8_PREPARE_TTL_MS;
+  const finished = sv.flow && sv.flow.createState === 'ok';   // 已建立完成的就不帶回來，重新開始
+  s8ResetCreate();
+  if (!sv.prepared || expired || finished) return;
+  s8Prepared = sv.prepared;
+  s8Flow = Object.assign({}, sv.flow);
+  $s8('s8ConfirmTotal').value = sv.confirm;
+  ['s8Mo', 's8Dd', 's8Hh', 's8Mi'].forEach((id, n) => { $s8(id).value = sv.when[n]; });
+  s8PrepSet(sv.prep.text, sv.prep.bad, sv.prep.ok);
+  if (sv.createOut) s8Out('s8CreateOut', sv.createOut);
+  if (sv.problem) s8ShowProblem(sv.problem);
+  if (sv.retryTaskId) { $s8('s8RetryRow').hidden = false; $s8('s8RetryRow').dataset.taskId = sv.retryTaskId; }
+}
+// 點水平步驟列上已走到的圓圈，可以回到那一步重來（已建立過就只能重新傳送，避免用同一份預覽再建立一筆）
+function s8GoStep(n) {
+  if (!s8Prepared || s8Flow.createState === 'busy') return;
+  if (n <= 1 || s8Flow.createdOnce) { s8ResetCreate(); return; }
+  if (n >= 5) return;
+  if (n <= 2) s8Flow.choice = '';
+  if (n <= 3) $s8('s8ConfirmTotal').value = '';
+  s8Flow.copied = false; s8Flow.copyOk = false; s8Flow.createState = '';
+  s8HideProblem(); s8Out('s8CreateOut', '');
+  s8UpdateSteps();
+}
+document.querySelectorAll('.s8-hs').forEach(d => d.addEventListener('click', () => {
+  if (!d.classList.contains('done') && !d.classList.contains('on')) return;
+  if (d.classList.contains('on')) return;   // 目前這一步
+  s8GoStep(Number(d.id.slice(-1)));
+}));
 async function openS8Dialog() {
   if (!labOn || mode === 'collage') return;
   hideGapTip(true);
-  const name = s8DefaultName();
-  document.getElementById('s8Name').value = name;
+  const sig = s8Signature();
+  let sv = s8Saved[mode];
+  if (sv && (sv.sig !== sig || sv.images.length !== pages.length)) { s8DropSaved(mode); sv = null; }   // 畫面內容改過：舊進度作廢
   document.getElementById('s8Account').textContent = S8_ACCOUNT[mode];
-  document.getElementById('s8Tag').value = '';
-  document.getElementById('s8TargetAll').checked = true;
   document.getElementById('s8Alt').value = s8AltByMode[mode] || '';   // 推播標題只在這裡輸入；每個版型記住最後輸入的內容
-  s8State = { regions: pages.map(pg => s8Regions(pg)), images: [], urls: pages.map(pg => pg.cards.map(st => withUtm(st.url) || '')), sp: 0, cell: -1 };
-  s8ShowPage(0);
-  s8ResetCreate();
-  document.getElementById('s8SchedBanners').textContent = '';
+  document.querySelectorAll('#s8SchedBanners > [data-m]').forEach(d => { d.hidden = d.dataset.m !== mode; });   // 只顯示這個版型建立過的排程橫幅
+  if (sv) {
+    s8Saved[mode] = null;   // 圖片等資源移回目前畫面；關閉時再存
+    document.getElementById('s8Name').value = sv.name;
+    document.getElementById('s8Tag').value = sv.tag;
+    document.getElementById('s8TargetAll').checked = sv.target !== 'tag';
+    document.getElementById('s8TargetTag').checked = sv.target === 'tag';
+    s8State = { regions: pages.map(pg => s8Regions(pg)), images: sv.images, urls: sv.urls, sp: sv.sp, cell: -1, sig };
+    s8ShowPage(sv.sp);
+    s8RestoreProgress(sv);
+  } else {
+    document.getElementById('s8Name').value = s8DefaultName();
+    document.getElementById('s8Tag').value = '';
+    document.getElementById('s8TargetAll').checked = true;
+    s8State = { regions: pages.map(pg => s8Regions(pg)), images: [], urls: pages.map(pg => pg.cards.map(st => withUtm(st.url) || '')), sp: 0, cell: -1, sig };
+    s8ShowPage(0);
+    s8ResetCreate();
+  }
   s8Overlay.classList.add('open');
   placeSegKnob(document.getElementById('s8Ptabs'));
   s8FitControls();
   s8UpdateSteps();
-  s8Refresh();
+  s8RefreshCore(!!sv);
+  if (sv) { s8RenderStage(); return; }   // 圖片是之前做好的，不用重畫
   // Render the two page images (same pipeline and 2 MB rule as 下載本頁).
   const mine = s8State;
   try {
@@ -5076,11 +5155,11 @@ async function openS8Dialog() {
   s8Refresh();
 }
 function closeS8Dialog() {
+  if (s8Flow.createState === 'busy' || $s8('s8PrepBtn').disabled) { statusEl.show('正在傳送，請等完成後再關閉視窗', 'error'); return; }   // 避免結果寫到別的版型
   const live = document.querySelectorAll('#s8SchedBanners .s8-banner[data-live="1"]').length;
   if (live && !window.confirm(`還有 ${live} 筆保留中的排程尚未暫停，關閉視窗後它們仍會照時間發送。\n\n確定要關閉嗎？`)) return;
-  s8ResetCreate();
+  s8SaveState();   // 新聞、娛樂各存各的進度
   s8Overlay.classList.remove('open');
-  if (s8State) s8State.images.forEach(im => im && URL.revokeObjectURL(im.url));
   s8State = null;
 }
 ['s8Name', 's8Tag', 's8Alt'].forEach(id => document.getElementById(id).addEventListener('input', s8Refresh));
@@ -5405,7 +5484,7 @@ $s8('s8PrepBtn').addEventListener('click', async () => {
     };
     const r = await s8Api('/s8/prepare', body, { 'X-S8-Session': s8Get(S8_SESSION_KEY) });
     if (r.session) s8Set(S8_SESSION_KEY, r.session);
-    s8Prepared = { prepareToken: r.prepareToken, total: r.total, org: r.org.name };
+    s8Prepared = { prepareToken: r.prepareToken, total: r.total, org: r.org.name, at: Date.now() };
     s8PrepSet(`✓ 傳送完成　可發送 ${r.total.toLocaleString()} 人`, false, true);
     s8UpdateSteps();
   } catch (e) { s8PrepSet(`✗ 傳送失敗：${String(e.message || e).slice(0, 240)}`, true); }
@@ -5419,7 +5498,7 @@ async function s8PauseTask(org, taskId) {
 }
 // 排程建立成功後的紅字橫幅：寫出確切發送時間，並提供「暫停成草稿」。
 function s8AddScheduleBanner(r, org, name) {
-  const box = $s8('s8SchedBanners');
+  const box = document.querySelector(`#s8SchedBanners > [data-m="${org}"]`);
   const el = document.createElement('div');
   el.className = 's8-banner'; el.dataset.live = '1'; el.dataset.taskId = r.taskId;
   const head = document.createElement('div'); head.className = 't';

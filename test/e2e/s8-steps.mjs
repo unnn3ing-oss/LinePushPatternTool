@@ -232,7 +232,7 @@ await shot('s8-3-step5-draft');
 createDelay = 700;
 await page.click('#s8CreateBtn');
 await page.waitForTimeout(250);
-check((await bgOf('s8CreateBtn')) === 'rgb(251, 240, 207)' && (await page.textContent('#s8CreateBtn')) === '建立中…' && await page.isDisabled('#s8CreateBtn'), '剛送出、傳送中：「建立」按鈕變米黃色（建立中…，不能重複按）');
+check((await bgOf('s8CreateBtn')) === 'rgb(61, 127, 224)' && (await page.textContent('#s8CreateBtn')) === '建立中…' && await page.isDisabled('#s8CreateBtn'), '剛送出、建立中：「建立」按鈕變淺藍色（建立中…，不能重複按）');
 await page.waitForFunction(() => document.getElementById('s8NoteOverlay').classList.contains('open'));
 createDelay = 0;
 check(reqs.create.length === 1 && reqs.create[0].mode === 'draft' && !('scheduleAt' in reqs.create[0]) && reqs.create[0].confirmTotal === 1234, "存成草稿：送出 mode:'draft'，不帶 scheduleAt");
