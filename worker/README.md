@@ -59,7 +59,11 @@
 ```bash
 node --test worker/test/*.test.mjs          # Worker：用假的 S8 MCP 驗證 /s8/create 的 mode（預設 draft、非法 mode 被拒、schedule 不呼叫 broadcast_update、無 resume／sendNow、排程時間必須在 +30 分鐘 ～ +7 天、格式與日期檢查）
 python3 -m http.server 8960 &               # 前端（Playwright，Worker 回應全由攔截假造；截圖在 test/e2e/screenshots/）
-NODE_PATH=$(npm root -g) node test/e2e/s8-steps.mjs
+NODE_PATH=$(npm root -g) node test/e2e/s8-steps.mjs      # 步驟流程、顏色、尺寸、選擇器
+NODE_PATH=$(npm root -g) node test/e2e/s8-per-mode.mjs   # 新聞／娛樂各自保留進度
+NODE_PATH=$(npm root -g) node test/e2e/s8-connect.mjs    # 連結彈窗
+NODE_PATH=$(npm root -g) node test/e2e/lab-toggle-pos.mjs # 試驗功能按鈕位置
+NODE_PATH=$(npm root -g) node test/e2e/badge-anchor.mjs  # 步驟 2 的「!」位置
 ```
 
 ## 快速自我檢查
