@@ -5605,7 +5605,7 @@ window.addEventListener('message', ev => {
     s8Check();
   } else if (ev.data.type === 's8-error') { s8UpdatePill('連結失敗'); s8ShowOut(String(ev.data.error || '').slice(0, 300)); }
 });
-function openS8Conn() { s8cOverlay.classList.add('open'); s8UpdatePill(); s8ShowOut(''); s8Check(); }
+function openS8Conn() { s8cOverlay.classList.add('open'); s8UpdatePill(); s8ShowOut(''); if (s8Get(S8_SESSION_KEY) && !s8Get('s8Scope')) s8Check(); }   // 開視窗不再自動呼叫 S8（省額度）；只有不知道授權範圍時才檢查一次，其餘按「檢查連結狀態」
 s8Link.addEventListener('click', openS8Conn);
 document.getElementById('s8cConnect').addEventListener('click', () => s8Connect());
 document.getElementById('s8cCheck').addEventListener('click', s8Check);
