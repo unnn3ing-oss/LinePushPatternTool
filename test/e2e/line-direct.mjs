@@ -28,11 +28,25 @@ page.on('dialog', async d => { dialogs.push(d.message()); await d.accept(); });
 // ---- 假 Worker ----
 const reqs = { status: [], prepare: [], validate: [], send: [], clicks: [] };
 let validateOk = true, sendFail = '', followers = 287091, sendDelay = 0, clicksUnavailable = false;
+const scheds = [];   // 假的排程資料庫
+let heartbeat = Date.now(), schedFail = '';
+const schedReqs = { create: [], update: [], cancel: [], list: 0 };
+const labAuthReqs = [];
 await page.route(`${WORKER}/**`, async route => {
   const url = new URL(route.request().url());
   const body = route.request().postDataJSON?.() || {};
   const json = (obj, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(obj) });
   if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
+  if (url.pathname === '/lab-auth') { labAuthReqs.push(body); return body.password === 'pw' ? json({ token: 'lab-token-2', expiresAt: Date.now() + 3600e3 }) : json({ error: '密碼不正確' }, 401); }
+  if (url.pathname === '/line/schedule/list') { schedReqs.list++; return json({ ok: true, schedules: scheds.filter(x => x.status !== 'hidden').sort((a, b) => (a.status === 'scheduled' ? 0 : 1) - (b.status === 'scheduled' ? 0 : 1) || a.runAt - b.runAt), heartbeatAt: heartbeat, serverNow: Date.now(), officialAllowed: true }); }
+  if (url.pathname === '/line/schedule/create') {
+    schedReqs.create.push(body);
+    if (schedFail) return json({ error: schedFail }, 409);
+    const rec = { id: String(scheds.length + 1).padStart(24, 'a'), channel: body.channel, org: body.channel, name: body.name, altText: '測試推播標題', runAt: Date.parse(body.runAt), runAtIso: body.runAt, status: 'scheduled', attempts: 0, lastError: '', requestId: '', sentAt: '', approvedFriends: followers, links: body.links, createdAt: Date.now() };
+    scheds.push(rec); return json({ ok: true, schedule: rec });
+  }
+  if (url.pathname === '/line/schedule/update') { schedReqs.update.push(body); const r = scheds.find(x => x.id === body.id); r.runAtIso = body.runAt; r.runAt = Date.parse(body.runAt); return json({ ok: true, schedule: r }); }
+  if (url.pathname === '/line/schedule/cancel') { schedReqs.cancel.push(body); const r = scheds.find(x => x.id === body.id); r.status = 'cancelled'; return json({ ok: true, schedule: r }); }
   if (url.pathname === '/line/status') { reqs.status.push(body); return json({ ok: true, channel: body.channel, r2Ready: true, bot: { displayName: body.channel === 'test' ? '測試官方帳號' : 'TVBS新聞', basicId: '@abc' }, quota: { type: 'limited', value: 100000000 }, used: 17266349, followers: body.channel === 'test' ? null : { status: 'ready', followers, targetedReaches: followers - 5, blocks: 5 }, notes: [] }); }
   if (url.pathname === '/line/prepare') { reqs.prepare.push(body); return json({ ok: true, id: 'prep' + reqs.prepare.length, prepareToken: 'ptok' + reqs.prepare.length, expiresInMinutes: 30, pages: body.pages.length }); }
   if (url.pathname === '/line/validate') { reqs.validate.push(body); return json(validateOk ? { ok: true, valid: true, pages: 2 } : { ok: true, valid: false, message: 'LINE 回應 400：baseUrl 不對' }); }
@@ -98,7 +112,7 @@ await page.locator('#s8Modal .modal-head').screenshot({ path: path.join(SHOTS, '
 
 // ===== 3. LINE 步驟 ① 傳送資料 =====
 await page.evaluate(() => document.getElementById('linePanel').scrollIntoView({ block: 'start' }));
-check((await txt('#lineHStepper')).replace(/\s/g, '').startsWith('1傳送資料') && await page.evaluate(() => document.querySelectorAll('#lineHStepper .s8-hs').length === 4), '水平步驟列共 4 步：傳送資料／發佈方式／測試推播／正式推播（目前只顯示第 1 步名稱）');
+check((await txt('#lineHStepper')).replace(/\s/g, '').startsWith('1傳送資料') && await page.evaluate(() => document.querySelectorAll('#lineHStepper .s8-hs').length === 5), '水平步驟列共 5 步：傳送資料／發佈方式／測試推播／確認人數／正式推播（目前只顯示第 1 步名稱）');
 check(await vis('#lineStep1') && !(await vis('#lineStep2')), '一開始只有第 1 步的按鈕');
 check((await bgOf('linePrepBtn')) === 'rgb(255, 255, 255)', '還沒動作的按鈕是白色');
 await page.click('#linePrepBtn');
@@ -109,25 +123,34 @@ check(await page.evaluate(async b64 => { const bin = atob(b64); const u = new Ui
 check(reqs.validate.length === 1 && reqs.validate[0].channel === 'test' && reqs.send.length === 0, '傳送後請 LINE 檢查格式，沒有發送任何東西');
 check((await bgOf('linePrepBtn')) === GREEN, '傳送完成：按鈕變綠色');
 check(await page.evaluate(() => document.getElementById('linePrepTrack').classList.contains('open')), '有狀態時灰框往右彈開顯示文字');
+check((await page.textContent('#linePrepMsg')).length < 20 && await page.evaluate(() => document.getElementById('linePrepOut').getBoundingClientRect().height < 40), '狀態文字一行放得下');
 
-// ===== 4. 步驟 ② 立即推播／排程推播 =====
-check(await vis('#lineStep2') && (await txt('#linePickNow')) === '立即推播' && (await txt('#linePickSched')) === '排程推播', '第 2 步：選擇發佈方式「立即推播」「排程推播」');
+// ===== 4. 步驟 ② 立即推播／排程推播（含日期、時間選擇器）=====
+check(await vis('#lineStep2') && (await txt('#linePickNow')) === '立即推播' && (await txt('#linePickSched')).includes('排程推播'), '第 2 步：選擇發佈方式「立即推播」「排程推播」');
 check((await bgOf('linePickNow')) === 'rgb(255, 255, 255)' && (await bgOf('linePickSched')) === 'rgb(255, 255, 255)', '兩顆預設都是白色');
 const gapPair = await page.evaluate(() => { const a = document.getElementById('linePickNow').getBoundingClientRect(), b = document.getElementById('linePickSched').getBoundingClientRect(); return b.left - a.right; });
 check(Math.abs(gapPair - 14) < 0.6, `兩顆中間間距跟 S8 的「存成草稿／設定排程」一樣（${gapPair.toFixed(1)}px）`);
-await page.hover('#linePickSched'); await page.waitForTimeout(450);
-check((await txt('#uiTip')).includes('沒有排程功能'), '排程推播：LINE 沒有排程功能，游標移上去說明原因');
-await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-2c-step2.png') });
-await page.click('#linePickSched', { force: true });
-check(!(await vis('#lineStep3')), '點「排程推播」不會往下（目前不支援）');
+const dflt = await page.evaluate(() => ({ d: document.getElementById('lineDate').value, t: document.getElementById('lineTime').value, dt: document.getElementById('lineDateTxt').textContent, tt: document.getElementById('lineTimeTxt').textContent, types: [document.getElementById('lineDate').type, document.getElementById('lineTime').type] }));
+check(dflt.types.join() === 'date,time' && dflt.dt === `${dflt.d.slice(5, 7)}/${dflt.d.slice(8, 10)}` && dflt.tt === dflt.t, `排程膠囊內有日期（${dflt.dt}）與時間（${dflt.tt}）選擇器，預設現在＋3 小時`);
+check(Math.abs(Date.parse(`${dflt.d}T${dflt.t}:00+08:00`) - (Date.now() + 3 * 3600e3)) < 3 * 60e3, '預設時間是現在＋3 小時（台北時間）');
+const midY = await page.evaluate(() => { const c = e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; }; return [c(document.getElementById('lineDateBox')), c(document.getElementById('lineTimeBox')), c(document.getElementById('linePickNow'))]; });
+check(Math.abs(midY[0] - midY[2]) <= 1 && Math.abs(midY[1] - midY[2]) <= 1, '日期／時間框與左側按鈕垂直置中對齊');
+const setWhen = async (d, t) => page.evaluate(([d, t]) => { const a = document.getElementById('lineDate'), b = document.getElementById('lineTime'); a.value = d; b.value = t; a.dispatchEvent(new Event('input', { bubbles: true })); b.dispatchEvent(new Event('input', { bubbles: true })); }, [d, t]);
+const ymd = ms => new Date(ms + 8 * 3600e3).toISOString().slice(0, 10), hm = ms => new Date(ms + 8 * 3600e3).toISOString().slice(11, 16);
+await setWhen(ymd(Date.now() + 2 * 60e3), hm(Date.now() + 2 * 60e3));
+check((await page.getAttribute('#lineWhenMsg', 'class')).includes('bad') && (await txt('#lineWhenMsg')).includes('5 分鐘') && !(await vis('#lineStep3')), '排程時間設成 2 分鐘後：紅字提示要在 5 分鐘之後，不會進下一步');
+await setWhen(ymd(Date.now() + 20 * 86400e3), '10:00');
+check((await txt('#lineWhenMsg')).includes('14 天') && !(await vis('#lineStep3')), '排程時間設成 20 天後：提示最晚 14 天內');
+await page.hover('#linePickNow'); await page.mouse.move(600, 700);
+await page.evaluate(() => { lineSetWhen(Date.now() + 3 * 3600e3); });
 await page.click('#linePickNow');
 await page.waitForTimeout(380);
 check((await page.evaluate(() => getComputedStyle(document.querySelector('#lineSeg2 .s8-knob')).backgroundColor)) === BLUE && await vis('#lineStep3'), '選「立即推播」：旋鈕變藍色並出現第 3 步');
 check(await page.evaluate(() => document.getElementById('lineStep1').classList.contains('old') && !document.getElementById('lineStep2').classList.contains('old')), '只留剛完成（發佈方式）與目前這步，再前一步（傳送資料）收起');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-2c-step2.png') });
 
 // ===== 5. 步驟 ③ 測試推播 → 測試完成 =====
 check((await txt('#lineTestBtn')) === '推播測試帳號' && await page.isHidden('#lineDoneTrack'), '第 3 步預設推播給「測試帳號」，還沒推播前沒有「測試完成」');
-await page.evaluate(() => { window.__t = 0; });
 sendDelay = 700;
 await page.click('#lineTestBtn');
 await page.waitForTimeout(200);
@@ -141,9 +164,21 @@ check((await txt('#lineWin')).includes('請到手機的測試帳號確認'), '�
 await page.click('#lineDoneBtn');
 check(await vis('#lineStep4') && (await bgOf('lineDoneBtn')) === GREEN, '按下「測試完成」才跳下一步，且按鈕變綠');
 check(await page.evaluate(() => document.getElementById('lineStep2').classList.contains('old')), '再前一步（發佈方式）已隱藏，只留剛完成與目前這步');
+
+// ===== 6. 步驟 ④ 確認人數（跟 S8 同款）=====
+await page.waitForFunction(() => document.getElementById('lineConfirmTotal').placeholder.includes('287,091'));
+check(reqs.status.some(s => s.channel === 'news') && !(await vis('#lineStep5')), '進到這步先向 LINE 查正式帳號好友數；還沒輸入前不會出現下一步');
+check((await txt('#lineConfirmLabel')) === '確認人數' && (await page.getAttribute('#lineConfirmTotal', 'placeholder')) === '輸入 287,091', '「確認人數」：框內提示正確人數');
+const sizeCmp = await page.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(); const a = r('lineConfirmLabel'), b = r('lineConfirmTotal'); return { lw: a.width, iw: b.width, ih: b.height, bh: a.height }; });
+check(Math.abs(sizeCmp.lw - sizeCmp.iw) < 1.5 && Math.abs(sizeCmp.ih - sizeCmp.bh) < 1.5, `數字輸入框與旁邊的按鈕同寬同高（${sizeCmp.iw.toFixed(0)}×${sizeCmp.ih.toFixed(0)}）`);
+await page.fill('#lineConfirmTotal', '100');
+check((await txt('#lineConfirmMark')) === '✗' && (await bgOf('lineConfirmLabel')) === RED && !(await vis('#lineStep5')), '輸入錯誤：尾端 ✗、按鈕變紅，不會進下一步');
+await page.fill('#lineConfirmTotal', '287,091');
+check((await txt('#lineConfirmMark')) === '✓' && (await bgOf('lineConfirmLabel')) === GREEN && await vis('#lineStep5'), '輸入正確：尾端 ✓、按鈕變綠，出現第 5 步');
+check(await page.evaluate(() => document.getElementById('lineStep3').classList.contains('old')), '再前一步（測試推播）已隱藏');
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-3-step4.png') });
 
-// ===== 6. 步驟 ④ 正式推播：綠 → 黃 → 滑動開關 =====
+// ===== 7. 步驟 ⑤ 正式推播：綠 → 黃 → 滑動開關 =====
 const go = id => page.evaluate(i => document.getElementById(i).textContent, id);
 check((await go('lineGoBtn')) === '正式推播' && (await bgOf('lineGoBtn')) === GREEN, '「正式推播」是綠色');
 check(reqs.send.length === 1, '到這裡正式帳號還沒推播任何東西');
@@ -152,10 +187,9 @@ check((await go('lineGoBtn')) === '確定推播？' && (await bgOf('lineGoBtn'))
 check(reqs.send.length === 1, '黃色確認階段仍然沒有推播');
 await page.click('#lineGoBtn');
 check(await vis('#lineSlider') && !(await vis('#lineGoBtn')), '再按一次：同位置變成圓框滑動開關');
-const geo = await page.evaluate(() => { const s = document.getElementById('lineSlider').getBoundingClientRect(), t = document.getElementById('linePrepTrack').getBoundingClientRect(), k = document.getElementById('lineKnob').getBoundingClientRect(); return { sw: s.width, sh: s.height, tw: getComputedStyle(document.getElementById('lineSteps')).getPropertyValue('--s8-ctl-w'), kr: getComputedStyle(document.getElementById('lineKnob')).borderRadius, kw: k.width, kh: k.height, kleft: k.left - s.left, radius: getComputedStyle(document.getElementById('lineSlider')).borderRadius }; });
+const geo = await page.evaluate(() => { const s = document.getElementById('lineSlider').getBoundingClientRect(), k = document.getElementById('lineKnob').getBoundingClientRect(); return { sh: s.height, kw: k.width, kh: k.height, kleft: k.left - s.left, radius: getComputedStyle(document.getElementById('lineSlider')).borderRadius }; });
 check(Math.abs(geo.sh - 46) < 1 && geo.kw === geo.kh && geo.kleft < 8 && parseFloat(geo.radius) >= 20, `滑動開關：圓框高 ${geo.sh}px（與其他步驟同高），白色圓鈕在最左側`);
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-4-slider.png') });
-// 滑到一半放開：彈回，不推播
 const kb = await page.locator('#lineKnob').boundingBox(), sb = await page.locator('#lineSlider').boundingBox();
 await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2); await page.mouse.down();
 await page.mouse.move(kb.x + sb.width * 0.5, kb.y + kb.height / 2, { steps: 8 });
@@ -163,7 +197,6 @@ const half = await page.evaluate(() => document.getElementById('lineKnob').style
 await page.mouse.up(); await page.waitForTimeout(450);
 const back = await page.evaluate(() => document.getElementById('lineKnob').style.transform);
 check(/translateX\((?!0px)/.test(half) && /translateX\(0px\)/.test(back) && reqs.send.length === 1, '滑到一半放開會彈回左側，不會推播');
-// 滑到最右側：推播
 sendDelay = 600;
 const kb2 = await page.locator('#lineKnob').boundingBox();
 await page.mouse.move(kb2.x + kb2.width / 2, kb2.y + kb2.height / 2); await page.mouse.down();
@@ -174,13 +207,12 @@ check((await txt('.line-slabel')) === '推播中…', '滑到右側後開關顯�
 await page.waitForFunction(() => /已正式推播到/.test(document.getElementById('lineWin').textContent), null, { timeout: 10000 });
 sendDelay = 0;
 const off = reqs.send[1];
-check(off.channel === 'news' && off.testToken === 'ttok' && off.confirmTotal === 287091 && /^[0-9a-f-]{36}$/.test(off.retryKey) && off.retryKey !== reqs.send[0].retryKey, '正式推播：channel=news、帶 testToken、好友數來自 LINE（287,091）、另一組 retryKey');
-check(reqs.status.some(s => s.channel === 'news'), '推播前先向 LINE 查正式帳號好友數與額度');
+check(off.channel === 'news' && off.testToken === 'ttok' && off.confirmTotal === 287091 && /^[0-9a-f-]{36}$/.test(off.retryKey) && off.retryKey !== reqs.send[0].retryKey, '正式推播：channel=news、帶 testToken、你輸入的人數 287091、另一組 retryKey');
 check((await txt('#lineWin')).includes('287,091') && await page.evaluate(() => document.getElementById('lineWin').classList.contains('ok')), '下方狀態窗（綠色）回報推播成功、時間、人數、request id');
 check((await go('lineGoBtn')) === '已正式推播' && (await bgOf('lineGoBtn')) === GREEN && await page.isDisabled('#lineGoBtn'), '完成後按鈕顯示「已正式推播」，不能重複推播');
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-5-done.png') });
 
-// ===== 7. 發送紀錄與點擊次數（折疊區）=====
+// ===== 8. 發送紀錄與點擊次數（折疊區）=====
 await page.evaluate(() => { document.getElementById('lineBox').open = true; });
 const hist = await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends')));
 check(hist.length === 2 && hist[0].channel === 'news' && hist[1].channel === 'test' && hist[0].links.length === 12, '測試與正式推播都記下 request id 與每格連結');
@@ -188,8 +220,110 @@ await page.click('#lineClicksBtn');
 await page.waitForSelector('#lineClicksOut table');
 const rows = await page.$$eval('#lineClicksOut table tr', trs => trs.map(tr => [...tr.children].map(c => c.textContent)));
 check(reqs.clicks[0].requestId === '22222222-2222-4222-8222-222222222222' && rows[1][2] === '1,234' && rows[2][2] === '—' && rows.some(r => r[0] === '（其他連結）'), '查詢點擊次數：每個連結一列、不足 20 顯示「—」、其他連結另列');
+const snap = await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends'))[0].snap);
+check(snap && snap.clicks.length === 3 && /\+08:00$/.test(snap.at), '每次查到的數字自動存成快照');
+check((await txt('#lineClicksOut .line-note')).includes('LINE 數據查詢時間'), '表格下方註明查詢時間');
 
-// ===== 8. 推播失敗 → 下方狀態窗（黃）=====
+// ---- 時間太久：超過 14 天 LINE 不再提供 → 顯示最後一次的快照，不再問 LINE ----
+await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('lineSends')); a[0].sentAt = '2026-09-01T10:00:00+08:00'; localStorage.setItem('lineSends', JSON.stringify(a)); lineHistRender(); });
+const clicksBefore = reqs.clicks.length;
+await page.click('#lineClicksBtn');
+await page.waitForFunction(() => /快照/.test(document.getElementById('lineClicksOut').textContent));
+check(reqs.clicks.length === clicksBefore && (await txt('#lineClicksOut')).includes('已超過 14 天') && (await page.$$eval('#lineClicksOut table tr', t => t.length)) > 3, '超過 14 天：不再問 LINE，直接顯示最後一次查到的快照，並說明');
+check((await page.$$eval('#lineHist option', os => os[0].textContent)).includes('已過 14 天，有快照'), '下拉選單標出「已過 14 天，有快照」');
+await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('lineSends')); delete a[0].snap; localStorage.setItem('lineSends', JSON.stringify(a)); lineHistRender(); });
+await page.click('#lineClicksBtn');
+await page.waitForFunction(() => /沒有存快照/.test(document.getElementById('lineClicksOut').textContent));
+check((await txt('#lineClicksOut')).includes('下次請在發送後 14 天內查詢'), '超過 14 天又沒有快照：說明查不到的原因與下次怎麼做');
+await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('lineSends')); a[0].sentAt = '2026-10-07T12:00:00+08:00'; localStorage.setItem('lineSends', JSON.stringify(a)); lineHistRender(); });
+
+// ---- 憑證過期：跳出密碼視窗，輸入後自動繼續 ----
+await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'old', expiresAt: Date.now() - 1000 })); });
+const c0 = reqs.clicks.length;
+await page.click('#lineClicksBtn');
+await page.waitForSelector('#labOverlay.open');
+check((await txt('#labMsg')).includes('憑證已過期') && await page.evaluate(() => Number(getComputedStyle(document.getElementById('labOverlay')).zIndex) > Number(getComputedStyle(document.getElementById('s8Overlay')).zIndex)), '憑證過期：自動跳出密碼視窗（蓋在排入推播視窗之上），說明輸入後會繼續');
+check(await page.evaluate(() => document.getElementById('s8Overlay').classList.contains('open')), '排入推播視窗還開著，沒有被關掉或重畫');
+await page.screenshot({ path: path.join(SHOTS, 'line-ui-10-relogin.png') });
+await page.fill('#labPass', 'pw'); await page.click('#labEnterBtn');
+await page.waitForFunction(() => document.querySelector('#lineClicksOut table') && /LINE 數據查詢時間/.test(document.getElementById('lineClicksOut').textContent));
+check(labAuthReqs.length === 1 && reqs.clicks.length === c0 + 1 && !(await page.evaluate(() => document.getElementById('labOverlay').classList.contains('open'))), '輸入密碼後剛剛的查詢自動繼續完成（不用重按）');
+// 取消 → 說明憑證過期，不會把視窗關掉
+await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'old', expiresAt: Date.now() - 1000 })); });
+await page.click('#lineClicksBtn');
+await page.waitForSelector('#labOverlay.open');
+await page.click('#labCancelBtn');
+await page.waitForFunction(() => /憑證已過期/.test(document.getElementById('lineClicksOut').textContent));
+check(await page.evaluate(() => document.getElementById('s8Overlay').classList.contains('open')), '取消輸入密碼：顯示憑證過期說明，視窗仍開著');
+await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token-2', expiresAt: Date.now() + 3600e3 })); });
+
+// ===== 9. 排程推播流程 + 排程狀態（查看、變更、刪除）=====
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.click('#linePrepBtn');
+await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+const when1 = Date.now() + 3 * 3600e3;
+await setWhen(ymd(when1), hm(when1));
+await page.waitForTimeout(380);
+check((await page.evaluate(() => getComputedStyle(document.querySelector('#lineSeg2 .s8-knob')).backgroundColor)) === BLUE && await vis('#lineStep3') && (await txt('#lineWhenMsg')).includes('由 Worker 自動推播'), '點日期／時間選擇器就是選了「排程推播」：旋鈕變藍，出現第 3 步，說明由 Worker 自動推播');
+check((await page.textContent('#lineDot5Txt')) === '正式排程', '第 5 步名稱變成「正式排程」');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-8-sched-step2.png') });
+await page.click('#lineTestBtn');
+await page.waitForFunction(() => /已推播到測試帳號/.test(document.getElementById('lineTestMsg').textContent));
+await page.click('#lineDoneBtn');
+await page.waitForFunction(() => document.getElementById('lineConfirmTotal').placeholder.includes('287,091'));
+await page.fill('#lineConfirmTotal', '287091');
+check((await go('lineGoBtn')) === '正式排程' && (await bgOf('lineGoBtn')) === GREEN, '「正式排程」綠色');
+await page.click('#lineGoBtn');
+check((await go('lineGoBtn')) === '確定排程？' && (await bgOf('lineGoBtn')) === YELLOW, '黃色「確定排程？」');
+await page.click('#lineGoBtn');
+check((await txt('.line-slabel')) === '滑動以排程推播', '滑動開關寫「滑動以排程推播」');
+const sendsBefore = reqs.send.length;
+const kb4 = await page.locator('#lineKnob').boundingBox(), sb4 = await page.locator('#lineSlider').boundingBox();
+await page.mouse.move(kb4.x + kb4.width / 2, kb4.y + kb4.height / 2); await page.mouse.down();
+await page.mouse.move(kb4.x + sb4.width + 40, kb4.y + kb4.height / 2, { steps: 12 });
+await page.mouse.up();
+await page.waitForFunction(() => /已排程/.test(document.getElementById('lineWin').textContent), null, { timeout: 10000 });
+const cr = schedReqs.create[0];
+check(cr.channel === 'news' && cr.runAt === `${ymd(when1)}T${hm(when1)}:00+08:00` && cr.confirmTotal === 287091 && cr.testToken === 'ttok' && cr.links.length === 12 && reqs.send.length === sendsBefore, '建立排程：帶帳號、台北時間 ISO、人數、testToken、12 個連結，且沒有立刻發送');
+check((await go('lineGoBtn')) === '已排程' && (await bgOf('lineGoBtn')) === GREEN, '完成後按鈕顯示「已排程」');
+await page.waitForFunction(() => document.querySelectorAll('#lineSchedList .line-srow').length >= 1);
+let srows = await page.$$eval('#lineSchedList .line-srow', rs => rs.map(r => ({ text: r.textContent, btns: [...r.querySelectorAll('button')].map(b => b.textContent), chip: r.querySelector('.line-chip:last-of-type').textContent })));
+check(srows[0].chip === '待發送' && srows[0].text.includes(`${ymd(when1)} ${hm(when1)}`) && srows[0].text.includes('TVBS新聞') && srows[0].btns.join() === '變更時間,刪除排程', '排程狀態：列出時間、帳號、「待發送」，並有「變更時間」「刪除排程」');
+await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-9-sched-list.png') });
+// 變更時間
+await page.click('#lineSchedList .line-srow button:has-text("變更時間")');
+const when2 = Date.now() + 5 * 3600e3;
+await page.evaluate(([d, t]) => { const ins = document.querySelectorAll('#lineSchedList .line-srow input'); ins[0].value = d; ins[0].dispatchEvent(new Event('input')); ins[1].value = t; ins[1].dispatchEvent(new Event('input')); }, [ymd(when2), hm(when2)]);
+await page.click('#lineSchedList .line-srow button:has-text("儲存新時間")');
+await page.waitForFunction(t => document.querySelector('#lineSchedList .when').textContent === t, `${ymd(when2)} ${hm(when2)}`);
+check(schedReqs.update.length === 1 && schedReqs.update[0].runAt === `${ymd(when2)}T${hm(when2)}:00+08:00` && (await txt('#lineSchedList .when')) === `${ymd(when2)} ${hm(when2)}`, '變更時間：送出新的時間，列表更新');
+// 不合格的新時間不會送出
+await page.click('#lineSchedList .line-srow button:has-text("變更時間")');
+await page.evaluate(([d, t]) => { const ins = document.querySelectorAll('#lineSchedList .line-srow input'); ins[0].value = d; ins[0].dispatchEvent(new Event('input')); ins[1].value = t; ins[1].dispatchEvent(new Event('input')); }, [ymd(Date.now() + 60e3), hm(Date.now() + 60e3)]);
+const dlgN = dialogs.length;
+await page.click('#lineSchedList .line-srow button:has-text("儲存新時間")');
+check(schedReqs.update.length === 1 && dialogs.length === dlgN + 1 && dialogs.at(-1).includes('5 分鐘'), '新時間不合格（5 分鐘內）：跳出說明，不會送出');
+await page.click('#lineSchedList .line-srow button:has-text("取消")');
+// 刪除排程
+await page.click('#lineSchedList .line-srow button:has-text("刪除排程")');
+await page.waitForFunction(() => /已取消/.test(document.querySelector('#lineSchedList').textContent));
+check(schedReqs.cancel.length === 1 && dialogs.at(-1).includes('確定要刪除這筆排程') && dialogs.at(-1).includes('刪除後不會發送'), '刪除排程：先跳確認視窗，確認後送出取消，狀態變「已取消」');
+check(await page.$$eval('#lineSchedList .line-srow', rs => !rs[0].querySelector('button')), '已取消的排程沒有變更／刪除按鈕');
+// Cron 沒在跑 → 紅色警告
+scheds.push({ id: 'b'.repeat(24), channel: 'news', org: 'news', name: 'x', altText: '另一筆', runAt: Date.now() + 3600e3, runAtIso: `${ymd(Date.now() + 3600e3)}T${hm(Date.now() + 3600e3)}:00+08:00`, status: 'scheduled', links: [] });
+heartbeat = 0;
+await page.click('#lineSchedRefresh');
+await page.waitForFunction(() => !document.getElementById('lineSchedWarn').hidden);
+check((await txt('#lineSchedWarn')).includes('Cron Trigger 沒有在跑') && (await txt('#lineSchedWarn')).includes('* * * * *'), 'Cron 沒有心跳而且有待發送的排程：紅字警告，說明怎麼設定');
+heartbeat = Date.now();
+// 排程自動發出去：把 request id 補進發送紀錄
+scheds.push({ id: 'c'.repeat(24), channel: 'ent', org: 'ent', name: 'y', altText: '自動發出的', runAt: Date.now() - 3600e3, runAtIso: '2026-10-07T10:00:00+08:00', status: 'sent', requestId: '33333333-3333-4333-8333-333333333333', sentAt: '2026-10-07T10:00:05+08:00', links: [{ page: 1, label: '左上', title: '★標題', url: 'https://example.com/auto' }] });
+await page.click('#lineSchedRefresh');
+await page.waitForFunction(() => !document.getElementById('lineSchedWarn').hidden === false && /自動發出的/.test(document.getElementById('lineSchedList').textContent));
+check((await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends')).some(r => r.requestId === '33333333-3333-4333-8333-333333333333' && r.fromSchedule))), '排程自動發出去的，request id 自動補進發送紀錄（才能查點擊次數）');
+await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-9b-sched-list2.png') });
+
+// ===== 10. 推播失敗 → 下方狀態窗（黃）=====
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
@@ -198,6 +332,8 @@ sendFail = 'LINE 回應 429：You have reached your monthly limit。請到 LINE 
 await page.click('#lineTestBtn');
 await page.waitForFunction(() => /已推播到測試帳號/.test(document.getElementById('lineTestMsg').textContent));
 await page.click('#lineDoneBtn');
+await page.waitForFunction(() => document.getElementById('lineConfirmTotal').placeholder.includes('287,091'));
+await page.fill('#lineConfirmTotal', '287091');
 await page.click('#lineGoBtn'); await page.click('#lineGoBtn');
 const kb3 = await page.locator('#lineKnob').boundingBox();
 await page.mouse.move(kb3.x + kb3.width / 2, kb3.y + kb3.height / 2); await page.mouse.down();
@@ -208,11 +344,43 @@ check(await page.evaluate(() => document.getElementById('lineWin').classList.con
 check((await bgOf('lineGoBtn')) === RED && (await go('lineGoBtn')).includes('重新推播') && await vis('#lineGoBtn'), '失敗後按鈕變紅色，可再試一次');
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-6-failed.png') });
 sendFail = '';
+// 排程失敗（例如時間被 Worker 擋掉）
+await page.evaluate(() => { const st = lineSt(); st.goState = ''; st.go = 0; st.choice = 'sched'; lineUpdateSteps(); });
+schedFail = '排程時間必須在 5 分鐘之後。沒有建立排程。';
+await page.click('#lineGoBtn'); await page.click('#lineGoBtn');
+const kb5 = await page.locator('#lineKnob').boundingBox();
+await page.mouse.move(kb5.x + kb5.width / 2, kb5.y + kb5.height / 2); await page.mouse.down();
+await page.mouse.move(kb5.x + sb.width + 40, kb5.y + kb5.height / 2, { steps: 12 });
+await page.mouse.up();
+await page.waitForFunction(() => /排程失敗/.test(document.getElementById('lineWin').textContent), null, { timeout: 10000 });
+check((await txt('#lineWin')).includes('5 分鐘之後') && (await go('lineGoBtn')).includes('重新排程'), '排程失敗：下方狀態窗顯示原因，按鈕可重試');
+schedFail = '';
 
-// ===== 9. 切到 S8 分頁 =====
+// ===== 11. 切到 S8 分頁 =====
 await page.click('#s8ModeS8');
 check(await vis('#s8Panel') && !(await vis('#linePanel')) && await vis('#s8Name') && await vis('#s8Account'), '切到「S8推播」：顯示原本的 S8 步驟與欄位（名稱、組織、對象）');
 await page.locator('#s8Modal').screenshot({ path: path.join(SHOTS, 'line-ui-7-s8-tab.png') });
+await page.click('#s8CloseBtn');
+
+// ===== 12. 操作提示：被其他介面碰到就先隱藏 =====
+await page.setViewportSize({ width: 1100, height: 900 });
+await page.evaluate(() => { goStep(2); setTipCollapsed(false); });
+await page.waitForTimeout(150);
+const yield1 = await page.evaluate(() => ({ y: document.getElementById('tipToast').classList.contains('tip-yield'), op: getComputedStyle(document.getElementById('tipToast')).opacity, vis: getComputedStyle(document.getElementById('tipToast')).visibility, pe: getComputedStyle(document.getElementById('tipToast')).pointerEvents }));
+check(yield1.y && yield1.vis === 'hidden' && yield1.pe === 'none', '視窗窄、操作提示會碰到底部操作列：先隱藏（不能點）');
+await page.screenshot({ path: path.join(SHOTS, 'line-ui-11-tip-hidden.png'), clip: { x: 0, y: 560, width: 1100, height: 340 } });
+await page.setViewportSize({ width: 1700, height: 900 });
+await page.waitForTimeout(250);
+const yield2 = await page.evaluate(() => ({ y: document.getElementById('tipToast').classList.contains('tip-yield'), vis: getComputedStyle(document.getElementById('tipToast')).visibility }));
+check(!yield2.y && yield2.vis === 'visible', '視窗變寬、不再碰到：操作提示自動恢復顯示');
+await page.screenshot({ path: path.join(SHOTS, 'line-ui-12-tip-shown.png'), clip: { x: 300, y: 300, width: 1400, height: 600 } });
+await page.setViewportSize({ width: 1100, height: 900 });
+await page.waitForTimeout(250);
+check(await page.evaluate(() => document.getElementById('tipToast').classList.contains('tip-yield')), '再變窄又碰到：再次隱藏');
+await page.evaluate(() => { setTipCollapsed(true); });
+await page.waitForTimeout(150);
+const fabY = await page.evaluate(() => { const f = document.getElementById('tipFab').getBoundingClientRect(), d = document.getElementById('dock').getBoundingClientRect(); return { overlaps: f.left < d.right && f.right > d.left && f.top < d.bottom && f.bottom > d.top, y: document.getElementById('tipFab').classList.contains('tip-yield') }; });
+check(fabY.y === fabY.overlaps, `收合成「!」按鈕時同樣規則（碰到才隱藏：${fabY.overlaps}）`);
 check(pageErrors.length === 0, `頁面沒有 JS 錯誤 ${pageErrors.join(' | ')}`);
 
 await browser.close();

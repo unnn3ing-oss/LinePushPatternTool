@@ -748,6 +748,7 @@ async function handleS8Status(request, env) {
 //   POST /line/prepare   → 把每頁 1040 寬的圖片存進 R2（綁定名稱 LINE_IMG），封存要用的內容（30 分鐘有效）
 //   POST /line/validate  → 把準備好的內容交給 LINE 的 validate/broadcast 檢查格式（只檢查，不會發送）
 //   POST /line/clicks    → 用發送時的 request id 查這次群發每個連結的點擊次數／人數（唯讀）
+//   POST /line/schedule/create｜list｜update｜cancel → 排程推播（Worker 自己排，需 R2 與 Cron Trigger，見下方「排程推播」）
 //   POST /line/send      → validate 通過後 broadcast 給全部好友。預設只允許測試帳號；正式帳號要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
 //   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
 // 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
@@ -922,6 +923,44 @@ async function handleLineValidate(request, env) {
 const LINE_OFFICIAL = new Set(['news', 'ent']);
 const LINE_TESTED_TTL_MS = 60 * 60 * 1000;
 const LINE_RETRY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// 共用：驗證格式 → 查好友數與額度 → 才 broadcast。任何一關沒過都丟出「沒有發送任何東西」的錯誤。
+// approve(friends)：正式帳號的人數把關（立即推播＝使用者輸入的人數；排程＝建立排程時確認過的人數），不通過就丟錯。
+async function lineBroadcastNow(env, key, prep, { origin, retryKey, approve }) {
+  lineChannelCreds(env, key);
+  const official = LINE_OFFICIAL.has(key);
+  const messages = lineBuildMessages(prep, origin);
+  const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
+  if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有發送任何東西。`), { status: 400 });
+  const info = await lineAccountInfo(env, key);
+  const friends = info.followers ? info.followers.followers : null;
+  if (official) {
+    if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不發送。沒有發送任何東西。'), { status: 409 });
+    if (approve) approve(friends);
+  }
+  if (info.quota && info.quota.type === 'limited' && info.quota.value !== null && info.used !== null && friends !== null && info.quota.value - info.used < friends) {
+    throw Object.assign(new Error(`本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發約 ${friends} 則。沒有發送任何東西。`), { status: 409 });
+  }
+  const sent = await lineCall(env, key, 'POST', '/v2/bot/message/broadcast', { messages }, { 'X-Line-Retry-Key': retryKey });
+  if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502, lineStatus: sent.status });
+  return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends, pages: messages.length };
+}
+// 正式帳號的共同前置條件（立即推播與建立排程都要過）
+async function lineOfficialGate(env, key, prep, testToken) {
+  if (!env || env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。'), { status: 403 });
+  if (key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能發到這個正式帳號。沒有發送任何東西。');
+  const tested = await s8Open(env, testToken);
+  if (!tested || tested.t !== 'line-tested' || tested.id !== prep.id || !tested.x || tested.x < Date.now()) throw badInput('發正式帳號前，同一份內容必須先成功發到測試帳號。沒有發送任何東西。');
+}
+const lineTypedApprove = typed => friends => {
+  const n = Number(typed);
+  if (!Number.isFinite(n) || Math.abs(n - friends) > Math.max(50, Math.round(friends * 0.02))) throw Object.assign(new Error(`確認人數不符：LINE 回報好友數約 ${friends} 人，你輸入的是 ${typed}。沒有發送任何東西。`), { status: 409 });
+};
+async function lineOpenPrep(env, token, what = '發送') {
+  const prep = await s8Open(env, token);
+  if (!prep || prep.t !== 'line-prepare' || !prep.x || prep.x < Date.now()) throw badInput(`準備好的內容已過期或無效，請重新「傳送資料」。沒有${what}任何東西。`);
+  return prep;
+}
 async function handleLineSend(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
@@ -930,35 +969,167 @@ async function handleLineSend(request, env) {
     const key = body.channel;
     if (!LINE_CHANNEL_SUFFIX[key]) throw badInput('channel 只能是 test、news 或 ent');
     if (typeof body.retryKey !== 'string' || !LINE_RETRY_KEY.test(body.retryKey)) throw badInput('缺少 retryKey（UUID），用來避免重複發送。沒有發送任何東西。');
-    const prep = await s8Open(env, body.prepareToken);
-    if (!prep || prep.t !== 'line-prepare' || !prep.x || prep.x < Date.now()) throw badInput('準備好的內容已過期或無效，請重新「上傳圖片」。沒有發送任何東西。');
+    const prep = await lineOpenPrep(env, body.prepareToken);
     const official = LINE_OFFICIAL.has(key);
-    if (official) {
-      if (!env || env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。'), { status: 403 });
-      if (key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能發到這個正式帳號。沒有發送任何東西。');
-      const tested = await s8Open(env, body.testToken);
-      if (!tested || tested.t !== 'line-tested' || tested.id !== prep.id || !tested.x || tested.x < Date.now()) throw badInput('發正式帳號前，同一份內容必須先成功發到測試帳號。沒有發送任何東西。');
-    }
-    lineChannelCreds(env, key);
-    const messages = lineBuildMessages(prep, new URL(request.url).origin);
-    const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
-    if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有發送任何東西。`), { status: 400 });
-    const info = await lineAccountInfo(env, key);
-    const friends = info.followers ? info.followers.followers : null;
-    if (official) {
-      if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不發送。沒有發送任何東西。'), { status: 409 });
-      const typed = Number(body.confirmTotal);
-      if (!Number.isFinite(typed) || Math.abs(typed - friends) > Math.max(50, Math.round(friends * 0.02))) throw Object.assign(new Error(`確認人數不符：LINE 回報好友數約 ${friends} 人，你輸入的是 ${body.confirmTotal}。沒有發送任何東西。`), { status: 409 });
-    }
-    if (info.quota && info.quota.type === 'limited' && info.quota.value !== null && info.used !== null && friends !== null && info.quota.value - info.used < friends) {
-      throw Object.assign(new Error(`本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發約 ${friends} 則。沒有發送任何東西。`), { status: 409 });
-    }
-    const sent = await lineCall(env, key, 'POST', '/v2/bot/message/broadcast', { messages }, { 'X-Line-Retry-Key': body.retryKey });
-    if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502 });
-    const out = { ok: true, channel: key, official, sentAt: taipeiIso(Date.now()), requestId: sent.requestId, retryKey: body.retryKey, alreadyAccepted: sent.status === 409, friends, pages: messages.length };
+    if (official) await lineOfficialGate(env, key, prep, body.testToken);
+    const r = await lineBroadcastNow(env, key, prep, { origin: new URL(request.url).origin, retryKey: body.retryKey, approve: lineTypedApprove(body.confirmTotal) });
+    const out = { ok: true, channel: key, official, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
     if (!official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
     return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
+}
+
+// ===========================================================================
+// 排程推播（LINE 本身沒有排程，所以由 Worker 自己排）
+//   排程資料存在同一個 R2 bucket 的 sched/<id>.json（狀態與時間同時放在 customMetadata，Cron 一次 list 就能挑出到期的）。
+//   Cron Trigger（每分鐘一次）呼叫 scheduled()：把到期的排程用「建立排程時產生的 retryKey」發出去（LINE 24 小時內同 key 不會重複發）。
+//   要在 Cloudflare 後台設定：Worker → Settings → Triggers → Cron Triggers → 新增 `* * * * *`。沒設的話排程不會發送，所以網頁會讀「心跳」提醒。
+//   POST /line/schedule/create  建立（正式帳號的條件跟立即推播一樣：LINE_ALLOW_OFFICIAL=1、先成功發過測試帳號、輸入正確好友數）
+//   POST /line/schedule/list    查看（狀態、時間、嘗試次數、錯誤、發送後的 request id）
+//   POST /line/schedule/update  變更時間（只有「待發送」的）
+//   POST /line/schedule/cancel  刪除（取消）排程（只有「待發送」的）
+// ===========================================================================
+const LINE_SCHED_PREFIX = 'sched/';
+const LINE_SCHED_MIN_LEAD_MS = 5 * 60 * 1000;            // 最早：5 分鐘後（Cron 每分鐘跑一次）
+const LINE_SCHED_MAX_LEAD_MS = 14 * 24 * 3600 * 1000;    // 最晚：14 天內
+const LINE_SCHED_MAX_LATE_MS = 30 * 60 * 1000;           // 到期後超過 30 分鐘還沒發出去 → 放棄（新聞過時了），標成「逾時未發送」
+const LINE_SCHED_MAX_PENDING = 30;
+const LINE_SCHED_DRIFT = 0.1;                            // 發送當下的好友數跟建立排程時確認的人數差超過 10% 就不發
+function checkLineRunAt(v, now = Date.now()) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\+08:00$/.test(v)) return '排程時間格式必須是 YYYY-MM-DDTHH:mm:00+08:00（台北時間，到分鐘）';
+  const t = Date.parse(v);
+  if (!Number.isFinite(t) || taipeiIso(t) !== v) return '排程時間不是有效的日期';
+  if (t < now + LINE_SCHED_MIN_LEAD_MS) return '排程時間必須在 5 分鐘之後';
+  if (t > now + LINE_SCHED_MAX_LEAD_MS) return '排程時間最多只能設在 14 天之內';
+  return '';
+}
+function lineR2(env) {
+  if (!env || !env.LINE_IMG || typeof env.LINE_IMG.put !== 'function' || typeof env.LINE_IMG.list !== 'function') throw Object.assign(new Error('Worker 尚未綁定 R2（綁定變數名稱必須是 LINE_IMG），排程資料沒地方放'), { status: 503 });
+  return env.LINE_IMG;
+}
+const lineSchedKey = id => `${LINE_SCHED_PREFIX}${id}.json`;
+async function lineSchedPut(env, rec) {
+  rec.updatedAt = Date.now();
+  await lineR2(env).put(lineSchedKey(rec.id), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' }, customMetadata: { status: rec.status, runAt: String(rec.runAt) } });
+  return rec;
+}
+async function lineSchedGet(env, id) {
+  if (!/^[0-9a-f]{24}$/.test(String(id || ''))) throw badInput('排程編號格式不正確');
+  const o = await lineR2(env).get(lineSchedKey(id));
+  if (!o) return null;
+  try { return JSON.parse(typeof o.text === 'function' ? await o.text() : textDecoder.decode(o.body)); } catch { return null; }
+}
+async function lineSchedList(env) {
+  const r2 = lineR2(env), out = []; let cursor;
+  do {
+    const r = await r2.list({ prefix: LINE_SCHED_PREFIX, limit: 500, cursor, include: ['customMetadata'] });
+    for (const o of r.objects || []) out.push({ key: o.key, status: (o.customMetadata || {}).status || '', runAt: Number((o.customMetadata || {}).runAt) || 0 });
+    cursor = r.truncated ? r.cursor : undefined;
+  } while (cursor);
+  return out;
+}
+const lineSchedPublic = r => ({ id: r.id, channel: r.channel, org: r.org, name: r.name || '', altText: r.altText, runAt: r.runAt, runAtIso: taipeiIso(r.runAt), status: r.status, attempts: r.attempts || 0, lastError: r.lastError || '', requestId: r.requestId || '', sentAt: r.sentAt || '', approvedFriends: r.approvedFriends || null, links: r.links || [], createdAt: r.createdAt });
+const lineSanitizeLinks = links => (Array.isArray(links) ? links : []).slice(0, 24).map(l => ({ page: Number(l && l.page) || 0, label: String((l && l.label) || '').slice(0, 20), title: String((l && l.title) || '').slice(0, 120), url: String((l && l.url) || '').slice(0, 2000) }));
+
+async function handleLineScheduleCreate(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const key = body.channel;
+    if (!LINE_CHANNEL_SUFFIX[key]) throw badInput('channel 只能是 test、news 或 ent');
+    lineR2(env);
+    const bad = checkLineRunAt(body.runAt); if (bad) throw badInput(`${bad}。沒有建立排程。`);
+    const prep = await lineOpenPrep(env, body.prepareToken, '排程');
+    const official = LINE_OFFICIAL.has(key);
+    if (official) await lineOfficialGate(env, key, prep, body.testToken);
+    lineChannelCreds(env, key);
+    const pending = (await lineSchedList(env)).filter(x => x.status === 'scheduled' || x.status === 'sending').length;
+    if (pending >= LINE_SCHED_MAX_PENDING) throw Object.assign(new Error(`待發送的排程已經 ${pending} 筆，請先刪除不需要的再建立。沒有建立排程。`), { status: 409 });
+    const origin = new URL(request.url).origin;
+    // 建立當下就把格式檢查與人數確認做完（發送當下還會再檢查一次）
+    const messages = lineBuildMessages(prep, origin);
+    const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
+    if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有建立排程。`), { status: 400 });
+    const info = await lineAccountInfo(env, key);
+    const friends = info.followers ? info.followers.followers : null;
+    if (official) {
+      if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不排程。沒有建立排程。'), { status: 409 });
+      lineTypedApprove(body.confirmTotal)(friends);
+    }
+    const id = lineHex(12), now = Date.now();
+    const rec = { v: 1, id, channel: key, org: prep.org, name: typeof body.name === 'string' ? body.name.slice(0, 60) : '', altText: prep.altText, pages: prep.pages, links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
+    await lineSchedPut(env, rec);
+    return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '建立排程失敗', request, env); }
+}
+async function handleLineScheduleList(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  try {
+    const r2 = lineR2(env);
+    const items = await lineSchedList(env);
+    const recs = [];
+    for (const it of items.sort((a, b) => b.runAt - a.runAt).slice(0, 60)) { const id = it.key.slice(LINE_SCHED_PREFIX.length, -5); const r = await lineSchedGet(env, id); if (r) recs.push(r); }
+    // 待發送／發送中排前面（由近到遠），其他依時間新到舊
+    const live = recs.filter(r => r.status === 'scheduled' || r.status === 'sending').sort((a, b) => a.runAt - b.runAt);
+    const rest = recs.filter(r => !(r.status === 'scheduled' || r.status === 'sending')).sort((a, b) => b.runAt - a.runAt);
+    let heartbeatAt = 0;
+    const hb = await r2.get('meta/heartbeat.json'); if (hb) { try { heartbeatAt = Number(JSON.parse(typeof hb.text === 'function' ? await hb.text() : textDecoder.decode(hb.body)).at) || 0; } catch { /* ignore */ } }
+    return jsonOk({ ok: true, schedules: [...live, ...rest].map(lineSchedPublic), heartbeatAt, serverNow: Date.now(), officialAllowed: !!(env && env.LINE_ALLOW_OFFICIAL === '1') }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '查詢排程失敗', request, env); }
+}
+async function handleLineScheduleChange(request, env, action) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const rec = await lineSchedGet(env, body.id);
+    if (!rec) throw Object.assign(new Error('找不到這筆排程'), { status: 404 });
+    if (rec.status !== 'scheduled') throw Object.assign(new Error(`這筆排程目前是「${rec.status}」，只有「待發送」的能${action === 'update' ? '變更' : '刪除'}`), { status: 409 });
+    if (rec.runAt - Date.now() < 60 * 1000) throw Object.assign(new Error('這筆排程再不到 1 分鐘就要發送，來不及變更或刪除了'), { status: 409 });
+    if (action === 'update') {
+      const bad = checkLineRunAt(body.runAt); if (bad) throw badInput(`${bad}。排程沒有變動。`);
+      rec.runAt = Date.parse(body.runAt); rec.attempts = 0; rec.lastError = '';
+    } else {
+      rec.status = 'cancelled'; rec.cancelledAt = Date.now();
+    }
+    await lineSchedPut(env, rec);
+    return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '操作失敗', request, env); }
+}
+// Cron：每分鐘由 Cloudflare 呼叫一次。先寫「心跳」讓網頁知道 Cron 有在跑，再把到期的排程發出去。
+async function lineRunDue(env, now = Date.now()) {
+  const r2 = lineR2(env);
+  await r2.put('meta/heartbeat.json', JSON.stringify({ at: now }), { httpMetadata: { contentType: 'application/json' } });
+  const due = (await lineSchedList(env)).filter(x => (x.status === 'scheduled' || x.status === 'sending') && x.runAt <= now).sort((a, b) => a.runAt - b.runAt).slice(0, 5);
+  const results = [];
+  for (const it of due) {
+    const rec = await lineSchedGet(env, it.key.slice(LINE_SCHED_PREFIX.length, -5));
+    if (!rec || (rec.status !== 'scheduled' && rec.status !== 'sending') || rec.runAt > now) continue;
+    if (now - rec.runAt > LINE_SCHED_MAX_LATE_MS) { rec.status = 'missed'; rec.lastError = '超過預定時間 30 分鐘仍沒有發出（可能 Cron 沒有在跑），為避免內容過時，已放棄這筆排程'; await lineSchedPut(env, rec); results.push([rec.id, 'missed']); continue; }
+    if (rec.status === 'sending' && now - (rec.sendingAt || 0) < 5 * 60 * 1000) continue;   // 上一輪還在發（或剛當掉），等一下再看；重試時用同一個 retryKey，不會重複發
+    rec.status = 'sending'; rec.sendingAt = now; rec.attempts = (rec.attempts || 0) + 1;
+    await lineSchedPut(env, rec);
+    try {
+      const prep = { org: rec.org, altText: rec.altText, pages: rec.pages };
+      const official = LINE_OFFICIAL.has(rec.channel);
+      if (official) {
+        if (env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送已關閉（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1），沒有發送'), { status: 403 });
+        if (rec.channel !== rec.org) throw badInput('排程內容與帳號不符，沒有發送');
+      }
+      const approve = friends => { const a = rec.approvedFriends; if (a && Math.abs(friends - a) > Math.max(100, Math.round(a * LINE_SCHED_DRIFT))) throw Object.assign(new Error(`發送當下好友數約 ${friends} 人，和建立排程時確認的 ${a} 人差太多，為了安全沒有發送`), { status: 409 }); };
+      const r = await lineBroadcastNow(env, rec.channel, prep, { origin: rec.origin, retryKey: rec.retryKey, approve });
+      rec.status = 'sent'; rec.requestId = r.requestId; rec.sentAt = taipeiIso(Date.now()); rec.friends = r.friends; rec.lastError = '';
+    } catch (e) {
+      const transient = !e.status || e.status >= 500 || e.lineStatus >= 500 || e.lineStatus === 429 || e.status === 429 || (e.status === 502 && !e.lineStatus && /fetch|network/i.test(e.message || ''));
+      if (transient && now - rec.runAt < LINE_SCHED_MAX_LATE_MS) { rec.status = 'scheduled'; rec.lastError = `第 ${rec.attempts} 次嘗試失敗，下一分鐘會再試：${e.message}`; }
+      else { rec.status = 'failed'; rec.lastError = e.message || '發送失敗'; }
+    }
+    await lineSchedPut(env, rec);
+    results.push([rec.id, rec.status]);
+  }
+  return results;
 }
 
 // 查某次群發的互動統計（每個連結的點擊次數／點擊人數）。唯讀；requestId 是發送時 LINE 回的 x-line-request-id。
@@ -980,6 +1151,11 @@ async function handleLineClicks(request, env) {
 }
 
 export default {
+  // Cron Trigger（每分鐘）：把到期的 LINE 排程發出去，見上方「排程推播」說明
+  async scheduled(event, env, ctx) {
+    const job = lineRunDue(env).catch(e => console.error('line schedule cron failed', e && e.message));
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(job); else await job;
+  },
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
     const path = new URL(request.url).pathname;
@@ -998,6 +1174,10 @@ export default {
     if (path === '/line/validate') return handleLineValidate(request, env);
     if (path === '/line/send') return handleLineSend(request, env);
     if (path === '/line/clicks') return handleLineClicks(request, env);
+    if (path === '/line/schedule/create') return handleLineScheduleCreate(request, env);
+    if (path === '/line/schedule/list') return handleLineScheduleList(request, env);
+    if (path === '/line/schedule/update') return handleLineScheduleChange(request, env, 'update');
+    if (path === '/line/schedule/cancel') return handleLineScheduleChange(request, env, 'cancel');
     if (path.startsWith('/line-img/') && (request.method === 'GET' || request.method === 'HEAD')) return handleLineImage(request, env);
     if (request.method !== 'GET') return jsonError(405, '只支援 GET', request, env);
 

@@ -232,6 +232,31 @@
   .line-slider.back .line-knob, .line-slider.back .line-fill { transition: transform .25s cubic-bezier(.3, .9, .3, 1), width .25s cubic-bezier(.3, .9, .3, 1); }
   .line-slider.locked .line-knob { cursor: default; }
   .s8-steps .s8-segbtn[aria-disabled="true"] { cursor: not-allowed; }
+  /* 排程狀態：列出排程，可變更時間、刪除 */
+  .line-sched { margin: 16px 0 0; padding: 12px 14px; border-radius: 16px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .08); }
+  .line-sched-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+  .line-sched-head button { padding: 4px 14px; font-size: 13px; }
+  .line-sched-warn { margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: #fee2e2; color: #991b1b; font-size: 13px; line-height: 1.6; font-weight: 600; }
+  .line-sched-warn[hidden] { display: none; }
+  .line-srow { display: grid; gap: 6px; margin: 0 0 8px; padding: 10px 12px; border-radius: 14px; background: var(--card-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-size: 13px; line-height: 1.5; }
+  .line-srow:last-child { margin-bottom: 0; }
+  .line-srow .top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .line-srow .when { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .line-chip { display: inline-block; padding: 1px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: rgba(0, 0, 0, .08); color: var(--text); }
+  .line-chip.scheduled { background: #dbeafe; color: #1e40af; }
+  .line-chip.sending { background: #fbf0cf; }
+  .line-chip.sent { background: #dcfce7; color: #166534; }
+  .line-chip.failed, .line-chip.missed { background: #fee2e2; color: #991b1b; }
+  .line-chip.cancelled { background: rgba(0, 0, 0, .08); color: var(--muted); }
+  .line-srow .ttl { color: var(--text); word-break: break-all; }
+  .line-srow .err { color: #991b1b; white-space: pre-wrap; }
+  .line-srow .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .line-srow .acts button { padding: 4px 14px; font-size: 13px; }
+  .line-srow .acts button.danger { color: #b91c1c; }
+  .line-srow .acts input { width: auto; padding: 4px 8px; font-size: 13px; }
+  /* 操作提示（右下角）：被其他介面碰到就先隱藏，等沒被碰到再顯示 */
+  .tip-toast.tip-yield, .tip-fab.tip-yield { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+  #labOverlay { z-index: 200; }   /* 重新登入時蓋在其他彈窗上 */
   /* LINE 直接發送（試驗） */
   .line-box { margin-top: 18px; border: 1px solid var(--border, rgba(0,0,0,.12)); border-radius: 16px; padding: 0 16px; background: var(--card-bg); }
   .line-box > summary { cursor: pointer; padding: 14px 0; font-size: 14px; font-weight: 700; list-style-position: inside; }
@@ -1376,7 +1401,8 @@
           <span class="s8-hs on" id="lineDot1" role="listitem"><i>1</i><b>傳送資料</b></span><span class="s8-hl" id="lineLine1"></span>
           <span class="s8-hs" id="lineDot2" role="listitem"><i>2</i><b>發佈方式</b></span><span class="s8-hl" id="lineLine2"></span>
           <span class="s8-hs" id="lineDot3" role="listitem"><i>3</i><b>測試推播</b></span><span class="s8-hl" id="lineLine3"></span>
-          <span class="s8-hs" id="lineDot4" role="listitem"><i>4</i><b>正式推播</b></span>
+          <span class="s8-hs" id="lineDot4" role="listitem"><i>4</i><b>確認人數</b></span><span class="s8-hl" id="lineLine4"></span>
+          <span class="s8-hs" id="lineDot5" role="listitem"><i>5</i><b id="lineDot5Txt">正式推播</b></span>
         </div>
         <div class="s8-steps" id="lineSteps">
           <div class="s8-step on" id="lineStep1">
@@ -1391,8 +1417,12 @@
             <div class="s8-sbody">
               <div class="s8-seg pair" id="lineSeg2"><span class="s8-knob" aria-hidden="true"></span>
                 <button type="button" class="s8-segbtn col1" id="linePickNow">立即推播</button>
-                <button type="button" class="s8-segbtn col1" id="linePickSched" aria-disabled="true">排程推播</button>
+                <div class="s8-segbtn s8-segpill" id="linePickSched" role="group" tabindex="0" aria-label="排程推播時間">排程推播
+                  <label class="s8-pk" id="lineDateBox"><span id="lineDateTxt">MM/DD</span><input type="date" id="lineDate" aria-label="日期"></label>
+                  <label class="s8-pk" id="lineTimeBox"><span id="lineTimeTxt">HH:MM</span><input type="time" id="lineTime" step="60" aria-label="時間"></label>
+                </div>
               </div>
+              <div class="s8-whenmsg" id="lineWhenMsg" hidden></div>
             </div>
           </div>
           <div class="s8-step" id="lineStep3" hidden>
@@ -1406,6 +1436,17 @@
           </div>
           <div class="s8-step" id="lineStep4" hidden>
             <div class="s8-sbody">
+              <div class="s8-seg confirm" id="lineConfirmBox">
+                <button type="button" class="s8-segbtn col1" id="lineConfirmLabel">確認人數</button>
+                <div class="s8-segbody">
+                  <input type="text" id="lineConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入數字" aria-label="確認人數">
+                  <span class="s8-mark" id="lineConfirmMark" aria-live="polite"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="s8-step" id="lineStep5" hidden>
+            <div class="s8-sbody">
               <div class="s8-seg" id="lineGoTrack"><button type="button" class="s8-segbtn solo" id="lineGoBtn">正式推播</button></div>
               <div class="line-slider" id="lineSlider" hidden>
                 <span class="line-fill" aria-hidden="true"></span>
@@ -1416,6 +1457,11 @@
           </div>
         </div>
         <div class="line-win" id="lineWin" role="status" hidden></div>
+        <div class="line-sched" id="lineSched">
+          <div class="line-sched-head"><span class="line-sub" style="margin:0">排程狀態</span><button type="button" id="lineSchedRefresh">重新整理</button></div>
+          <div class="line-sched-warn" id="lineSchedWarn" hidden></div>
+          <div id="lineSchedList"><div class="line-note">讀取中…</div></div>
+        </div>
         <details class="line-box" id="lineBox">
           <summary>帳號與額度、發送紀錄與點擊次數</summary>
           <div class="line-row" role="radiogroup" aria-label="查詢的帳號">
@@ -1432,7 +1478,7 @@
             <button type="button" id="lineCopyBtn" disabled>複製成表格</button>
           </div>
           <div id="lineClicksOut"></div>
-          <div class="line-note">用發送時 LINE 回的 request id 查，每個連結一列。LINE 的規定：只保留發送後約 14 天；數字小於 20（或實際人數小於 20）時 LINE 不提供，會顯示「—」；統計會隨時間更新，剛發完可能還是空的。紀錄存在這台瀏覽器裡（最近 30 筆），換電腦或清除瀏覽資料就沒有了。</div>
+          <div class="line-note">用發送時 LINE 回的 request id 查，每個連結一列。LINE 的規定：只保留發送後 14 天；數字小於 20（或實際人數小於 20）時 LINE 不提供，會顯示「—」；統計會隨時間更新，剛發完可能還是空的。每次查到的數字都會存成快照，超過 14 天還能看最後一次查到的。紀錄存在這台瀏覽器裡（最近 30 筆），換電腦或清除瀏覽資料就沒有了；排程自動發出去的，會在打開這個視窗時自動補進來。</div>
         </div>
         </details>
       </div>
@@ -4230,6 +4276,7 @@ function syncTipToast() {
   document.getElementById('tipToastTitle').textContent = '操作提示';
   tipToast.classList.toggle('tip-collapsed', tipCollapsed);
   tipFab.classList.toggle('show', tipCollapsed);
+  if (typeof updateTipYield === 'function') updateTipYield();
 }
 function armTipTimer(ms = TIP_IDLE_MS) {
   clearTimeout(tipTimer);
@@ -4254,6 +4301,27 @@ document.addEventListener('mousemove', e => {
   if (tipHover && !tipCollapsed && !tipToast.contains(e.target)) { tipHover = false; armTipTimer(TIP_LEAVE_MS); }
 });
 armTipTimer();
+// 操作提示在右下角，很容易被其他介面（底部操作列、左側浮動面板、下載確認框）碰到：碰到就先隱藏（淡出、不能點），等沒被碰到再顯示。
+function tipOverlapsOthers(el) {
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return false;
+  return ['dock', 'floatStack', 'dlConfirm'].some(id => {
+    const o = document.getElementById(id);
+    if (!o || o.hidden || getComputedStyle(o).display === 'none') return false;
+    const b = o.getBoundingClientRect();
+    return b.width > 0 && b.height > 0 && r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top;
+  });
+}
+function updateTipYield() {
+  tipToast.classList.toggle('tip-yield', !tipCollapsed && tipOverlapsOthers(tipToast));
+  tipFab.classList.toggle('tip-yield', tipCollapsed && tipFab.classList.contains('show') && tipOverlapsOthers(tipFab));
+}
+let tipYieldRaf = 0;
+const queueTipYield = () => { if (!tipYieldRaf) tipYieldRaf = requestAnimationFrame(() => { tipYieldRaf = 0; updateTipYield(); }); };
+window.addEventListener('resize', queueTipYield);
+if (window.ResizeObserver) { const ro = new ResizeObserver(queueTipYield); ['dock', 'floatStack'].forEach(id => { const el = document.getElementById(id); if (el) ro.observe(el); }); ro.observe(document.body); }
+new MutationObserver(queueTipYield).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['hidden', 'class', 'style'] });
+queueTipYield();
 
 const stickerHintShown = { news: false, ent: false };
 const stickerPalette = document.getElementById('stickerPalette');
@@ -4956,7 +5024,19 @@ function openLabLogin() {
   labOverlay.classList.add('open');
   setTimeout(() => labPass.focus(), 0);
 }
-function closeLabLogin() { labOverlay.classList.remove('open'); labPass.value = ''; }
+let labReloginResolve = null;   // 有值＝目前是「憑證過期，輸入密碼後自動繼續剛剛的動作」
+function labReloginPrompt() {
+  return new Promise(resolve => {
+    if (labReloginResolve) { const prev = labReloginResolve; labReloginResolve = ok => { prev(ok); resolve(ok); }; return; }   // 已經在跳了：一起等
+    labReloginResolve = resolve;
+    openLabLogin();
+    labMsg.textContent = '試驗功能憑證已過期（有效 8 小時），請重新輸入密碼，輸入後會自動繼續剛剛的動作';
+  });
+}
+function closeLabLogin() {
+  labOverlay.classList.remove('open'); labPass.value = '';
+  if (labReloginResolve) { const r = labReloginResolve; labReloginResolve = null; r(false); }
+}
 async function submitLabLogin() {
   const password = labPass.value;
   if (!password) { labMsg.textContent = '請輸入密碼'; return; }
@@ -4969,6 +5049,7 @@ async function submitLabLogin() {
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (res.ok && data.token) {
       try { sessionStorage.setItem(LAB_SESSION_KEY, JSON.stringify({ token: data.token, expiresAt: data.expiresAt })); } catch (e) { /* ok */ }
+      if (labReloginResolve) { const r = labReloginResolve; labReloginResolve = null; closeLabLogin(); r(true); return; }   // 過期後重新登入：不重畫畫面，直接讓剛剛的動作繼續
       closeLabLogin();
       setLab(true);
       statusEl.show('已進入試驗功能（試驗版介面）', 'success');
@@ -5306,7 +5387,7 @@ document.getElementById('s8CountBtn').addEventListener('click', async () => {
 document.getElementById('s8CloseBtn').addEventListener('click', closeS8Dialog);
 document.getElementById('s8CancelBtn').addEventListener('click', closeS8Dialog);
 s8Overlay.addEventListener('mousedown', e => { if (e.target === s8Overlay) closeS8Dialog(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && s8Overlay.classList.contains('open')) closeS8Dialog(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && s8Overlay.classList.contains('open') && !labOverlay.classList.contains('open')) closeS8Dialog(); });
 
 // ---- 傳送資料給S8（階段三）：五個步驟（圓圈數字與頁面上方的步驟列同一套）----
 // ① 傳送資料（上傳圖片＋S8 預覽）→ ② 選「存成草稿」或「設定排程時間」→ ③ 輸入確認人數 → ④ 複製排程名稱 → ⑤ 建立
@@ -5416,6 +5497,7 @@ const s8Digits = v => Number(String(v || '').replace(/[,\s]/g, ''));
 // ---- 排程時間（台北時間，YYYY MM DD HH mm 五個下拉選單）----
 const taipeiParts = ms => { const x = new Date(ms + 8 * 3600e3); return { y: x.getUTCFullYear(), mo: x.getUTCMonth() + 1, d: x.getUTCDate(), h: x.getUTCHours(), mi: x.getUTCMinutes() }; };
 const fromTaipei = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600e3;
+const taipeiIso = ms => new Date(ms + 8 * 3600e3).toISOString().slice(0, 19) + '+08:00';
 const s8FmtParts = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)} ${pad2(p.h)}:${pad2(p.mi)}`;
 const s8FmtScheduleAt = iso => String(iso || '').replace('T', ' ').slice(0, 16);   // 2026-10-07T21:30:00+08:00 → 2026-10-07 21:30
 // 預設排程時間＝現在 + 3 小時（日期是那個時間所在的那一天，通常就是今天）
@@ -5649,30 +5731,67 @@ $s8('s8RetryPause').addEventListener('click', async () => {
 // ---- LINE 原生推播（試驗）----
 // 步驟與外觀完全沿用 S8 的設計（水平步驟列、灰色軌道＋白色按鈕、藍＝選擇、綠＝完成、紅＝失敗、米黃＝進行中、完成後只留剛完成與目前這步）：
 //   ① 傳送資料（上傳與 S8 同一張 1040 圖，請 LINE 檢查格式，不發送）→ ② 選擇發佈方式（立即推播／排程推播）→
-//   ③ 測試推播（先推到測試帳號，手動確認後按「測試完成」）→ ④ 正式推播（綠「正式推播」→ 黃「確定推播？」→ 滑到右側才真的推播）
-// 沒有草稿、沒有排程：推播成功就是已經發出。每個版型（新聞／娛樂）各自一份進度。
+//   ③ 測試推播（先推到測試帳號，手動確認後按「測試完成」）→ ④ 確認人數（輸入 LINE 回報的好友數）→
+//   ⑤ 正式推播／正式排程（綠 → 黃「確定？」→ 滑到右側才真的執行）
+// LINE 本身沒有草稿也沒有排程：「立即推播」成功就是已經發出；「排程推播」是 Worker 自己排（Cron），到時間才發。每個版型（新聞／娛樂）各自一份進度。
 const $line = id => document.getElementById(id);
 const lineByMode = { news: null, ent: null };
-const lineNewState = () => ({ prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', testDone: false, go: 0, goState: '', retryKey: { test: '', official: '' }, friends: null, win: { text: '', kind: '' } });
+const lineNewState = () => ({ prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', testDone: false, friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } });
 const lineSt = () => (lineByMode[mode] = lineByMode[mode] || lineNewState());
-const lineActive = () => mode === 'news' || mode === 'ent';
 const lineBusyNow = () => { const st = lineByMode[mode]; return !!st && (st.prepMsg.kind === 'busy' || st.test === 'busy' || st.goState === 'busy'); };
+const LINE_MIN_LEAD_MIN = 5, LINE_MAX_LEAD_DAYS = 14;   // 與 Worker 的限制一致（Worker 才是最後把關）
+const lineDigits = v => Number(String(v || '').replace(/[,\s]/g, ''));
 function lineSig() { const d = s8Collect(); return JSON.stringify([mode, d.alt, d.pages.map(pg => pg.cells.map(c => [c.url, c.pct])), s8Signature()]); }
-function lineWin(text, kind) {
-  const st = lineSt(); st.win = { text: text || '', kind: kind || '' };
-  lineRenderWin();
-}
+function lineWin(text, kind) { const st = lineSt(); st.win = { text: text || '', kind: kind || '' }; lineRenderWin(); }
 function lineRenderWin() {
   const w = $line('lineWin'), st = lineSt();
   w.hidden = !st.win.text; w.textContent = st.win.text; w.className = `line-win${st.win.kind ? ' ' + st.win.kind : ''}`;
 }
-function lineResetFlow(st) { Object.assign(st, { prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', testDone: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } }); lineResetSlider(); }
+function lineResetFlow(st) { Object.assign(st, { prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', testDone: false, friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
 function lineInvalidateIfChanged() {
   const st = lineByMode[mode];
   if (st && st.prep && st.prep.sig !== lineSig() && !lineBusyNow()) { lineResetFlow(st); st.win = { text: '內容有更動，已作廢上傳的資料，請重新「傳送資料」。', kind: 'bad' }; }
   lineUpdateSteps();
 }
-// ---- 與 S8 步驟同款的軌道旋鈕與統一寬度 ----
+// ---- 排程時間（跟 S8 同款：MM/DD 日期選擇器＋HH:MM 時間選擇器，預設現在＋3 小時）----
+function lineShowWhenText() {
+  const d = $line('lineDate').value, t = $line('lineTime').value;
+  $line('lineDateTxt').textContent = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}` : 'MM/DD';
+  $line('lineTimeTxt').textContent = /^\d{2}:\d{2}$/.test(t) ? t : 'HH:MM';
+}
+function lineSetWhen(ms) {
+  const p = taipeiParts(ms), now = Date.now();
+  $line('lineDate').min = s8Ymd(taipeiParts(now)); $line('lineDate').max = s8Ymd(taipeiParts(now + LINE_MAX_LEAD_DAYS * 86400e3));
+  $line('lineDate').value = s8Ymd(p); $line('lineTime').value = s8Hm(p);
+  lineShowWhenText();
+}
+function lineWhenFor(d, t) {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d), tm = /^(\d{2}):(\d{2})$/.exec(t);
+  if (!dm || !tm) return { ms: NaN, iso: '', text: '', err: !dm ? '請選擇日期' : '請選擇時間' };
+  const y = +dm[1], mo = +dm[2], dd = +dm[3], h = +tm[1], mi = +tm[2], now = Date.now();
+  const ms = fromTaipei(y, mo, dd, h, mi), p = taipeiParts(ms);
+  const out = { ms, iso: `${d}T${t}:00+08:00`, text: `${d} ${t}`, err: '' };
+  if (p.y !== y || p.mo !== mo || p.d !== dd) out.err = `${mo} 月沒有 ${dd} 日，請重選`;
+  else if (ms < now + LINE_MIN_LEAD_MIN * 60e3) out.err = `排程時間要在 ${LINE_MIN_LEAD_MIN} 分鐘之後（最早 ${s8FmtParts(taipeiParts(Math.ceil((now + LINE_MIN_LEAD_MIN * 60e3) / 60e3) * 60e3))}）`;
+  else if (ms > now + LINE_MAX_LEAD_DAYS * 86400e3) out.err = `排程時間最晚只能設在 ${LINE_MAX_LEAD_DAYS} 天之內（最晚 ${s8FmtParts(taipeiParts(now + LINE_MAX_LEAD_DAYS * 86400e3))}）`;
+  return out;
+}
+const lineWhenValue = () => lineWhenFor($line('lineDate').value, $line('lineTime').value);
+function lineWhenTouched() { lineShowWhenText(); const st = lineSt(); if (st.choice !== 'sched') { st.choice = 'sched'; } lineResetAfterChoice(st); lineUpdateSteps(); }
+function lineResetAfterChoice(st) {   // 重新選了方式或時間：後面的步驟要重做（測試推播本身不用重發，但要重新確認）
+  st.testDone = false; st.go = 0; if (st.goState !== 'ok') st.goState = ''; const cf = $line('lineConfirmTotal'); if (cf) cf.value = '';
+}
+['lineDate', 'lineTime'].forEach(id => {
+  const inp = $line(id);
+  inp.addEventListener('input', lineWhenTouched); inp.addEventListener('change', lineWhenTouched);
+  inp.addEventListener('click', () => { try { if (inp.showPicker) inp.showPicker(); } catch (e) { /* 部分瀏覽器不支援，改用輸入框本身 */ } });
+});
+lineSetWhen(s8DefaultWhenMs());
+$line('linePickSched').addEventListener('click', () => { const st = lineSt(); if (!st.prep || st.choice === 'sched') return; st.choice = 'sched'; lineResetAfterChoice(st); lineUpdateSteps(); });
+$line('linePickSched').addEventListener('keydown', e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.currentTarget.click(); } });
+$line('linePickNow').addEventListener('click', () => { const st = lineSt(); if (!st.prep || st.choice === 'now') return; st.choice = 'now'; lineResetAfterChoice(st); lineUpdateSteps(); });
+
+// ---- 與 S8 步驟同款的統一寬度 ----
 function lineFitControls() {
   const host = $line('lineSteps');
   if (!host || !host.offsetParent) return;
@@ -5683,6 +5802,7 @@ function lineFitControls() {
   add('linePrepTrack', c => { c.classList.add('open'); const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = '✓ 傳送完成　格式檢查通過'; });
   add('lineSeg2');
   add('lineTestTrack', c => { c.classList.add('open'); const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = '✓ 已推播到測試帳號，請到手機確認'; });
+  add('lineConfirmBox', c => { c.querySelector('.s8-mark').textContent = '✓'; });
   document.body.appendChild(probe);
   const w = Math.max(...Array.from(probe.children).map(c => c.getBoundingClientRect().width));
   probe.remove();
@@ -5691,17 +5811,22 @@ function lineFitControls() {
 }
 function lineUpdateSteps() {
   if (!$line('lineSteps')) return;
-  const st = lineSt(), prepared = !!st.prep, now = st.choice === 'now';
-  const reached = [true, prepared, prepared && now, prepared && now && st.testDone];
+  const st = lineSt(), prepared = !!st.prep, choice = st.choice, sched = choice === 'sched';
+  const when = sched ? lineWhenValue() : null;
+  const whenOk = choice === 'now' || (!!when && !when.err);
+  const typed = lineDigits($line('lineConfirmTotal').value), raw = $line('lineConfirmTotal').value.trim();
+  const confirmOk = st.testDone && Number.isFinite(st.friends) && typed === st.friends;
+  const reached = [true, prepared, prepared && whenOk, prepared && whenOk && st.testDone, prepared && whenOk && st.testDone && confirmOk];
   let cur = 1; reached.forEach((r, i) => { if (r) cur = i + 1; });
-  for (let n = 1; n <= 4; n++) { const el = $line(`lineStep${n}`); el.hidden = !reached[n - 1]; el.classList.toggle('old', n < cur - 1); }
+  for (let n = 1; n <= 5; n++) { const el = $line(`lineStep${n}`); el.hidden = !reached[n - 1]; el.classList.toggle('old', n < cur - 1); }
   const mark = (n, done, on) => {
     const dot = $line(`lineDot${n}`), line = $line(`lineLine${n}`);
     dot.classList.toggle('done', !!done); dot.classList.toggle('on', !done && !!on);
     if (line) line.classList.toggle('done', !!done);
   };
-  mark(1, prepared, !prepared); mark(2, prepared && now, prepared); mark(3, st.testDone, prepared && now); mark(4, st.goState === 'ok', st.testDone);
+  mark(1, prepared, !prepared); mark(2, prepared && whenOk, prepared); mark(3, st.testDone, prepared && whenOk); mark(4, confirmOk, st.testDone); mark(5, st.goState === 'ok', confirmOk);
   const ons = Array.from(document.querySelectorAll('#lineHStepper .s8-hs.on')); ons.slice(0, -1).forEach(d => d.classList.remove('on'));
+  $line('lineDot5Txt').textContent = sched ? '正式排程' : '正式推播';
   const setSt = (el, v) => { if (v) el.dataset.state = v; else delete el.dataset.state; };
   // ① 傳送資料
   const pk = st.prepMsg.kind, pb = $line('linePrepBtn');
@@ -5710,8 +5835,11 @@ function lineUpdateSteps() {
   const po = $line('linePrepOut'); po.hidden = !st.prepMsg.text; po.classList.toggle('bad', pk === 'bad');
   $line('linePrepMsg').textContent = st.prepMsg.text || ''; po.title = st.prepMsg.text || '';
   // ② 發佈方式
-  $line('linePickNow').classList.toggle('active', now);
-  s8SegPlace($line('lineSeg2'), now ? $line('linePickNow') : null);
+  $line('linePickNow').classList.toggle('active', choice === 'now');
+  $line('linePickSched').classList.toggle('active', sched);
+  s8SegPlace($line('lineSeg2'), choice === 'now' ? $line('linePickNow') : (sched ? $line('linePickSched') : null));
+  const wm = $line('lineWhenMsg'); wm.hidden = !when;
+  if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || `將在 ${when.text}（台北時間）由 Worker 自動推播給全部好友。可選範圍：${LINE_MIN_LEAD_MIN} 分鐘後 ～ ${LINE_MAX_LEAD_DAYS} 天內。`; }
   // ③ 測試推播
   const tb = $line('lineTestBtn');
   setSt(tb, st.test);
@@ -5722,16 +5850,29 @@ function lineUpdateSteps() {
   $line('lineTestMsg').textContent = st.testMsg || ''; to.title = st.testMsg || '';
   $line('lineDoneTrack').hidden = st.test !== 'ok';
   setSt($line('lineDoneBtn'), st.testDone ? 'ok' : ''); $line('lineDoneBtn').disabled = st.testDone;
-  // ④ 正式推播：綠色「正式推播」→ 黃色「確定推播？」→ 滑動開關
+  // ④ 確認人數（跟 S8 一樣：輸入框內提示正確人數，輸入後尾端 ✓／✗）
+  const cm = $line('lineConfirmMark'), known = Number.isFinite(st.friends);
+  $line('lineConfirmTotal').disabled = !known;
+  $line('lineConfirmTotal').placeholder = known ? `輸入 ${st.friends.toLocaleString()}` : (st.friendsBusy ? '查詢中…' : '先查好友數');
+  const typedOk = known && !!raw && typed === st.friends;
+  cm.textContent = !raw || !known ? '' : (typedOk ? '✓' : '✗');
+  cm.className = `s8-mark${!raw || !known ? '' : (typedOk ? ' ok' : ' bad')}`;
+  cm.title = !raw || !known ? '' : (typedOk ? '人數正確' : '人數不符');
+  const cl = $line('lineConfirmLabel');
+  cl.textContent = st.friendsBusy ? '查詢中…' : (st.friendsErr ? '重新查詢' : '確認人數');
+  setSt(cl, st.friendsBusy ? 'busy' : (st.friendsErr ? 'bad' : (!raw || !known ? '' : (typedOk ? 'ok' : 'bad'))));
+  cl.disabled = st.friendsBusy;
+  // ⑤ 正式推播／正式排程：綠色 → 黃色「確定？」→ 滑動開關
   const gb = $line('lineGoBtn'), sl = $line('lineSlider');
+  const verb = sched ? '排程' : '推播';
   const showSlider = st.go === 2 && st.goState !== 'ok';
   $line('lineGoTrack').hidden = showSlider; sl.hidden = !showSlider;
   sl.classList.toggle('locked', st.goState === 'busy');
-  if (st.goState === 'ok') { setSt(gb, 'ok'); gb.textContent = '已正式推播'; gb.disabled = true; }
-  else if (st.goState === 'bad') { setSt(gb, 'bad'); gb.textContent = '推播失敗，點一下重新推播'; gb.disabled = false; }
-  else if (st.go === 1) { setSt(gb, 'warn'); gb.textContent = '確定推播？'; gb.disabled = false; }
-  else { setSt(gb, 'ok'); gb.textContent = '正式推播'; gb.disabled = false; }
-  $line('lineSlider').querySelector('.line-slabel').textContent = st.goState === 'busy' ? '推播中…' : '滑動以正式推播';
+  if (st.goState === 'ok') { setSt(gb, 'ok'); gb.textContent = sched ? '已排程' : '已正式推播'; gb.disabled = true; }
+  else if (st.goState === 'bad') { setSt(gb, 'bad'); gb.textContent = `${verb}失敗，點一下重新${verb}`; gb.disabled = false; }
+  else if (st.go === 1) { setSt(gb, 'warn'); gb.textContent = `確定${verb}？`; gb.disabled = false; }
+  else { setSt(gb, 'ok'); gb.textContent = sched ? '正式排程' : '正式推播'; gb.disabled = false; }
+  sl.querySelector('.line-slabel').textContent = st.goState === 'busy' ? `${verb}中…` : `滑動以${sched ? '排程推播' : '正式推播'}`;
   lineRenderWin();
 }
 // ① 傳送資料
@@ -5740,7 +5881,6 @@ $line('linePrepBtn').addEventListener('click', async () => {
   const set = (text, kind) => { st.prepMsg = { text, kind }; lineUpdateSteps(); };
   const d = s8Collect(), errs = s8Validate(d);
   if (errs.length) { set(`✗ 還不能傳送：${errs.join('；')}`, 'bad'); return; }
-  if (!readLabAuth()) { set('✗ 試驗功能憑證已過期，請重新輸入密碼', 'bad'); return; }
   lineResetFlow(st);
   set('傳送中…（約數秒）', 'busy');
   try {
@@ -5760,9 +5900,6 @@ $line('linePrepBtn').addEventListener('click', async () => {
     lineWin('', '');
   } catch (e) { set(`✗ 傳送失敗：${String(e.message || e).slice(0, 200)}`, 'bad'); lineWin(`傳送失敗：${e.message || e}`, 'bad'); }
 });
-// ② 發佈方式
-$line('linePickNow').addEventListener('click', () => { const st = lineSt(); if (!st.prep) return; st.choice = 'now'; lineUpdateSteps(); });
-$line('linePickSched').addEventListener('click', e => e.preventDefault());
 // ③ 測試推播
 async function lineSend(channel, extra) {
   const st = lineSt(), key = channel === 'test' ? 'test' : 'official';
@@ -5781,8 +5918,23 @@ $line('lineTestBtn').addEventListener('click', async () => {
   } catch (e) { st.test = 'bad'; st.testMsg = `✗ 推播失敗：${String(e.message || e).slice(0, 160)}`; lineWin(`測試推播失敗：${e.message || e}`, 'bad'); }
   lineUpdateSteps();
 });
-$line('lineDoneBtn').addEventListener('click', () => { const st = lineSt(); if (st.test !== 'ok' || st.testDone) return; st.testDone = true; st.go = 0; lineUpdateSteps(); });
-// ④ 正式推播：綠 → 黃 → 滑動開關
+$line('lineDoneBtn').addEventListener('click', () => { const st = lineSt(); if (st.test !== 'ok' || st.testDone) return; st.testDone = true; st.go = 0; lineUpdateSteps(); lineFetchFriends(); });
+// ④ 確認人數：先向 LINE 查正式帳號的好友數（唯讀），使用者再自己輸入一次
+async function lineFetchFriends() {
+  const m = mode, st = lineSt();
+  st.friendsBusy = true; st.friendsErr = ''; lineUpdateSteps();
+  try {
+    const sr = await s8Api('/line/status', { channel: m });
+    const f = sr.followers ? sr.followers.followers : null;
+    if (f === null) throw new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全不能正式推播。');
+    st.friends = f;
+  } catch (e) { st.friends = null; st.friendsErr = String(e.message || e); lineWin(`查不到好友數：${st.friendsErr}`, 'bad'); }
+  st.friendsBusy = false;
+  if (m === mode) lineUpdateSteps();
+}
+$line('lineConfirmLabel').addEventListener('click', () => { const st = lineSt(); if (st.testDone && st.friendsErr && !st.friendsBusy) lineFetchFriends(); });
+$line('lineConfirmTotal').addEventListener('input', () => { const st = lineSt(); if (st.goState !== 'ok') { st.go = 0; if (st.goState === 'bad') st.goState = ''; } lineUpdateSteps(); });
+// ⑤ 正式推播／正式排程：綠 → 黃 → 滑動開關
 $line('lineGoBtn').addEventListener('click', () => {
   const st = lineSt(); if (!st.testDone || st.goState === 'busy' || st.goState === 'ok') return;
   if (st.goState === 'bad') { st.goState = ''; st.go = 0; lineWin('', ''); lineUpdateSteps(); return; }
@@ -5790,22 +5942,26 @@ $line('lineGoBtn').addEventListener('click', () => {
   lineUpdateSteps();
 });
 async function lineFireOfficial() {
-  const st = lineSt();
-  st.goState = 'busy'; lineWin('向 LINE 查詢帳號與好友數…', 'busy'); lineUpdateSteps();
+  const st = lineSt(), sched = st.choice === 'sched';
+  st.goState = 'busy'; lineWin(sched ? '建立排程中…' : `推播中…（${S8_ACCOUNT[mode]}，約 ${Number.isFinite(st.friends) ? st.friends.toLocaleString() : '？'} 人）`, 'busy'); lineUpdateSteps();
   try {
     if (st.prep.sig !== lineSig()) throw new Error('內容有更動，請重新傳送資料');
-    const sr = await s8Api('/line/status', { channel: mode });
-    const friends = sr.followers ? sr.followers.followers : null;
-    if (friends === null) throw new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全不推播。');
-    st.friends = friends;
-    lineWin(`推播中…（${S8_ACCOUNT[mode]}，約 ${friends.toLocaleString()} 人）`, 'busy');
-    const r = await lineSend(mode, { confirmTotal: friends, testToken: st.testToken });
-    st.goState = 'ok';
-    lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: mode, mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
-    lineWin(`✓ 已正式推播到 ${S8_ACCOUNT[mode]}（約 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : friends.toLocaleString()} 人）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n發送後可在下方「帳號與額度、發送紀錄與點擊次數」查詢點擊次數。`, 'ok');
+    const typed = lineDigits($line('lineConfirmTotal').value);
+    if (sched) {
+      const when = lineWhenValue(); if (when.err) throw new Error(when.err);
+      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: mode, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, name: s8Collect().name, links: lineLinksNow() });
+      st.goState = 'ok';
+      lineWin(`✓ 已排程\n發送時間：${when.text}（台北時間）\n帳號：${S8_ACCOUNT[mode]}（約 ${st.friends.toLocaleString()} 人）\n排程編號：${r.schedule.id}\n\n時間到時由 Worker 自動推播。可在下方「排程狀態」查看、變更時間或刪除。`, 'ok');
+      lineSchedLoad();
+    } else {
+      const r = await lineSend(mode, { confirmTotal: typed, testToken: st.testToken });
+      st.goState = 'ok';
+      lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: mode, mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
+      lineWin(`✓ 已正式推播到 ${S8_ACCOUNT[mode]}（約 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : st.friends.toLocaleString()} 人）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n發送後可在下方「帳號與額度、發送紀錄與點擊次數」查詢點擊次數。`, 'ok');
+    }
   } catch (e) {
     st.goState = 'bad'; st.go = 0;
-    lineWin(`推播失敗：${e.message || e}\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。`, 'bad');
+    lineWin(`${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '' : '\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。'}`, 'bad');
   }
   lineResetSlider(); lineUpdateSteps();
 }
@@ -5857,6 +6013,7 @@ function lineGoStep(n) {
   else {
     if (n <= 2) st.choice = '';
     if (n <= 3) { st.test = ''; st.testMsg = ''; st.testToken = ''; st.testDone = false; st.retryKey.test = ''; }
+    if (n <= 4) { st.friends = null; st.friendsErr = ''; $line('lineConfirmTotal').value = ''; }
     st.go = 0; st.goState = ''; st.win = { text: '', kind: '' }; lineResetSlider();
   }
   lineUpdateSteps();
@@ -5866,12 +6023,89 @@ document.querySelectorAll('#lineHStepper .s8-hs').forEach(d => d.addEventListene
   lineGoStep(Number(d.id.slice(-1)));
 }));
 
+// ---- 排程狀態：查看、變更時間、刪除 ----
+const LINE_SCHED_STATUS = { scheduled: '待發送', sending: '發送中', sent: '已發送', failed: '發送失敗', cancelled: '已取消', missed: '逾時未發送' };
+let lineSchedData = null, lineSchedEdit = null, lineSchedLoading = false;
+const lineAcctName = ch => (ch === 'test' ? '測試帳號' : (S8_ACCOUNT[ch] || ch));
+async function lineSchedLoad() {
+  if (lineSchedLoading) return;
+  lineSchedLoading = true;
+  try { lineSchedData = await s8Api('/line/schedule/list', {}); lineSchedMerge(); }
+  catch (e) { lineSchedData = { error: String(e.message || e) }; }
+  lineSchedLoading = false;
+  lineSchedRender();
+}
+function lineSchedMerge() {   // 排程到時間自動發出去的，頁面當時沒開著：把 request id 補進發送紀錄，才能查點擊次數
+  const have = new Set(lineHistLoad().map(r => r.requestId)); let add = [];
+  (lineSchedData.schedules || []).forEach(s => { if (s.status === 'sent' && s.requestId && !have.has(s.requestId)) add.push({ requestId: s.requestId, sentAt: s.sentAt, channel: s.channel, mode: s.org, alt: s.altText, name: s.name, links: s.links || [], fromSchedule: true }); });
+  if (add.length) { lineHistStore([...add, ...lineHistLoad()].sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)))); lineHistRender(); }
+}
+function lineSchedRender() {
+  const list = $line('lineSchedList'), warn = $line('lineSchedWarn'), d = lineSchedData;
+  list.textContent = ''; warn.hidden = true;
+  const note = t => { const n = document.createElement('div'); n.className = 'line-note'; n.textContent = t; list.appendChild(n); };
+  if (!d) { note('讀取中…'); return; }
+  if (d.error) { note(`✗ ${d.error}`); return; }
+  const live = d.schedules.filter(s => s.status === 'scheduled' || s.status === 'sending');
+  const stale = !d.heartbeatAt || d.serverNow - d.heartbeatAt > 3 * 60 * 1000;
+  if (live.length && stale) {
+    warn.hidden = false;
+    warn.textContent = `⚠ Worker 的 Cron Trigger 沒有在跑${d.heartbeatAt ? `（最後一次心跳：${taipeiIso(d.heartbeatAt).slice(5, 16).replace('T', ' ')}）` : '（從來沒有收到心跳）'}，排程不會自動發送！請到 Cloudflare → Worker → Settings → Triggers → Cron Triggers，新增 * * * * *（每分鐘）。`;
+  }
+  if (!d.schedules.length) { note('目前沒有排程。'); return; }
+  d.schedules.forEach(s => {
+    const row = document.createElement('div'); row.className = 'line-srow';
+    const top = document.createElement('div'); top.className = 'top';
+    const when = document.createElement('span'); when.className = 'when'; when.textContent = String(s.runAtIso).slice(0, 16).replace('T', ' ');
+    const acct = document.createElement('span'); acct.className = 'line-chip'; acct.textContent = lineAcctName(s.channel);
+    const stc = document.createElement('span'); stc.className = `line-chip ${s.status}`; stc.textContent = LINE_SCHED_STATUS[s.status] || s.status;
+    top.append(when, acct, stc); row.appendChild(top);
+    const ttl = document.createElement('div'); ttl.className = 'ttl'; ttl.textContent = `${s.altText}（${(s.links || []).length} 個連結）`; row.appendChild(ttl);
+    if (s.status === 'sent') { const n = document.createElement('div'); n.className = 'line-note'; n.style.margin = '0'; n.textContent = `已於 ${String(s.sentAt).slice(0, 16).replace('T', ' ')} 發送（LINE request id：${s.requestId}）。點擊次數請到下方「發送紀錄與點擊次數」查。`; row.appendChild(n); }
+    if (s.lastError && s.status !== 'sent') { const er = document.createElement('div'); er.className = 'err'; er.textContent = s.lastError; row.appendChild(er); }
+    if (s.status === 'scheduled') {
+      const acts = document.createElement('div'); acts.className = 'acts';
+      if (lineSchedEdit && lineSchedEdit.id === s.id) {
+        const di = document.createElement('input'); di.type = 'date'; di.value = lineSchedEdit.date; di.min = s8Ymd(taipeiParts(Date.now())); di.max = s8Ymd(taipeiParts(Date.now() + LINE_MAX_LEAD_DAYS * 86400e3));
+        const ti = document.createElement('input'); ti.type = 'time'; ti.step = '60'; ti.value = lineSchedEdit.time;
+        di.addEventListener('input', () => { lineSchedEdit.date = di.value; }); ti.addEventListener('input', () => { lineSchedEdit.time = ti.value; });
+        const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = '儲存新時間';
+        const no = document.createElement('button'); no.type = 'button'; no.textContent = '取消';
+        ok.addEventListener('click', () => lineSchedSaveTime(s)); no.addEventListener('click', () => { lineSchedEdit = null; lineSchedRender(); });
+        acts.append(di, ti, ok, no);
+      } else {
+        const ch = document.createElement('button'); ch.type = 'button'; ch.textContent = '變更時間';
+        ch.addEventListener('click', () => { lineSchedEdit = { id: s.id, date: String(s.runAtIso).slice(0, 10), time: String(s.runAtIso).slice(11, 16) }; lineSchedRender(); });
+        const del = document.createElement('button'); del.type = 'button'; del.className = 'danger'; del.textContent = '刪除排程';
+        del.addEventListener('click', () => lineSchedDelete(s));
+        acts.append(ch, del);
+      }
+      row.appendChild(acts);
+    }
+    list.appendChild(row);
+  });
+  const hb = document.createElement('div'); hb.className = 'line-note';
+  hb.textContent = d.heartbeatAt ? `排程引擎（Cron）上次回報：${taipeiIso(d.heartbeatAt).slice(5, 19).replace('T', ' ')}` : '排程引擎（Cron）還沒有回報過。';
+  list.appendChild(hb);
+}
+async function lineSchedSaveTime(s) {
+  const w = lineWhenFor(lineSchedEdit.date, lineSchedEdit.time);
+  if (w.err) { window.alert(w.err); return; }
+  try { await s8Api('/line/schedule/update', { id: s.id, runAt: w.iso }); lineSchedEdit = null; await lineSchedLoad(); }
+  catch (e) { window.alert(`變更失敗：${e.message || e}`); await lineSchedLoad(); }
+}
+async function lineSchedDelete(s) {
+  if (!window.confirm(`確定要刪除這筆排程嗎？\n\n${String(s.runAtIso).slice(0, 16).replace('T', ' ')}　${lineAcctName(s.channel)}\n${s.altText}\n\n刪除後不會發送。`)) return;
+  try { await s8Api('/line/schedule/cancel', { id: s.id }); await lineSchedLoad(); }
+  catch (e) { window.alert(`刪除失敗：${e.message || e}`); await lineSchedLoad(); }
+}
+$line('lineSchedRefresh').addEventListener('click', lineSchedLoad);
+
 // ---- 帳號與額度 ----
 const lineChannelNow = () => ($line('lineChOfficial').checked ? mode : 'test');
-const lineChName = r => (r.channel === 'test' ? '測試帳號' : (S8_ACCOUNT[r.channel] || r.channel));
+const lineChName = r => lineAcctName(r.channel);
 $line('lineStatusBtn').addEventListener('click', async () => {
   const out = $line('lineOut'); const show = (t, cls) => { out.hidden = !t; out.textContent = t || ''; out.className = `s8c-out${cls ? ' ' + cls : ''}`; };
-  if (!readLabAuth()) { show('✗ 試驗功能憑證已過期，請重新輸入密碼', 'bad'); return; }
   $line('lineStatusBtn').disabled = true; show('向 LINE 查詢中…');
   try {
     const r = await s8Api('/line/status', { channel: lineChannelNow() });
@@ -5909,45 +6143,63 @@ function lineHistRender(selectId) {
   const keep = selectId || sel.value;
   sel.textContent = '';
   if (!list.length) { const o = document.createElement('option'); o.textContent = '還沒有發送紀錄（發送成功後會出現在這裡）'; o.value = ''; sel.appendChild(o); }
-  list.forEach(r => { const o = document.createElement('option'); o.value = r.requestId; o.textContent = `${String(r.sentAt || '').slice(5, 16).replace('T', ' ')} · ${lineChName(r)} · ${String(r.alt || '').slice(0, 24)}`; sel.appendChild(o); });
+  list.forEach(r => { const o = document.createElement('option'); o.value = r.requestId; o.textContent = `${String(r.sentAt || '').slice(5, 16).replace('T', ' ')} · ${lineChName(r)} · ${String(r.alt || '').slice(0, 24)}${lineIsOld(r) ? `（已過 ${LINE_STATS_DAYS} 天${r.snap ? '，有快照' : ''}）` : ''}`; sel.appendChild(o); });
   if (keep && list.some(r => r.requestId === keep)) sel.value = keep;
   $line('lineClicksBtn').disabled = !list.length;
   $line('lineCopyBtn').disabled = !lineLastTable;
 }
 let lineLastTable = null;   // { rows: string[][] } 目前顯示的表格，給「複製成表格」用
 const lineNum = v => (Number.isFinite(v) ? v.toLocaleString() : '—');
-function lineRenderClicks(rec, r) {
+const LINE_STATS_DAYS = 14;   // LINE 只保留發送後 14 天的統計
+const lineIsOld = rec => { const t = Date.parse(rec.sentAt); return Number.isFinite(t) && Date.now() - t > LINE_STATS_DAYS * 86400e3; };
+// 把某次發送的統計畫成表格。data＝{overview, messages, clicks}；note＝額外說明（例如「這是上次查到的快照」）
+function lineRenderClicks(rec, data, note) {
   const box = $line('lineClicksOut'); box.textContent = ''; lineLastTable = null;
-  if (r.unavailable) { const p = document.createElement('div'); p.className = 's8c-out bad'; p.textContent = r.message; box.appendChild(p); lineHistRender(); return; }
-  const byUrl = new Map((r.clicks || []).map(c => [c.url, c]));
+  const byUrl = new Map((data.clicks || []).map(c => [c.url, c]));
   const used = new Set();
   const rows = [['頁／位置', '標題', '點擊次數', '點擊人數']];
   rec.links.forEach(l => { const c = byUrl.get(l.url); if (c) used.add(l.url); rows.push([`第 ${l.page} 頁 ${l.label}`, l.title, c ? lineNum(c.click) : '—', c ? lineNum(c.uniqueClick) : '—']); });
-  const others = (r.clicks || []).filter(c => !used.has(c.url));
-  others.forEach(c => rows.push(['（其他連結）', c.url, lineNum(c.click), lineNum(c.uniqueClick)]));
-  const ov = r.overview || {};
-  const imp = (r.messages || []).map(m => `第 ${m.seq} 頁顯示 ${lineNum(m.impression)} 次`).join('、');
+  (data.clicks || []).filter(c => !used.has(c.url)).forEach(c => rows.push(['（其他連結）', c.url, lineNum(c.click), lineNum(c.uniqueClick)]));
+  const ov = data.overview || {};
+  const sumRow = ['整則訊息', `發送 ${lineNum(ov.delivered)} 則、開啟 ${lineNum(ov.uniqueImpression)} 人`, '', lineNum(ov.uniqueClick)];
+  const imp = (data.messages || []).map(m => `第 ${m.seq} 頁顯示 ${lineNum(m.impression)} 次`).join('、');
   const t = document.createElement('table'); t.className = 'line-tbl';
   const head = document.createElement('tr'); rows[0].forEach((h, i) => { const th = document.createElement('th'); th.textContent = h; if (i >= 2) th.className = 'num'; head.appendChild(th); }); t.appendChild(head);
   rows.slice(1).forEach(row => { const tr = document.createElement('tr'); row.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; if (v === '—') td.classList.add('dim'); tr.appendChild(td); }); t.appendChild(tr); });
   const sum = document.createElement('tr'); sum.className = 'sum';
-  [['整則訊息', `發送 ${lineNum(ov.delivered)} 則、開啟 ${lineNum(ov.uniqueImpression)} 人`, '', lineNum(ov.uniqueClick)]].forEach(row => row.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; sum.appendChild(td); }));
+  sumRow.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; sum.appendChild(td); });
   t.appendChild(sum);
   box.appendChild(t);
-  const note = document.createElement('div'); note.className = 'line-note';
-  note.textContent = `${lineChName(rec)} · ${rec.sentAt} 發送 · ${rec.alt}${imp ? `\n${imp}` : ''}\n「—」表示 LINE 沒提供（數字小於 20）、或這個連結目前沒有點擊。最後一列的點擊人數是「點了任何連結的不重複人數」。`;
-  note.style.whiteSpace = 'pre-wrap';
-  box.appendChild(note);
-  lineLastTable = { rows: [...rows, ['整則訊息', `發送 ${lineNum(ov.delivered)} 則、開啟 ${lineNum(ov.uniqueImpression)} 人`, '', lineNum(ov.uniqueClick)]] };
+  const n = document.createElement('div'); n.className = 'line-note'; n.style.whiteSpace = 'pre-wrap';
+  n.textContent = `${lineChName(rec)} · ${rec.sentAt} 發送 · ${rec.alt}${imp ? `\n${imp}` : ''}${note ? `\n${note}` : ''}\n「—」表示 LINE 沒提供（數字小於 20）、或這個連結目前沒有點擊。最後一列的點擊人數是「點了任何連結的不重複人數」。`;
+  box.appendChild(n);
+  lineLastTable = { rows: [...rows, sumRow] };
   lineHistRender();
 }
+const lineBox = (text, cls) => { const box = $line('lineClicksOut'); box.textContent = ''; lineLastTable = null; const d = document.createElement('div'); d.className = `s8c-out${cls ? ' ' + cls : ''}`; d.textContent = text; box.appendChild(d); lineHistRender(); };
+const lineSnapNote = (snap, why) => `※ ${why}這是 ${String(snap.at).slice(0, 16).replace('T', ' ')} 最後一次查到的數字（快照）。`;
+// 查詢：超過 14 天 LINE 不再提供，就改顯示最後一次查到的快照；LINE 暫時沒資料時也一樣
 $line('lineClicksBtn').addEventListener('click', async () => {
   const rec = lineHistLoad().find(r => r.requestId === $line('lineHist').value);
   if (!rec) return;
-  const box = $line('lineClicksOut'); box.textContent = ''; const wait = document.createElement('div'); wait.className = 's8c-out'; wait.textContent = '向 LINE 查詢中…'; box.appendChild(wait);
+  if (lineIsOld(rec)) {
+    if (rec.snap) lineRenderClicks(rec, rec.snap, lineSnapNote(rec.snap, `這筆已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計。`));
+    else lineBox(`這筆發送已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計，而且當時沒有查過、沒有存快照，所以查不到了。\n下次請在發送後 ${LINE_STATS_DAYS} 天內查詢，每次查到的數字都會自動存下來。`, 'bad');
+    return;
+  }
+  lineBox('向 LINE 查詢中…');
   $line('lineClicksBtn').disabled = true;
-  try { lineRenderClicks(rec, await s8Api('/line/clicks', { channel: rec.channel, requestId: rec.requestId })); }
-  catch (e) { box.textContent = ''; const bad = document.createElement('div'); bad.className = 's8c-out bad'; bad.textContent = `✗ ${e.message || e}`; box.appendChild(bad); }
+  try {
+    const r = await s8Api('/line/clicks', { channel: rec.channel, requestId: rec.requestId });
+    if (r.unavailable) {
+      if (rec.snap) lineRenderClicks(rec, rec.snap, lineSnapNote(rec.snap, 'LINE 目前沒有新的統計資料。'));
+      else lineBox(r.message, 'bad');
+    } else {
+      const snap = { at: taipeiIso(Date.now()), overview: r.overview, messages: r.messages, clicks: r.clicks };
+      lineHistStore(lineHistLoad().map(x => (x.requestId === rec.requestId ? { ...x, snap } : x)));
+      lineRenderClicks({ ...rec, snap }, snap, `LINE 數據查詢時間：${snap.at.slice(0, 16).replace('T', ' ')}（只保留 ${LINE_STATS_DAYS} 天；每次查到的都會存成快照，之後超過 ${LINE_STATS_DAYS} 天還能看）。`);
+    }
+  } catch (e) { lineBox(`✗ ${e.message || e}`, 'bad'); }
   lineHistRender();
 });
 $line('lineCopyBtn').addEventListener('click', async () => {
@@ -5956,7 +6208,13 @@ $line('lineCopyBtn').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(tsv); $line('lineCopyBtn').textContent = '已複製'; setTimeout(() => { $line('lineCopyBtn').textContent = '複製成表格'; }, 1500); }
   catch (e) { statusEl.show('無法複製，請手動選取表格', 'error'); }
 });
-$line('lineHist').addEventListener('change', () => { $line('lineClicksOut').textContent = ''; lineLastTable = null; lineHistRender(); });
+// 換一筆紀錄：有存過快照就直接顯示（不用再問 LINE）
+$line('lineHist').addEventListener('change', () => {
+  lineLastTable = null; $line('lineClicksOut').textContent = '';
+  const rec = lineHistLoad().find(r => r.requestId === $line('lineHist').value);
+  if (rec && rec.snap) lineRenderClicks(rec, rec.snap, lineSnapNote(rec.snap, lineIsOld(rec) ? `這筆已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計。` : '按「查詢點擊次數」可更新。'));
+  else lineHistRender();
+});
 lineHistRender();
 
 
@@ -5966,7 +6224,7 @@ function s8SetMd(md) {
   document.getElementById('s8Modal').dataset.md = s8Md;
   document.querySelectorAll('#s8Modetabs .s8-ptab').forEach(b => { b.classList.toggle('active', b.dataset.md === s8Md); b.setAttribute('aria-selected', String(b.dataset.md === s8Md)); });
   placeSegKnob(document.getElementById('s8Modetabs'));
-  if (s8Md === 's8') { s8FitControls(); s8UpdateSteps(); } else { lineFitControls(); lineUpdateSteps(); }
+  if (s8Md === 's8') { s8FitControls(); s8UpdateSteps(); } else { lineFitControls(); lineUpdateSteps(); lineSchedLoad(); }
   if (s8State) s8RefreshCore(true);   // 兩邊要檢查的欄位不同（S8 要群發名稱、LINE 不用）
 }
 document.querySelectorAll('#s8Modetabs .s8-ptab').forEach(b => b.addEventListener('click', () => { if (b.dataset.md !== s8Md) s8SetMd(b.dataset.md); }));
@@ -6038,15 +6296,23 @@ function s8FriendlyError(msg) {
   parts.push('這是 S8 帳號的額度上限，重試也不會成功；請等額度重置，或聯絡 S8 增加額度。');
   return `${parts.join('')}\n（S8 原始訊息：${raw.slice(0, 300)}）`;
 }
-async function s8Api(path, body, headers = {}) {
+async function s8Api(path, body, headers = {}, retried = false) {
   const lab = readLabAuth();
-  if (!lab) { setLab(false); throw new Error('試驗功能憑證已過期，請重新輸入密碼'); }
+  if (!lab) {
+    if (!retried && await labReloginPrompt()) return s8Api(path, body, headers, true);   // 憑證過期：跳出密碼視窗，輸入後自動繼續剛剛的動作
+    if (!s8Overlay.classList.contains('open')) setLab(false);
+    throw new Error('試驗功能憑證已過期，請重新輸入密碼');
+  }
   const res = await fetch(`${workerBase()}${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${lab.token}`, ...headers }, body: JSON.stringify(body || {}),
   });
   let data = {};
   try { data = await res.json(); } catch (e) { /* not JSON */ }
-  if (res.status === 401 && /試驗功能/.test(data.error || '')) { try { sessionStorage.removeItem(LAB_SESSION_KEY); } catch (e) { /* ok */ } setLab(false); }
+  if (res.status === 401 && /試驗功能/.test(data.error || '')) {
+    try { sessionStorage.removeItem(LAB_SESSION_KEY); } catch (e) { /* ok */ }
+    if (!retried && await labReloginPrompt()) return s8Api(path, body, headers, true);
+    if (!s8Overlay.classList.contains('open')) setLab(false);
+  }
   if (!res.ok) throw new Error(s8FriendlyError(data.error) || `失敗（${res.status}）`);
   return data;
 }
