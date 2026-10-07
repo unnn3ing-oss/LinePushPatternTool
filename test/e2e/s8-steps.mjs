@@ -136,10 +136,11 @@ check((await page.textContent('#s8PrepBtn')) === '傳送資料', '步驟 1 按�
 const bgOf = async id => { await page.waitForTimeout(380); return page.evaluate(i => getComputedStyle(document.getElementById(i)).backgroundColor, id); };   // 等顏色轉場跑完
 const shadowOf = id => page.evaluate(i => getComputedStyle(document.getElementById(i)).boxShadow, id);
 const WHITE = await page.evaluate(() => { const t = document.createElement('i'); t.style.background = 'var(--knob)'; document.body.appendChild(t); const c = getComputedStyle(t).backgroundColor; t.remove(); return c; });
-const GREEN = 'rgb(22, 163, 74)', RED = 'rgb(220, 38, 38)';
+const GREEN = 'rgb(22, 163, 74)', RED = 'rgb(220, 38, 38)', BLUE = 'rgb(0, 74, 173)';
 check((await bgOf('s8PrepBtn')) === WHITE && (await shadowOf('s8PrepBtn')) !== 'none' && (await bgOf('s8PrepTrack')) === (await bgOf('s8CountBtn')), '還沒動作：按鈕是白色（有陰影），底框是灰色');
 check(await page.isHidden('#s8PrepOut'), '還沒傳送：右邊（原本「第 2 頁」的位置）是空的');
-check((await page.textContent('#s8Step1 > i')) === '1', '步驟 1 前面有圓圈數字');
+check(await page.evaluate(() => { const d = [1, 2, 3, 4, 5].map(n => document.getElementById('s8Dot' + n).getBoundingClientRect()); return d.every((r, i) => Math.abs(r.top - d[0].top) < 2 && (i === 0 || r.left > d[i - 1].left)); }), '步驟前面的圓圈數字是水平排成一列（1→5 由左到右）');
+check(await page.evaluate(() => document.querySelectorAll('.s8-step > i').length === 0), '每個步驟的按鈕前面不再各自帶垂直排列的圓圈');
 
 // ===== 3. 傳送失敗：下方顯示簡單狀態，沒有後續步驟 =====
 prepareFails = true;
@@ -159,11 +160,10 @@ check(reqs.prepare[1].pages[0].buttons[1].title === expectTitle && reqs.prepare[
 check(reqs.prepare.length === 2 && reqs.prepare[1].pages.length === 2 && reqs.prepare[1].pages[0].buttons.length === 6 && reqs.prepare[1].pages[0].buttons[1].url === 'https://example.com/p1/n2?utm_source=x', '傳送內容：兩頁、每頁 6 格、連結用目前字框的值');
 check(await vis('#s8Step2') && !(await vis('#s8Step3')), '成功後出現步驟 2，步驟 3 還沒出現');
 await page.waitForTimeout(600);
-const lineOf = id => page.evaluate(i => { const e = document.getElementById(i); return { linked: e.classList.contains('linked'), done: e.classList.contains('done'), track: getComputedStyle(e, '::before').transform, fill: getComputedStyle(e, '::after').transform }; }, id);
-const scaleY = t => { const m = String(t).match(/matrix\(([^)]+)\)/); return m ? Number(m[1].split(',')[3]) : 0; };
-let l1 = await lineOf('s8Step1');
-check(l1.linked && l1.done && scaleY(l1.track) === 1 && scaleY(l1.fill) === 1, '步驟 1→2 有連線：灰線長出、步驟 1 完成後綠色填滿（動畫跑完）');
-check(!(await lineOf('s8Step2')).linked, '最後一個可見步驟（目前是步驟 2）後面沒有連線');
+const hl = id => page.evaluate(i => { const e = document.getElementById(i); return { done: e.classList.contains('done'), scale: Number((String(getComputedStyle(e, '::after').transform).match(/matrix\(([^)]+)\)/) || [0, '0,0,0,0'])[1].split(',')[0]) }; }, id);
+const l1 = await hl('s8Line1'), l2 = await hl('s8Line2');
+check(await page.evaluate(() => document.getElementById('s8Dot1').classList.contains('done') && document.getElementById('s8Dot2').classList.contains('on')), '步驟 1 完成：圓圈 1 變綠，圓圈 2 變成目前這一步（藍色並顯示名稱）');
+check(l1.done && l1.scale === 1 && !l2.done && l2.scale === 0, '水平連線：1→2 綠色由左往右填滿（動畫跑完），2→3 還沒填');
 check(await page.evaluate(() => { const t = document.getElementById('s8Ptabs'); return t.classList.contains('seg-track') && !!t.querySelector('.seg-knob'); }), '頁籤與頁面上方相同：capsule 軌道＋滑動旋鈕');
 check((await page.textContent('#s8PickDraft')) === '存成草稿' && (await page.textContent('#s8PickSched')).includes('設定排程'), '步驟 2 兩個按鈕：存成草稿／設定排程時間');
 check(await page.evaluate(() => { const t = document.getElementById('s8Seg2'); return t.classList.contains('s8-seg') && t.contains(document.getElementById('s8PickDraft')) && t.contains(document.getElementById('s8PickSched')); }), '步驟 2：存成草稿／設定排程是同一條分段膠囊（與切換頁數同款）');
@@ -238,7 +238,7 @@ await page.fill('#s8ConfirmTotal', '1234');
 await setWhen(Date.now() + 10 * 60e3);
 check((await page.getAttribute('#s8WhenMsg', 'class')).includes('bad') && (await page.textContent('#s8WhenMsg')).includes('30 分鐘'), '設成 10 分鐘後：紅字提示要在 30 分鐘之後');
 await page.waitForTimeout(380);
-check(await page.evaluate(() => getComputedStyle(document.querySelector('#s8Seg2 .s8-knob')).backgroundColor) === RED, '排程時間不合格：選中的「設定排程」旋鈕變紅色');
+check(await page.evaluate(() => getComputedStyle(document.querySelector('#s8Seg2 .s8-knob')).backgroundColor) === BLUE, '排程時間不合格：選擇型按鈕維持藍色（錯誤用紅字提示，不改按鈕顏色）');
 check(!(await vis('#s8Step4')), '時間不合格：不出現步驟 4');
 await setWhen(Date.now() + 9 * 86400e3);
 check((await page.textContent('#s8WhenMsg')).includes('7 天') && !(await vis('#s8Step4')), '設成 9 天後：提示最晚 7 天內，不出現步驟 4');
@@ -266,19 +266,25 @@ await page.keyboard.press('Enter');
 const want = await setWhen(Date.now() + 3 * 3600e3);
 check(!(await page.getAttribute('#s8WhenMsg', 'class')).includes('bad') && await vis('#s8Step4'), '設成 3 小時後：合格，出現步驟 4');
 await page.waitForTimeout(380);
-check(await page.evaluate(() => getComputedStyle(document.querySelector('#s8Seg2 .s8-knob')).backgroundColor) === GREEN, '排程時間合格：旋鈕變綠色');
+check(await page.evaluate(() => getComputedStyle(document.querySelector('#s8Seg2 .s8-knob')).backgroundColor) === BLUE, '選擇型按鈕（存成草稿／設定排程）按下後變藍色');
 await page.click('#s8CopyName');
 const wantText = `${want.y}-${pad2(want.mo)}-${pad2(want.d)} ${pad2(want.h)}:${pad2(want.mi)}`;
 check((await page.textContent('#s8CreateBtn')).includes(`建立排程（${wantText} 發送）`), `步驟 5 按鈕寫出確切時間：${wantText}`);
 check((await page.textContent('#s8Tip')).includes('不會暫停') && (await page.textContent('#s8Tip')).includes(wantText) && (await page.textContent('#s8Tip')).includes('1,234'), '步驟 5 提示寫出「不會暫停、何時實際發送給幾人」');
 const sizes = await page.evaluate(() => ['s8PrepTrack', 's8Seg2', 's8ConfirmBox', 's8CopyTrack', 's8CreateTrack'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { id, w: Math.round(r.width), h: Math.round(r.height), clipped: e.scrollWidth > e.clientWidth + 1 }; }));
 check(sizes.every(x => x.w === sizes[0].w && x.h === sizes[0].h), `步驟裡所有按鈕尺寸一致：${sizes.map(x => `${x.id}=${x.w}×${x.h}`).join('、')}`);
-check(sizes.every(x => !x.clipped), '最長的內容（排程時間選單、建立排程文字）都放得下，沒有被裁切');
+check(sizes.every(x => !x.clipped), `最長的內容（排程時間選單、建立排程文字）都放得下，沒有被裁切${sizes.filter(x => x.clipped).map(x => '（' + x.id + ' 被裁）').join('')}`);
 await page.waitForTimeout(450);
 check(await page.evaluate(() => { const k = document.querySelector('#s8Seg2 .s8-knob').getBoundingClientRect(), b = document.getElementById('s8PickSched').getBoundingClientRect(); return Math.abs(k.left - b.left) < 1.5 && Math.abs(k.width - b.width) < 1.5; }), '選「設定排程」：旋鈕滑到它底下（含月日時分選單）');
-const slack = await page.evaluate(() => { const t = document.getElementById('s8Seg2'); const kids = Array.from(t.children).filter(e => !e.classList.contains('s8-knob')); const used = kids.reduce((n, e) => n + e.getBoundingClientRect().width, 0) + 6; return Math.round(t.getBoundingClientRect().width - used); });
+const slack = await page.evaluate(() => { const t = document.getElementById('s8Seg2'); const kids = Array.from(t.children).filter(e => !e.classList.contains('s8-knob')); const used = kids.reduce((n, e) => n + e.getBoundingClientRect().width, 0) + (kids.length - 1) * 14 + 10; return Math.round(t.getBoundingClientRect().width - used); });
 const wNow = await page.evaluate(() => Math.round(document.getElementById('s8Seg2').getBoundingClientRect().width));
 check(slack <= 8, `統一寬度由最長的控制項決定，沒有硬塞空間（寬 ${wNow}px，最長那一個多出 ${slack}px）`);
+const confirmSz = await page.evaluate(() => { const i = document.getElementById('s8ConfirmTotal').getBoundingClientRect(), l = document.getElementById('s8ConfirmLabel').getBoundingClientRect(); return { iw: Math.round(i.width), ih: Math.round(i.height), lw: Math.round(l.width), lh: Math.round(l.height) }; });
+check(confirmSz.iw === confirmSz.lw && confirmSz.ih === confirmSz.lh, `確認人數的數字框與旁邊的按鈕同寬同高（${confirmSz.iw}×${confirmSz.ih} ／ ${confirmSz.lw}×${confirmSz.lh}）`);
+const insets = await page.evaluate(() => ['s8PrepTrack', 's8Seg2', 's8ConfirmBox', 's8CopyTrack', 's8CreateTrack'].map(id => { const t = document.getElementById(id), tr = t.getBoundingClientRect(), b = t.querySelector(':scope > .s8-segbtn').getBoundingClientRect(); const last = Array.from(t.querySelectorAll(':scope > .s8-segbtn')).pop().getBoundingClientRect(); return { id, top: +(b.top - tr.top).toFixed(1), bottom: +(tr.bottom - b.bottom).toFixed(1), left: +(b.left - tr.left).toFixed(1), right: id === 's8CopyTrack' || id === 's8CreateTrack' || id === 's8Seg2' ? +(tr.right - last.right).toFixed(1) : null }; }));
+check(insets.every(x => x.top === 5 && x.bottom === 5 && x.left === 5 && (x.right === null || x.right === 5)), `所有步驟的按鈕離灰色外框都是同樣的距離 5px：${insets.map(x => `${x.id}(${x.top}/${x.bottom}/${x.left}/${x.right})`).join(' ')}`);
+const pairGap = await page.evaluate(() => { const a = document.getElementById('s8PickDraft').getBoundingClientRect(), b = document.getElementById('s8PickSched').getBoundingClientRect(); return Math.round(b.left - a.right); });
+check(pairGap >= 12, `「存成草稿」「設定排程」兩個按鈕中間間距加大（${pairGap}px）`);
 await shot('s8-5-step5-schedule');
 
 // ===== 7. 建立排程：確認視窗、送出指定時間、紅字橫幅、暫停 =====

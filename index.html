@@ -91,7 +91,8 @@
   .stepper { display: flex; align-items: center; gap: 4px; justify-self: center; }
   @media (max-width: 1000px) { .topbar { grid-template-columns: auto 1fr auto; } .stepper { justify-self: end; } }
   /* ---- 試驗功能：右上角切換 + 第二套介面（試驗版）---- */
-  .tb-right { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+  .tb-left { grid-column: 1; }
+  .tb-right { grid-column: 3; justify-self: end; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
   .lab-toggle { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; border: none; border-radius: 99px; padding: 7px 16px 7px 12px; background: var(--track); color: var(--muted); font-size: 14px; font-weight: 700; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); }
   .lab-toggle::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; }
   .lab-toggle:hover { color: var(--text); }
@@ -154,24 +155,26 @@
   .s8-linkrow input { width: 100%; }
   /* 傳送資料給 S8：五個步驟（圓圈數字與頁面上方的步驟列同一套）*/
   .s8-steps { display: grid; gap: 14px; }
-  .s8-step { position: relative; display: flex; gap: 10px; align-items: flex-start; }
   .s8-step[hidden] { display: none; }
-  .s8-step > i { flex: none; width: 24px; height: 24px; margin-top: 6px; border-radius: 50%; background: rgba(0, 0, 0, .12); color: var(--muted); display: inline-grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; }
-  .s8-step.on > i { background: var(--accent); color: #fff; }
-  .s8-step.done > i { background: var(--success); color: #fff; }
-  /* 步驟之間的連線（與頁面上方步驟列同色）：下一步出現時灰線往下長出來；這一步完成後綠色從上往下填滿 */
-  .s8-step::before, .s8-step::after { content: ""; position: absolute; left: 11px; top: 32px; bottom: -18px; width: 2px; border-radius: 2px; transform: scaleY(0); transform-origin: top; pointer-events: none; }
-  .s8-step::before { background: rgba(0, 0, 0, .14); transition: transform .35s ease; }
-  .s8-step::after { background: var(--success); transition: transform .45s ease .1s; }
-  .s8-step.linked::before { transform: scaleY(1); }
-  .s8-step.linked.done::after { transform: scaleY(1); }
-  .s8-sbody { flex: 1; min-width: 0; }
+  .s8-sbody { min-width: 0; }
+  /* 水平步驟列（跟頁面上方的步驟列同一套：圓圈數字＋連線，只有目前這一步顯示名稱）；完成的圓圈變綠、連線由左往右填成綠色 */
+  .s8-hstepper { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .s8-hs { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 99px; color: var(--muted); font-size: 15px; font-weight: 700; white-space: nowrap; }
+  .s8-hs i { width: 24px; height: 24px; border-radius: 50%; background: rgba(0, 0, 0, .12); color: var(--muted); display: inline-grid; place-items: center; font-style: normal; font-size: 12px; transition: background .25s ease, color .25s ease; }
+  .s8-hs b { display: none; font-weight: 700; }
+  .s8-hs.on { color: var(--accent); }
+  .s8-hs.on b { display: inline; }
+  .s8-hs.on i { background: var(--accent); color: #fff; }
+  .s8-hs.done i { background: var(--success); color: #fff; }
+  .s8-hl { position: relative; width: 28px; height: 2px; border-radius: 2px; background: rgba(0, 0, 0, .14); overflow: hidden; }
+  .s8-hl::after { content: ""; position: absolute; inset: 0; background: var(--success); transform: scaleX(0); transform-origin: left; transition: transform .45s ease; }
+  .s8-hl.done::after { transform: scaleX(1); }
   /* 步驟裡的控制項：灰色底框（軌道）＋白色按鈕（有陰影）。步驟完成→按鈕變綠；未完成（填錯、時間不合、複製／傳送／建立失敗）→變紅。
      存成草稿／設定排程是跟頁面上方「第 1 頁／第 2 頁」同款的分段膠囊，選中的那一段由綠／紅色旋鈕滑過去。全部同寬同高。 */
-  .s8-steps { --s8-ctl-w: 360px; --s8-ctl-h: 44px; }
-  .s8-seg { position: relative; box-sizing: border-box; display: flex; align-items: stretch; gap: 4px; width: var(--s8-ctl-w); max-width: 100%; min-height: var(--s8-ctl-h); padding: 3px; border-radius: 99px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); font-size: 14px; font-weight: 700; color: var(--text); }
-  .s8-knob { position: absolute; z-index: 0; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--success); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); pointer-events: none; opacity: 0; }
-  .s8-seg[data-state="bad"] .s8-knob { background: #dc2626; }
+  .s8-steps { --s8-ctl-w: 360px; --s8-ctl-h: 46px; --s8-inset: 5px; --s8-btn-w: 108px; }
+  .s8-seg { position: relative; box-sizing: border-box; display: flex; align-items: stretch; gap: 4px; width: var(--s8-ctl-w); max-width: 100%; min-height: var(--s8-ctl-h); padding: var(--s8-inset); border-radius: 99px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); font-size: 14px; font-weight: 700; color: var(--text); }
+  .s8-knob { position: absolute; z-index: 0; left: 0; top: var(--s8-inset); bottom: var(--s8-inset); width: 0; border-radius: 99px; background: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); pointer-events: none; opacity: 0; }
+  .s8-seg.pair { gap: 14px; }   /* 存成草稿／設定排程 兩顆中間加大間距 */
   .s8-seg.has .s8-knob { opacity: 1; }
   .s8-seg.ready .s8-knob { transition: transform .3s cubic-bezier(.3, .9, .3, 1), width .3s cubic-bezier(.3, .9, .3, 1), opacity .2s ease, background .25s ease; }
   .s8-steps .s8-segbtn { position: relative; z-index: 1; box-sizing: border-box; flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; max-width: none; height: auto; min-height: 0; margin: 0; padding: 0 20px; border: none; border-radius: 99px; background: var(--knob); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); transition: background .25s ease, color .25s ease; }
@@ -182,16 +185,21 @@
   .s8-steps .s8-segbtn[data-state="ok"] { background: var(--success); color: #fff; }
   .s8-steps .s8-segbtn[data-state="bad"] { background: #dc2626; color: #fff; }
   /* 存成草稿／設定排程：被選中的那一段變透明，底下的綠／紅旋鈕滑過去 */
-  .s8-steps #s8Seg2 > .s8-segbtn.active { background: transparent; box-shadow: none; color: #fff; filter: none; }
-  .s8-steps #s8Seg2 > .s8-segbtn.active input { color: var(--text); }
-  .s8-segpill { flex: 1 1 auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+  .s8-steps .s8-seg.pair > .s8-segbtn.active { background: transparent; box-shadow: none; color: #fff; filter: none; }
+  .s8-steps .s8-seg.pair > .s8-segbtn.active input { color: var(--text); }
+  .s8-steps .s8-segbtn.s8-segpill { flex: 1 1 auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
   .s8-segstatus, .s8-segbody { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--text); }
   .s8-segstatus[hidden] { display: none; }
   .s8-segstatus.bad { color: #b91c1c; }
   .s8-cb { position: relative; display: inline-flex; align-items: center; }
   .s8-cb input[type="text"] { width: 2.5em; margin: 0; padding: 3px 13px 3px 4px; text-align: center; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
   .s8-cb-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 9px; line-height: 1; color: var(--muted); cursor: pointer; user-select: none; }
-  .s8-segbody input[type="text"] { width: 7.5em; margin: 0; padding: 3px 12px; border: none; border-radius: 99px; background: var(--card-bg); color: var(--text); font: inherit; font-weight: 700; }
+  /* 確認人數：數字框跟旁邊的按鈕一樣大（同寬同高、白底、陰影） */
+  .s8-seg.confirm { gap: 14px; }
+  .s8-steps .s8-segbtn.lbl { width: var(--s8-btn-w); padding: 0; }
+  .s8-segbody { padding: 0; gap: 10px; }
+  .s8-segbody input[type="text"] { box-sizing: border-box; width: var(--s8-btn-w); align-self: stretch; margin: 0; padding: 0 12px; border: none; border-radius: 99px; background: var(--knob); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
+  .s8-segbody input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .s8-cblist { position: fixed; z-index: 100000; max-height: 220px; overflow: auto; padding: 4px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
   .s8-cblist[hidden] { display: none; }
   .s8-cblist div { padding: 4px 14px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 14px; cursor: pointer; }
@@ -264,6 +272,7 @@
     .stage { padding-bottom: 150px; }
     .float-stack { width: 100%; max-width: 560px; max-height: none; margin: 0 auto 4px; padding: 4px 0 12px; }
     .topbar { display: flex; flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 8px; }
+    .tb-right { margin-left: auto; }
     .stepper { justify-self: auto; }
   }
   .card {
@@ -1240,9 +1249,15 @@
       </div>
       <ul class="s8-errs" id="s8Errs"></ul>
       <div class="s8-page">傳送資料給S8</div>
+      <div class="s8-hstepper" id="s8HStepper" role="list" aria-label="傳送步驟">
+        <span class="s8-hs on" id="s8Dot1" role="listitem"><i>1</i><b>傳送資料</b></span><span class="s8-hl" id="s8Line1"></span>
+        <span class="s8-hs" id="s8Dot2" role="listitem"><i>2</i><b>選擇方式</b></span><span class="s8-hl" id="s8Line2"></span>
+        <span class="s8-hs" id="s8Dot3" role="listitem"><i>3</i><b>確認人數</b></span><span class="s8-hl" id="s8Line3"></span>
+        <span class="s8-hs" id="s8Dot4" role="listitem"><i>4</i><b>複製名稱</b></span><span class="s8-hl" id="s8Line4"></span>
+        <span class="s8-hs" id="s8Dot5" role="listitem"><i>5</i><b>建立</b></span>
+      </div>
       <div class="s8-steps" id="s8Steps">
         <div class="s8-step on" id="s8Step1">
-          <i>1</i>
           <div class="s8-sbody">
             <div class="s8-seg" id="s8PrepTrack">
               <button type="button" class="s8-segbtn" id="s8PrepBtn">傳送資料</button>
@@ -1251,9 +1266,8 @@
           </div>
         </div>
         <div class="s8-step" id="s8Step2" hidden>
-          <i>2</i>
           <div class="s8-sbody">
-            <div class="s8-seg" id="s8Seg2"><span class="s8-knob" aria-hidden="true"></span>
+            <div class="s8-seg pair" id="s8Seg2"><span class="s8-knob" aria-hidden="true"></span>
               <button type="button" class="s8-segbtn" id="s8PickDraft">存成草稿</button>
               <div class="s8-segbtn s8-segpill" id="s8PickSched" role="group" tabindex="0" aria-label="設定排程時間">設定排程
                 <span class="s8-cb"><input type="text" id="s8Mo" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="月"><span class="s8-cb-btn" data-for="s8Mo" aria-hidden="true">▾</span></span>月<span class="s8-cb"><input type="text" id="s8Dd" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="日"><span class="s8-cb-btn" data-for="s8Dd" aria-hidden="true">▾</span></span>日<span class="s8-cb"><input type="text" id="s8Hh" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="時"><span class="s8-cb-btn" data-for="s8Hh" aria-hidden="true">▾</span></span><span>:</span><span class="s8-cb"><input type="text" id="s8Mi" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="分"><span class="s8-cb-btn" data-for="s8Mi" aria-hidden="true">▾</span></span>
@@ -1263,10 +1277,9 @@
           </div>
         </div>
         <div class="s8-step" id="s8Step3" hidden>
-          <i>3</i>
           <div class="s8-sbody">
-            <div class="s8-seg" id="s8ConfirmBox">
-              <span class="s8-segbtn" id="s8ConfirmLabel">確認人數</span>
+            <div class="s8-seg confirm" id="s8ConfirmBox">
+              <span class="s8-segbtn lbl" id="s8ConfirmLabel">確認人數</span>
               <div class="s8-segbody">
                 <input type="text" id="s8ConfirmTotal" inputmode="numeric" autocomplete="off" placeholder="輸入數字" aria-label="確認人數">
                 <span class="s8-mark" id="s8ConfirmMark" aria-live="polite"></span>
@@ -1275,13 +1288,11 @@
           </div>
         </div>
         <div class="s8-step" id="s8Step4" hidden>
-          <i>4</i>
           <div class="s8-sbody">
             <div class="s8-seg" id="s8CopyTrack"><button type="button" class="s8-segbtn solo" id="s8CopyName"><span id="s8CopyTxt">複製群發名稱</span><span class="s8-btnok" id="s8CopyOk" aria-label="已複製" hidden>✓</span></button></div>
           </div>
         </div>
         <div class="s8-step" id="s8Step5" hidden>
-          <i>5</i>
           <div class="s8-sbody">
             <div class="s8-seg" id="s8CreateTrack"><button type="button" class="s8-segbtn solo" id="s8CreateBtn">建立草稿</button></div>
             <p class="s8-tip" id="s8Tip"></p>
@@ -5263,15 +5274,18 @@ function s8UpdateSteps() {
   if (!ready) s8Flow.copied = false;
   const show = (id, on) => { $s8(id).hidden = !on; };
   show('s8Step2', prepared); show('s8Step3', prepared && !!choice); show('s8Step4', ready); show('s8Step5', ready && s8Flow.copied);
-  // 步驟之間的連線：每個「後面還有可見步驟」的步驟都長出一條線（CSS 動畫）
-  const shown = ['s8Step1', 's8Step2', 's8Step3', 's8Step4', 's8Step5'].map($s8).filter(el => !el.hidden);
-  shown.forEach((el, i) => el.classList.toggle('linked', i < shown.length - 1));
-  const mark = (id, done, on) => { const el = $s8(id); el.classList.toggle('done', !!done); el.classList.toggle('on', !done && !!on); };
+  const mark = (id, done, on) => {
+    const el = $s8(id); el.classList.toggle('done', !!done); el.classList.toggle('on', !done && !!on);
+    const n = id.slice(-1), dot = $s8(`s8Dot${n}`), line = $s8(`s8Line${n}`);   // 水平步驟列：圓圈跟連線同步
+    dot.classList.toggle('done', !!done); dot.classList.toggle('on', !done && !!on);
+    if (line) line.classList.toggle('done', !!done);
+  };
   mark('s8Step1', prepared, !prepared);
   mark('s8Step2', prepared && !!choice && timeOk, prepared);
   mark('s8Step3', confirmOk, prepared && !!choice);
   mark('s8Step4', ready && s8Flow.copied, ready);
   mark('s8Step5', false, ready && s8Flow.copied);
+  const ons = Array.from(document.querySelectorAll('.s8-hs.on')); ons.slice(0, -1).forEach(d => d.classList.remove('on'));   // 同時只標示最後（目前）這一步
   $s8('s8PickDraft').classList.toggle('active', choice === 'draft');
   $s8('s8PickSched').classList.toggle('active', choice === 'schedule');
   const wm = $s8('s8WhenMsg');
@@ -5285,7 +5299,6 @@ function s8UpdateSteps() {
   cm.title = !raw ? '' : (typedOk ? '人數正確' : '人數不符');
   // 步驟按鈕顏色：完成→綠；未完成（填錯、時間不合、失敗）→紅；還沒動作→白
   const setSt = (el, st) => { if (st) el.dataset.state = st; else delete el.dataset.state; };
-  setSt($s8('s8Seg2'), choice ? (timeOk ? 'ok' : 'bad') : '');
   setSt($s8('s8ConfirmLabel'), !raw ? '' : (typedOk ? 'ok' : 'bad'));
   setSt($s8('s8CopyName'), s8Flow.copied ? (s8Flow.copyOk ? 'ok' : 'bad') : '');
   setSt($s8('s8CreateBtn'), s8Flow.createBad ? 'bad' : '');
