@@ -15,7 +15,7 @@ function fakeR2() {
   return { store, async put(k, bytes, opts) { store.set(k, { bytes, httpMetadata: opts && opts.httpMetadata }); }, async get(k) { const o = store.get(k); return o ? { body: o.bytes, httpMetadata: o.httpMetadata } : null; } };
 }
 const PNG_B64 = btoa(String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4));
-const imagesB64 = () => Object.fromEntries([240, 300, 460, 700, 1040].map(w => [w, PNG_B64]));
+const imagesB64 = () => ({ 1040: PNG_B64 });
 const page = (h = 800) => ({ width: 1040, height: h, images: imagesB64(), buttons: [{ title: 't', url: 'https://example.com/a', x: '0%', y: '0%', width: '50%', height: '50%' }, { title: 't2', url: 'https://example.com/b', x: '50%', y: '50%', width: '50%', height: '50%' }] });
 const prepBody = (extra = {}) => ({ org: 'news', name: 'x', altText: '測試推播', pages: [page(), page()], ...extra });
 
@@ -113,12 +113,12 @@ test('prepare：沒綁 R2 → 503', async () => {
   assert.match(r.json.error, /LINE_IMG/);
 });
 
-test('prepare：2 頁 × 5 種寬度共 10 張進 R2，路徑不含副檔名，回傳 prepareToken', async () => {
+test('prepare：每頁只存 1040 這一張（2 頁共 2 張）進 R2，路徑不含副檔名，回傳 prepareToken', async () => {
   const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   const j = await prepared(env);
   assert.equal(j.pages, 2);
-  assert.equal(r2.store.size, 10);
-  for (const k of r2.store.keys()) assert.match(k, /^line\/[0-9a-f]{32}\/(240|300|460|700|1040)$/);
+  assert.equal(r2.store.size, 2);
+  for (const k of r2.store.keys()) assert.match(k, /^line\/[0-9a-f]{32}\/1040$/);
   assert.equal([...r2.store.values()][0].httpMetadata.contentType, 'image/png');
   assert.ok(j.prepareToken.length > 20);
 });
@@ -128,22 +128,25 @@ test('prepare：不合格的輸入都回 400 且不存任何圖', async () => {
   const bad = [
     prepBody({ org: 'other' }), prepBody({ altText: '' }), prepBody({ pages: [] }),
     prepBody({ pages: [{ ...page(), height: 500 }] }),
-    prepBody({ pages: [{ ...page(), images: { ...imagesB64(), 700: btoa('not an image') } }] }),
-    prepBody({ pages: [{ ...page(), images: { ...imagesB64(), 240: '' } }] }),
+    prepBody({ pages: [{ ...page(), images: { 700: PNG_B64 } }] }),   // 沒有 1040
+    prepBody({ pages: [{ ...page(), images: { 1040: btoa('not an image') } }] }),
+    prepBody({ pages: [{ ...page(), images: { 1040: '' } }] }),
     prepBody({ pages: [{ ...page(), buttons: [{ title: 't', url: 'javascript:alert(1)', x: '0%', y: '0%', width: '50%', height: '50%' }] }] }),
   ];
   for (const b of bad) { const r = await req(env, '/line/prepare', b); assert.equal(r.status, 400, JSON.stringify(b).slice(0, 80)); }
   assert.equal(r2.store.size, 0);
 });
 
-test('GET /line-img：只提供合法路徑與寬度，不用副檔名、不用憑證', async () => {
+test('GET /line-img：五種寬度的網址都回同一張 1040；其他路徑與寬度 404，不用副檔名、不用憑證', async () => {
   const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   await prepared(env);
-  const key = [...r2.store.keys()].find(k => k.endsWith('/700'));
-  const [, pid] = key.split('/');
-  const ok = await worker.fetch(new Request(`https://worker.test/line-img/${pid}/700`), env);
-  assert.equal(ok.status, 200);
-  assert.equal(ok.headers.get('content-type'), 'image/png');
+  const [, pid] = [...r2.store.keys()][0].split('/');
+  for (const w of [240, 300, 460, 700, 1040]) {
+    const ok = await worker.fetch(new Request(`https://worker.test/line-img/${pid}/${w}`), env);
+    assert.equal(ok.status, 200, String(w));
+    assert.equal(ok.headers.get('content-type'), 'image/png');
+    assert.equal(ok.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  }
   for (const p of [`/line-img/${pid}/700.png`, `/line-img/${pid}/123`, `/line-img/${'g'.repeat(32)}/700`, `/line-img/${'0'.repeat(32)}/700`]) {
     const r = await worker.fetch(new Request(`https://worker.test${p}`), env);
     assert.equal(r.status, 404, p);

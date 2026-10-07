@@ -72,7 +72,7 @@
    | `LINE_ALLOW_OFFICIAL` | 填 `1` 才允許發正式帳號；**沒設就一律拒絕** |
 
    **Channel secret 等同密碼，不要貼在對話或程式碼裡。**
-2. **R2 圖片空間**：Cloudflare → R2 → 建立一個 bucket（名稱隨意）；再到 Worker → Settings → Bindings → Add → **R2 bucket**，**變數名稱必須填 `LINE_IMG`**，選剛建的 bucket → Deploy。LINE 的 imagemap 要求圖片放在你自己的 HTTPS 網址，並提供 240／300／460／700／1040 五種寬度；網頁會縮好五種寬度，Worker 存進 R2，再由 `GET /line-img/<id>/<寬度>`（公開、網址不含副檔名）提供給 LINE 抓。**圖片要一直留著**（使用者每次開啟訊息 LINE 都會抓），不要清掉 bucket。
+2. **R2 圖片空間**：Cloudflare → R2 → 建立一個 bucket（名稱隨意）；再到 Worker → Settings → Bindings → Add → **R2 bucket**，**變數名稱必須填 `LINE_IMG`**，選剛建的 bucket → Deploy。LINE 的 imagemap 要求圖片放在你自己的 HTTPS 網址，且 `baseUrl/{240,300,460,700,1040}` 五種寬度的網址都要能下載（網址不能有副檔名）。網頁只上傳「與 S8 同一張」的 1040 圖（位元組完全相同），Worker 存進 R2，並由 `GET /line-img/<id>/<寬度>`（公開）對**五種寬度的網址都回這一張 1040**：LINE 不管挑哪種寬度，抓到的都是完整畫質，由手機自己縮小，不經過我們的縮圖。**圖片要一直留著**（使用者每次開啟訊息 LINE 都會抓），不要清掉 bucket。
 3. 貼上最新的 `og-image-proxy.js` 並 Deploy。
 
 ### 怎麼運作
@@ -80,7 +80,7 @@
 | 端點 | 作用 |
 |---|---|
 | `POST /line/status` | 用 Channel ID＋secret 現場換一個 15 分鐘的 stateless token，唯讀查帳號名稱、好友數（LINE 昨日統計）、本月訊息額度與已用 |
-| `POST /line/prepare` | 檢查內容、把每頁 5 種寬度的圖片存進 R2、封存要發的內容（30 分鐘有效） |
+| `POST /line/prepare` | 檢查內容、把每頁 1040 寬的圖片存進 R2、封存要發的內容（30 分鐘有效） |
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
 | `POST /line/send` | 再 validate 一次、確認額度與人數後 `broadcast` 給全部好友 |
 

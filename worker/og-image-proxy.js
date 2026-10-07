@@ -745,10 +745,10 @@ async function handleS8Status(request, env) {
 // ===========================================================================
 // LINE 官方帳號直連（試驗）：準備、檢查，以及（使用者已授權）對「全部好友」broadcast。沒有排程、沒有草稿：發送成功就是已經發出。
 //   POST /line/status    → 檢查帳號（名稱、好友數、本月額度與已用）— 全部唯讀
-//   POST /line/prepare   → 把 5 種寬度的圖片存進 R2（綁定名稱 LINE_IMG），封存要用的內容（30 分鐘有效）
+//   POST /line/prepare   → 把每頁 1040 寬的圖片存進 R2（綁定名稱 LINE_IMG），封存要用的內容（30 分鐘有效）
 //   POST /line/validate  → 把準備好的內容交給 LINE 的 validate/broadcast 檢查格式（只檢查，不會發送）
 //   POST /line/send      → validate 通過後 broadcast 給全部好友。預設只允許測試帳號；正式帳號要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
-//   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{寬度}，網址不能有副檔名）
+//   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
 // 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
 //   LINE_CHANNEL_ID_NEWS / _SECRET_NEWS、LINE_CHANNEL_ID_ENT / _SECRET_ENT（正式帳號）。
 // 每次呼叫現場用 channel ID＋secret 換 15 分鐘的 stateless token（可無限發行、不會讓別人（例如 S8）的 token 失效），不存任何 token。
@@ -757,7 +757,7 @@ const LINE_API = 'https://api.line.me';
 const LINE_CHANNEL_SUFFIX = { test: 'TEST', news: 'NEWS', ent: 'ENT' };
 const LINE_IMG_WIDTHS = [240, 300, 460, 700, 1040];
 const LINE_PREPARE_TTL_MS = 30 * 60 * 1000;
-const LINE_MAX_IMG_BYTES = 8 * 1024 * 1024;   // LINE 上限是 10MB
+const LINE_MAX_IMG_BYTES = 10 * 1024 * 1024;   // LINE 上限是 10MB
 // Worker 只能對 LINE 做這幾件事（方法＋路徑），其他一律不給：沒有 push／multicast／narrowcast、沒有改頻道設定、沒有重發長效 token。
 const LINE_ALLOWED_CALLS = [
   /^POST \/oauth2\/v3\/token$/,
@@ -849,7 +849,7 @@ async function handleLineStatus(request, env) {
 const lineHex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
 function lineDecodeImage(b64, w) {
   let bytes; try { bytes = Uint8Array.from(atob(String(b64 || '')), c => c.charCodeAt(0)); } catch { throw badInput(`${w}px 圖片不是有效的 base64`); }
-  if (!bytes.length || bytes.length > LINE_MAX_IMG_BYTES) throw badInput(`${w}px 圖片大小不符（必須小於 8MB）`);
+  if (!bytes.length || bytes.length > LINE_MAX_IMG_BYTES) throw badInput(`${w}px 圖片大小不符（必須小於 10MB）`);
   const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
   const jpg = bytes[0] === 0xff && bytes[1] === 0xd8;
   if (!png && !jpg) throw badInput(`${w}px 圖片必須是 PNG 或 JPEG`);
@@ -858,7 +858,7 @@ function lineDecodeImage(b64, w) {
 async function handleLinePrepare(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
-  const { body, error } = await lineReadBody(request, env, 48 * 1024 * 1024); if (error) return error;
+  const { body, error } = await lineReadBody(request, env, 28 * 1024 * 1024); if (error) return error;
   try {
     if (!env || !env.LINE_IMG || typeof env.LINE_IMG.put !== 'function') throw Object.assign(new Error('Worker 尚未綁定 R2（綁定變數名稱必須是 LINE_IMG），圖片沒地方放。請見 worker/README.md「LINE 直連」'), { status: 503 });
     if (body.org !== 'news' && body.org !== 'ent') throw badInput('org 只能是 news 或 ent');
@@ -868,11 +868,9 @@ async function handleLinePrepare(request, env) {
     const pages = [];
     for (const pg of body.pages) {
       const imgs = pg.images && typeof pg.images === 'object' ? pg.images : {};
-      const decoded = LINE_IMG_WIDTHS.map(w => [w, lineDecodeImage(imgs[w], w)]);
+      const { bytes, type } = lineDecodeImage(imgs[1040], 1040);
       const pid = lineHex(16);
-      for (const [w, { bytes, type }] of decoded) {
-        await env.LINE_IMG.put(`line/${pid}/${w}`, bytes, { httpMetadata: { contentType: type, cacheControl: 'public, max-age=31536000, immutable' } });
-      }
+      await env.LINE_IMG.put(`line/${pid}/1040`, bytes, { httpMetadata: { contentType: type, cacheControl: 'public, max-age=31536000, immutable' } });
       const px = v => Math.round(parseFloat(v) / 100 * 1040);
       pages.push({
         pid, width: 1040, height: pg.height,
@@ -889,7 +887,7 @@ async function handleLineImage(request, env) {
   const m = new URL(request.url).pathname.match(/^\/line-img\/([0-9a-f]{32})\/(\d{3,4})$/);
   if (!m || !LINE_IMG_WIDTHS.includes(Number(m[2]))) return new Response('not found', { status: 404 });
   if (!env || !env.LINE_IMG || typeof env.LINE_IMG.get !== 'function') return new Response('not configured', { status: 503 });
-  const obj = await env.LINE_IMG.get(`line/${m[1]}/${m[2]}`);
+  const obj = await env.LINE_IMG.get(`line/${m[1]}/1040`);   // 五種寬度的網址都回同一張 1040（LINE 要求五種都要能下載；手機自己縮小）
   if (!obj) return new Response('not found', { status: 404 });
   const type = (obj.httpMetadata && obj.httpMetadata.contentType) || 'image/png';
   return new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } });

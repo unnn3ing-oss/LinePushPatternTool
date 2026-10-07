@@ -5573,30 +5573,13 @@ function lineRender() {
   lineRenderOut();
 }
 function lineInvalidateIfChanged() { const st = lineByMode[mode]; if (st && st.prep && st.prep.sig !== lineSig()) { st.prep = null; st.testToken = ''; st.sent = { test: false, official: false }; lineOut('內容有更動，已作廢上傳的資料，請重新「上傳圖片並檢查格式」。', 'bad'); } lineRender(); }
-// LINE 的圖要自己準備 5 種寬度，最大 1040（LINE 規定）。1040 這張用「不壓縮」的 PNG 直接從畫面重畫（不像 S8 那邊為了 2MB 上限可能降過色階）；
-// 比較小的寬度從這張大圖逐步對半縮小再微調到目標寬度，比一次縮小清楚，文字邊緣不會糊掉。
-const lineCanvasPng = c => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('產生圖片失敗')), 'image/png'));
-function lineResizeCanvas(src, w) {
-  const c = document.createElement('canvas'); c.width = w; c.height = Math.round(src.height * w / src.width);
-  const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(src, 0, 0, c.width, c.height);
-  return c;
-}
-function lineScaleTo(src, w) {
-  let c = src;
-  while (c.width / 2 >= w) c = lineResizeCanvas(c, Math.ceil(c.width / 2));
-  return c.width === w ? c : lineResizeCanvas(c, w);
-}
+// LINE 的 imagemap 規定 baseUrl/{240,300,460,700,1040} 五種寬度都要能下載。這裡只送「跟 S8 同一張」的 1040 圖（預覽用的那個 blob，位元組完全相同），
+// Worker 對五種寬度的網址都回這一張：LINE 不管挑哪種寬度抓到的都是完整 1040，由手機自己縮小，不經過我們的縮圖，畫質不會比 S8 差。
 async function linePageImages(pageIndex) {
-  const off = renderPageToOffscreen(pages[pageIndex], 'final');
-  if (off.width !== 1040) throw new Error(`頁面圖寬度是 ${off.width}，LINE 直發需要 1040`);
-  const images = {};
-  for (const w of LINE_WIDTHS) {
-    const blob = await lineCanvasPng(w === 1040 ? off : lineScaleTo(off, w));
-    if (blob.size > 8 * 1024 * 1024) throw new Error(`第 ${pageIndex + 1} 頁 ${w}px 圖片超過 8MB（LINE 上限 10MB），請換掉細節很多的照片`);
-    images[w] = await blobToBase64(blob);
-  }
-  return images;
+  const im = s8State.images[pageIndex];
+  if (!im || !im.blob) throw new Error(`第 ${pageIndex + 1} 頁圖片還在產生中`);
+  if (im.tooBig) throw new Error(`第 ${pageIndex + 1} 頁圖片超過 2MB，請換掉細節很多的照片後重做`);
+  return { 1040: await blobToBase64(im.blob) };
 }
 async function lineRun(fn) {
   if (lineBusy) return;
@@ -5625,10 +5608,9 @@ $line('linePrepBtn').addEventListener('click', () => lineRun(async () => {
   const d = s8Collect(), errs = s8Validate(d);
   if (errs.length) throw new Error(`還不能上傳：${errs.join('；')}`);
   const st = lineSt(); st.prep = null; st.testToken = ''; st.sent = { test: false, official: false }; st.retryKey = { test: '', official: '' };
-  lineOut('重畫圖片、縮圖並上傳中…（每頁 5 種寬度，1040 為不壓縮 PNG）');
+  lineOut('上傳圖片中…（與 S8 同一張 1040 圖）');
   const sig = lineSig();
   if (s8State.sig !== s8Signature()) throw new Error('畫面內容和這個視窗開啟時不同，請關閉視窗後重新開啟');
-  await ensureAssetsReady();
   const payload = [];
   for (let p = 0; p < d.pages.length; p++) {
     const images = await linePageImages(p);
@@ -5639,7 +5621,7 @@ $line('linePrepBtn').addEventListener('click', () => lineRun(async () => {
   const vr = await s8Api('/line/validate', { prepareToken: pr.prepareToken, channel: lineChannel() });
   if (!vr.valid) { lineOut(`✗ LINE 說格式不對，沒有發送任何東西：\n${vr.message}`, 'bad'); return; }
   st.prep = { prepareToken: pr.prepareToken, id: pr.id, sig };
-  lineOut(`✓ 圖片已上傳（${pr.pages} 頁 × 5 種寬度），LINE 格式檢查通過。\n這一步沒有發送任何東西；確認無誤後可按「發送給全部好友」。\n（內容有任何更動，這份準備好的資料就會作廢，要重新上傳。）`, 'ok');
+  lineOut(`✓ 圖片已上傳（${pr.pages} 頁，1040 寬），LINE 格式檢查通過。\n這一步沒有發送任何東西；確認無誤後可按「發送給全部好友」。\n（內容有任何更動，這份準備好的資料就會作廢，要重新上傳。）`, 'ok');
 }));
 $line('lineSendBtn').addEventListener('click', () => lineRun(async () => {
   const st = lineSt(), official = lineIsOfficial(), ch = official ? 'official' : 'test';
