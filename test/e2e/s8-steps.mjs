@@ -80,16 +80,7 @@ const dialogs = [];
 let dialogAnswer = true;
 page.on('dialog', async d => { dialogs.push(d.message()); await (dialogAnswer ? d.accept() : d.dismiss()); });
 
-check(await page.evaluate(() => !document.getElementById('labToggle').title), '「試驗功能」不用瀏覽器內建的 title 小提示');
-check(await page.locator('#labTip').isHidden(), '沒滑過時泡泡不顯示');
-await page.hover('#labToggle');
-await page.waitForTimeout(450);
-const tip = await page.evaluate(() => { const t = document.getElementById('labTip'), r = t.getBoundingClientRect(), b = document.getElementById('labToggle').getBoundingClientRect(), c = getComputedStyle(t); return { text: t.textContent, show: t.classList.contains('show'), opacity: c.opacity, below: r.top >= b.bottom, cx: Math.abs((r.left + r.width / 2) - (b.left + b.width / 2)), radius: c.borderTopLeftRadius, bg: c.backgroundColor }; });
-check(tip.text === 'S8串接測試' && tip.show && tip.opacity === '1' && tip.below && tip.cx < 40 && parseFloat(tip.radius) >= 12, `滑過「試驗功能」：懸浮泡泡顯示「S8串接測試」（在按鈕下方，${JSON.stringify(tip)}）`);
-await page.screenshot({ path: path.join(SHOTS, 's8-0-lab-tip.png'), clip: { x: 600, y: 0, width: 500, height: 110 } });
-await page.mouse.move(300, 600);
-await page.waitForTimeout(450);
-check(await page.locator('#labTip').isHidden(), '滑開後泡泡淡出並隱藏');
+check(await page.evaluate(() => !document.getElementById('labToggle').title) && !(await page.locator('#labTip').count()), '「試驗功能」沒有 title 小提示，也沒有懸浮泡泡');
 
 // ===== 1. 預覽：頁籤與點格子看完整連結 =====
 await openDialog();
