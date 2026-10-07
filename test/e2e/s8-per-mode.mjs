@@ -30,7 +30,7 @@ await page.evaluate(() => setLab(true));
 const vis = async sel => !(await page.locator(sel).isHidden());
 const fillUrls = () => page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; pages.forEach(pg => pg.cards.forEach((c, i) => { c.url = `https://example.com/${mode}/${i}`; })); });
 const gotoMode = async m => { await page.click(`.mode-tab[data-mode="${m}"]`); await page.waitForTimeout(250); await fillUrls(); };
-const openS8 = async n => { await page.evaluate(() => openS8Dialog()); await page.waitForFunction(c => document.querySelectorAll('#s8Stage .s8-cell').length === c && (s8State.images.length === 2 || s8State.imgFailed), n, { timeout: 60000 }); await page.waitForTimeout(200); };
+const openS8 = async n => { await page.evaluate(() => (s8Md = 's8', openS8Dialog())); await page.waitForFunction(c => document.querySelectorAll('#s8Stage .s8-cell').length === c && (s8State.images.length === 2 || s8State.imgFailed), n, { timeout: 60000 }); await page.waitForTimeout(200); };
 const closeS8 = async () => { await page.click('#s8CloseBtn'); await page.waitForTimeout(150); };
 const setConfirm = v => page.evaluate(x => { const i = document.getElementById('s8ConfirmTotal'); i.value = x; i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
 const sendData = async () => { await page.click('#s8PrepBtn'); await page.waitForFunction(() => /傳送完成/.test(document.getElementById('s8PrepMsg').textContent)); };

@@ -67,7 +67,7 @@ await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
 
 async function openDialog() {
-  await page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; openS8Dialog(); });
+  await page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; (s8Md = 's8', openS8Dialog()); });
   await page.waitForFunction(() => document.querySelectorAll('#s8Stage .s8-cell').length === 6, null, { timeout: 60000 });
   await page.evaluate(() => {
     s8State.urls.forEach((row, p) => row.forEach((_, i) => { s8State.urls[p][i] = `https://example.com/p${p + 1}/n${i + 1}?utm_source=x`; }));
@@ -93,7 +93,7 @@ check(await page.evaluate(() => s8AltByMode[mode]) === '★我是推播標題 �
 await page.fill('#s8Alt', '');
 check(await page.evaluate(() => s8Collect().alt === '') && (await page.locator('#s8Errs li').allTextContents()).some(t => t.includes('推播通知')), '推播通知留白：列出「請填推播通知」錯誤');
 await page.fill('#s8Alt', '測試推播標題');
-check((await page.locator('.s8-ptab').count()) === 2 && (await page.textContent('.s8-ptab.active')) === '第 1 頁', '預覽上方有「第 1 頁／第 2 頁」切換，預設第 1 頁');
+check((await page.locator('#s8Ptabs .s8-ptab').count()) === 2 && (await page.textContent('#s8Ptabs .s8-ptab.active')) === '第 1 頁', '預覽上方有「第 1 頁／第 2 頁」切換，預設第 1 頁');
 check((await page.locator('#s8Stage img').count()) === 1, '預覽區一次只顯示一張圖');
 const box = await page.evaluate(() => { const s = document.getElementById('s8Stage').getBoundingClientRect(), i = document.querySelector('#s8Stage img').getBoundingClientRect(); return { dh: Math.abs(s.height - i.height), dt: Math.abs(s.top - i.top), dw: Math.abs(s.width - i.width) }; });
 check(box.dh < 0.5 && box.dt < 0.5 && box.dw < 0.5, `預覽框與圖片完全貼合，上下沒有多出灰色塊（高度差 ${box.dh.toFixed(1)}px）`);
@@ -110,7 +110,7 @@ check((await page.textContent('#s8LinkLbl')).includes(expectTitle), `字框上�
 check((await page.locator('#s8Stage .s8-cell').nth(1).getAttribute('title')) === expectTitle, '格子的滑過提示也是該格標題');
 check((await page.locator('#s8Stage .s8-cell').nth(0).getAttribute('title')).startsWith('項目1'), '還沒填標題的格子退回「項目1（位置）」');
 await page.click('.s8-ptab[data-sp="1"]');
-check((await page.textContent('.s8-ptab.active')) === '第 2 頁', '切到第 2 頁');
+check((await page.textContent('#s8Ptabs .s8-ptab.active')) === '第 2 頁', '切到第 2 頁');
 check(await page.isDisabled('#s8CellUrl') && (await page.inputValue('#s8CellUrl')) === '', '換頁後選取清空');
 await page.locator('#s8Stage .s8-cell').nth(4).click();
 check((await page.inputValue('#s8CellUrl')) === 'https://example.com/p2/n5?utm_source=x', '點第 2 頁第 5 格：顯示該格完整連結');
@@ -121,7 +121,7 @@ check((await page.locator('#s8Stage .s8-cell.bad').count()) === 1 && (await page
 await page.fill('#s8CellUrl', 'https://example.com/p2/n5?utm_source=x');
 check(await page.locator('#s8Imgs, #s8Pages, .s8-url, .s8-cap').count() === 0, '舊的「兩則連結清單」與「兩張圖」區塊已移除');
 check(await page.locator('.s8-note').count() === 0, '最上方舊說明已移除');
-check((await page.textContent('#s8Title')) === '排入 S8', '視窗標題是「排入 S8」');
+check((await page.textContent('#s8Title')) === '排入推播', '視窗標題是「排入推播」（左上有 LINE原生推播／S8推播 切換）');
 check(await page.locator('#s8CopyBtn, #s8DownloadBtn, #s8Prompt').count() === 0 && !(await page.textContent('.s8-modal')).includes('複製給 Claude 的指令') && !(await page.textContent('.s8-modal')).includes('下載兩張圖'), '「複製給 Claude 的指令」「下載兩張圖」與完整指令區已移除，只剩「關閉」');
 check(!(await page.textContent('.s8-modal')).includes('需要先在右上角「S8」視窗升級授權。流程'), '「傳送資料給S8」下方的說明已移除');
 await shot('s8-1-preview');
