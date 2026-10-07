@@ -44,6 +44,7 @@ await page.route(`${WORKER}/**`, async route => {
     reqs.create.push(body);
     if (createDelay) await new Promise(r => setTimeout(r, createDelay));
     if (createFail === 'error') return json({ error: 'S8 暫時無法使用，沒有建立任何東西' }, 502);
+    if (createFail === 'rate') return json({ error: '建立失敗：{"error":{"code":"rate_limit_exceeded","limitType":"credit_bucket","message":"Rate limit exceeded: credit exhausted (cost 100, remaining 48). Retry after 2124099s."}}' }, 502);
     if (createFail === 'created') return json({ ok: false, created: true, mode: body.mode, taskId: 'task_x1', warning: '群發已建立，但沒有成功暫停成草稿。它仍排在明天發送，請立即到 Super 8 Console 暫停或刪除，或按「重試暫停」。', total: 1234 });
     if (body.mode === 'schedule') return json({ ok: true, mode: 'schedule', taskId: 'task_sched01', scheduleAt: body.scheduleAt, status: 'scheduled', phase: 'scheduled', allowedActions: ['pause', 'delete'], total: 1234, orgId: 'org1' });
     return json({ ok: true, mode: 'draft', taskId: 'task_draft01', status: 'draft', phase: 'draft', scheduledWas: taipeiIso(Date.now() + 24 * 3600e3), total: 1234, orgId: 'org1' });
@@ -256,6 +257,8 @@ check(dflt.dt === `${dflt.d.slice(5, 7)}/${dflt.d.slice(8, 10)}` && dflt.tt === 
 check(dflt.min === ymd(taipeiParts(Date.now())) && dflt.max === ymd(taipeiParts(Date.now() + 7 * 86400e3)), `日期選擇器只讓選今天到 7 天內（${dflt.min} ～ ${dflt.max}）`);
 const pillText = await page.textContent('#s8PickSched');
 check(pillText.includes('設定排程') && pillText.includes(dflt.dt) && pillText.includes(dflt.tt), '「設定排程」膠囊內有日期與時間兩個選擇器');
+const mid = await page.evaluate(() => { const c = e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; }; const seg = document.getElementById('s8Seg2').querySelector('.s8-knob') || document.getElementById('s8Seg2'); const pill = document.getElementById('s8PickSched'); return { seg: c(document.getElementById('s8Seg2')), pill: c(pill), date: c(document.getElementById('s8DateBox')), time: c(document.getElementById('s8TimeBox')), left: c(document.getElementById('s8PickDraft')) }; });
+check(Math.abs(mid.date - mid.left) <= 1 && Math.abs(mid.time - mid.left) <= 1 && Math.abs(mid.pill - mid.left) <= 1, `日期／時間框與左側「存成草稿」垂直置中對齊（差 ${(mid.date - mid.left).toFixed(1)} / ${(mid.time - mid.left).toFixed(1)}px）`);
 await page.evaluate(() => { window.__picked = []; });
 await page.click('#s8DateBox'); await page.click('#s8TimeBox');
 check(JSON.stringify(await page.evaluate(() => window.__picked)) === JSON.stringify(['s8Date', 's8Time']), '點日期／時間會開啟原生的日期／時間選擇器');
@@ -338,6 +341,12 @@ const prob = await page.evaluate(() => { const p = document.getElementById('s8Pr
 check(prob.show && prob.below && prob.h > 20 && prob.text.includes('S8 暫時無法使用'), `下方彈出問題說明（在按鈕下方，高 ${prob.h}px）：${prob.text.slice(0, 20)}…`);
 check(!(await page.isDisabled('#s8CreateBtn')) && (await page.locator('#s8NoteOverlay').evaluate(e => !e.classList.contains('open'))), '沒建立成功時可以再按一次，且不會跳成功彈窗');
 await shot('s8-8-create-failed');
+createFail = 'rate';
+await page.click('#s8CreateBtn');
+await page.waitForFunction(() => /額度不足/.test(document.getElementById('s8Problem').textContent));
+const rate = await page.textContent('#s8Problem');
+check(rate.includes('需要 100 點') && rate.includes('剩 48 點') && rate.includes('24 天') && rate.includes('沒有建立任何東西') && rate.includes('rate_limit_exceeded'), 'S8 額度不足：改寫成白話（需要 100／剩 48／約 24 天後重置）並保留原文');
+await shot('s8-8b-rate-limit');
 createFail = 'created';
 await page.click('#s8CreateBtn');
 await page.waitForFunction(() => /已建立，但沒有成功暫停/.test(document.getElementById('s8Problem').textContent));

@@ -188,7 +188,7 @@
   .s8-steps .s8-segbtn[data-state="bad"] { background: #dc2626; color: #fff; }
   /* 存成草稿／設定排程：被選中的那一段變透明，底下的綠／紅旋鈕滑過去 */
   .s8-steps .s8-seg.pair > .s8-segbtn.active { background: transparent; box-shadow: none; color: #fff; filter: none; }
-  .s8-steps .s8-segbtn.s8-segpill { flex: 1 1 auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+  .s8-steps .s8-segbtn.s8-segpill { flex: 1 1 auto; align-self: stretch; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
   .s8-segstatus, .s8-segbody { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--text); }
   .s8-segstatus[hidden] { display: none; }
   .s8-segstatus.bad { color: #b91c1c; }
@@ -213,7 +213,8 @@
   .s8-segbody input[type="text"] { box-sizing: border-box; width: var(--s8-btn-w); align-self: stretch; margin: 0; padding: 0 12px; border: none; border-radius: 99px; background: var(--knob); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 .5px rgba(0, 0, 0, .06); }
   .s8-segbody input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   /* 排程日期（MM/DD）與時間（HH:MM）：看起來是白色小膠囊，點下去開原生的日期／時間選擇器 */
-  .s8-pk { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 72px; padding: 4px 14px; line-height: 1.2; border-radius: 99px; background: var(--card-bg); color: var(--text); font-weight: 700; cursor: pointer; }
+  .s8-pk { position: relative; display: inline-flex; align-items: center; justify-content: center; align-self: center; box-sizing: border-box; min-width: 72px; height: 28px; margin: 0; padding: 0 14px; line-height: 1; vertical-align: middle; border-radius: 99px; background: var(--card-bg); color: var(--text); font-weight: 700; cursor: pointer; }
+  .s8-pk > span { display: block; line-height: 1; font-variant-numeric: tabular-nums; }
   .s8-pk input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
   .s8-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
   /* 確認人數的 ✓／✗：圓圈＋綠／紅底 */
@@ -5531,6 +5532,21 @@ function s8DefaultTip() {
     ? '已連結。按「檢查連結狀態」可查看登入身分與可管理的組織。\n要撤銷授權：S8 Console → 使用者資訊 → Connected Apps。'
     : '尚未連結。按「連結 S8」會開啟 S8 的登入與授權視窗，一次授予讀取＋寫入權限，之後不用再重複授權。\n要撤銷授權：S8 Console → 使用者資訊 → Connected Apps。';
 }
+// S8 回的額度不足（rate_limit_exceeded）原始訊息是 JSON，改寫成白話並保留原文
+function s8FriendlyError(msg) {
+  const raw = String(msg || '');
+  if (!/rate_limit_exceeded|credit exhausted/i.test(raw)) return raw;
+  const num = re => { const m = raw.match(re); return m ? Number(m[1]) : NaN; };
+  const cost = num(/cost\s+(\d+)/i), left = num(/remaining\s+(\d+)/i), wait = num(/Retry after\s+(\d+)\s*s/i);
+  const parts = ['S8 額度不足，沒有建立任何東西。'];
+  if (Number.isFinite(cost) && Number.isFinite(left)) parts.push(`這個動作需要 ${cost} 點，目前只剩 ${left} 點。`);
+  if (Number.isFinite(wait) && wait > 0) {
+    const days = Math.floor(wait / 86400), hrs = Math.floor((wait % 86400) / 3600);
+    parts.push(`約 ${days > 0 ? `${days} 天 ${hrs} 小時` : hrs > 0 ? `${hrs} 小時` : `${Math.max(1, Math.ceil(wait / 60))} 分鐘`}後額度才會重置。`);
+  }
+  parts.push('這是 S8 帳號的額度上限，重試也不會成功；請等額度重置，或聯絡 S8 增加額度。');
+  return `${parts.join('')}\n（S8 原始訊息：${raw.slice(0, 300)}）`;
+}
 async function s8Api(path, body, headers = {}) {
   const lab = readLabAuth();
   if (!lab) { setLab(false); throw new Error('試驗功能憑證已過期，請重新輸入密碼'); }
@@ -5540,7 +5556,7 @@ async function s8Api(path, body, headers = {}) {
   let data = {};
   try { data = await res.json(); } catch (e) { /* not JSON */ }
   if (res.status === 401 && /試驗功能/.test(data.error || '')) { try { sessionStorage.removeItem(LAB_SESSION_KEY); } catch (e) { /* ok */ } setLab(false); }
-  if (!res.ok) throw new Error(data.error || `失敗（${res.status}）`);
+  if (!res.ok) throw new Error(s8FriendlyError(data.error) || `失敗（${res.status}）`);
   return data;
 }
 function s8ShowOut(text, copyable) { const o = document.getElementById('s8cOut'); o.textContent = text || s8DefaultTip(); document.getElementById('s8cCopyRow').hidden = !(text && copyable); }
