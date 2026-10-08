@@ -252,8 +252,19 @@
   .line-who { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
   .line-who[hidden] { display: none; }
   .line-who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-  .line-who label { font-size: 13px; font-weight: 600; color: var(--muted); }
-  .line-who select { min-width: 150px; max-width: 220px; }
+  .line-who-lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .ms { position: relative; }
+  .ms-btn { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 200px; max-width: 280px; padding: 4px 10px 4px 12px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, .25); background: #fff; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; text-align: left; }
+  .ms-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-btn.empty span { color: var(--muted); }
+  .ms-btn[aria-expanded="true"] { border-color: var(--accent); }
+  .ms-panel { position: absolute; z-index: 6; left: 0; top: calc(100% + 4px); min-width: 100%; max-height: 240px; overflow: auto; background: #fff; border: 1px solid rgba(0, 0, 0, .2); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); padding: 6px; }
+  .ms-panel[hidden] { display: none; }
+  .ms-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap; }
+  .ms-opt:hover { background: rgba(0, 0, 0, .06); }
+  .ms-opt.off { color: var(--muted); opacity: .55; cursor: not-allowed; }
+  .ms-opt.off:hover { background: transparent; }
+  .ms-foot { padding: 6px 8px 2px; font-size: 12px; color: var(--muted); }
   .line-trow span { font-size: 14px; color: var(--text); }
   .line-who button { padding: 2px 10px; }
   .line-who-note { margin-top: 6px; line-height: 1.6; }
@@ -1455,10 +1466,11 @@
             <div class="s8-sbody">
               <div class="line-who" id="lineWho" hidden>
                 <div class="line-who-row">
-                  <label for="lineWhoMe">測試推播給</label>
-                  <select id="lineWhoMe" aria-label="測試推播給（你的名字）"><option value="">請選擇你的名字</option></select>
-                  <label for="lineWho2">加發給</label>
-                  <select id="lineWho2" aria-label="再加 1 位（選填）"><option value="">（不加）</option></select>
+                  <span class="line-who-lbl" id="lineWhoLbl">測試推播給</span>
+                  <div class="ms" id="lineWhoMs">
+                    <button type="button" class="ms-btn" id="lineWhoBtn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lineWhoLbl lineWhoBtn"><span id="lineWhoBtnTxt">請選擇（最多 2 位）</span><i aria-hidden="true">▾</i></button>
+                    <div class="ms-panel" id="lineWhoPanel" role="listbox" aria-multiselectable="true" aria-label="測試推播給（最多 2 位）" hidden></div>
+                  </div>
                   <button type="button" id="lineWhoRefresh" title="重新整理名單與額度" aria-label="重新整理名單與額度">↻</button>
                 </div>
                 <div class="line-who-note" id="lineWhoNote"></div>
@@ -1507,7 +1519,7 @@
           <div class="btn-row"><button type="button" id="lineStatusBtn">檢查帳號與額度</button></div>
           <div class="s8c-out" id="lineOut" hidden></div>
         <div class="line-hist">
-          <div class="line-sub">測試名單（同事傳「登記」給測試帳號就會加入）</div>
+          <div class="line-sub">測試名單（傳「登記」給測試帳號就會加入）</div>
           <div id="lineTesterList" class="line-note">讀取中…</div>
         </div>
         <div class="line-hist">
@@ -5872,16 +5884,22 @@ const lineNewState = () => ({ prep: null, prepMsg: { text: '', kind: '' }, choic
 const lineSt = () => (lineByMode[mode] = lineByMode[mode] || lineNewState());
 const lineBusyNow = () => { const st = lineByMode[mode]; return !!st && (st.prepMsg.kind === 'busy' || st.test === 'busy' || st.goState === 'busy'); };
 // ---- 測試名單：測試帳號只用 multicast 發給名單裡勾選的人（每次最多 2 位）----
-// 同事傳「登記」給測試帳號 → Worker 的 webhook 記下；這裡選自己的名字（記在這個瀏覽器），再按「推播測試帳號」就只會傳給你。
+// 傳「登記」給測試帳號 → Worker 的 webhook 記下；這裡勾選收件人（最多 2 位，記在這個瀏覽器），再按「推播測試帳號」就只會傳給他們。
 // LINE 以「收件人數」計額度：發給 1 位＝1 則，不管有幾頁圖。
-const LINE_ME_KEY = 'lineMe', LINE_WHO_MAX = 2;
-const lineWhoSt = { loaded: false, loading: false, testers: [], error: '', quota: null, extra: '' };
-const lineMeLoad = () => { try { return localStorage.getItem(LINE_ME_KEY) || ''; } catch (e) { return ''; } };
-const lineMeStore = v => { try { if (v) localStorage.setItem(LINE_ME_KEY, v); else localStorage.removeItem(LINE_ME_KEY); } catch (e) { /* 無痕視窗等：這次有效就好 */ } };
+const LINE_WHO_MAX = 2;
+const lineWhoSt = { loaded: false, loading: false, testers: [], error: '', quota: null, sel: [] };
+const LINE_WHO_KEY = 'lineWho';
+function lineWhoLoadSel() {   // 記住上次選的人（記在這個瀏覽器）；舊版只存單一名字（lineMe），一併讀進來
+  try {
+    const raw = localStorage.getItem(LINE_WHO_KEY);
+    if (raw) { const a = JSON.parse(raw); if (Array.isArray(a)) return a.map(String).slice(0, LINE_WHO_MAX); }
+    const old = localStorage.getItem('lineMe'); return old ? [old] : [];
+  } catch (e) { return []; }
+}
+function lineWhoStoreSel(a) { try { if (a.length) localStorage.setItem(LINE_WHO_KEY, JSON.stringify(a)); else localStorage.removeItem(LINE_WHO_KEY); localStorage.removeItem('lineMe'); } catch (e) { /* 無痕視窗等：這次有效就好 */ } }
 function lineWhoPicked() {
   const have = new Set(lineWhoSt.testers.map(t => t.tid));
-  const me = $line('lineWhoMe').value, extra = $line('lineWho2').value;
-  return [me, extra].filter((v, i, a) => v && have.has(v) && a.indexOf(v) === i).slice(0, LINE_WHO_MAX);
+  return lineWhoSt.sel.filter((v, i, a) => have.has(v) && a.indexOf(v) === i).slice(0, LINE_WHO_MAX);
 }
 function lineWhoNames(tids) { const m = new Map(lineWhoSt.testers.map(t => [t.tid, t.name])); return tids.map(t => m.get(t) || '？'); }
 async function lineWhoLoad() {
@@ -5893,39 +5911,53 @@ async function lineWhoLoad() {
   lineWhoSt.loaded = true; lineWhoSt.loading = false;
   lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
 }
+// 多選下拉：勾選最多 2 位，選滿後其他人不能再勾（要先取消一位）
 function lineWhoRender() {
-  const meSel = $line('lineWhoMe'), exSel = $line('lineWho2');
-  const meWas = meSel.value || lineMeLoad(), exWas = exSel.value || lineWhoSt.extra;
-  const fill = (sel, first, keep) => {
-    sel.textContent = '';
-    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = first; sel.appendChild(o0);
-    lineWhoSt.testers.forEach(t => { const o = document.createElement('option'); o.value = t.tid; o.textContent = t.name; sel.appendChild(o); });
-    sel.value = lineWhoSt.testers.some(t => t.tid === keep) ? keep : '';
-  };
-  fill(meSel, lineWhoSt.testers.length ? '請選擇你的名字' : (lineWhoSt.loading ? '讀取中…' : '（名單是空的）'), meWas);
-  fill(exSel, '（不加）', exWas === meSel.value ? '' : exWas);
-  lineWhoSt.extra = exSel.value;
-  const picked = lineWhoPicked(), note = $line('lineWhoNote');
+  if (!lineWhoSt.loaded && !lineWhoSt.sel.length) lineWhoSt.sel = lineWhoLoadSel();
+  const have = new Set(lineWhoSt.testers.map(t => t.tid));
+  if (lineWhoSt.loaded) lineWhoSt.sel = lineWhoSt.sel.filter(v => have.has(v));   // 名單載入後，已被移除的人不留在選取裡
+  const picked = lineWhoPicked(), full = picked.length >= LINE_WHO_MAX;
+  const panel = $line('lineWhoPanel'), btn = $line('lineWhoBtn');
+  panel.textContent = '';
+  lineWhoSt.testers.forEach(t => {
+    const on = picked.includes(t.tid);
+    const lab = document.createElement('label'); lab.className = `ms-opt${full && !on ? ' off' : ''}`;
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = t.tid; cb.checked = on; cb.disabled = full && !on;
+    cb.addEventListener('change', () => lineWhoToggle(t.tid, cb.checked));
+    lab.append(cb, document.createTextNode(t.name)); panel.appendChild(lab);
+  });
+  if (lineWhoSt.testers.length) { const f = document.createElement('div'); f.className = 'ms-foot'; f.textContent = full ? `已選滿 ${LINE_WHO_MAX} 位，取消勾選才能換人` : `最多可選 ${LINE_WHO_MAX} 位（已選 ${picked.length} 位）`; panel.appendChild(f); }
+  else { const f = document.createElement('div'); f.className = 'ms-foot'; f.textContent = lineWhoSt.loading ? '讀取中…' : '名單是空的'; panel.appendChild(f); }
+  const txt = $line('lineWhoBtnTxt');
+  txt.textContent = picked.length ? lineWhoNames(picked).join('、') : (lineWhoSt.testers.length ? `請選擇（最多 ${LINE_WHO_MAX} 位）` : (lineWhoSt.loading ? '讀取中…' : '（名單是空的）'));
+  btn.classList.toggle('empty', !picked.length); btn.title = txt.textContent;
+  const note = $line('lineWhoNote');
   let text = '', bad = false;
   if (lineWhoSt.loading) text = '讀取測試名單與額度中…';
   else if (lineWhoSt.error) { text = `✗ 讀不到測試名單：${lineWhoSt.error}`; bad = true; }
   else if (!lineWhoSt.testers.length) { text = '名單是空的。請用 LINE 傳送「登記」給測試帳號，再按 ↻ 重新整理。'; bad = true; }
-  else if (!picked.length) { text = '請先選你的名字，測試推播才會傳給你（其他同事不會收到，也不會扣他們的額度）。找不到名字？用 LINE 傳送「登記」給測試帳號，再按 ↻。'; bad = true; }
+  else if (!picked.length) { text = '請先選擇測試推播要傳給誰（最多 2 位）；沒被選到的人不會收到，也不會扣額度。找不到名字？用 LINE 傳送「登記」給測試帳號，再按 ↻。'; bad = true; }
   else {
     const q = lineWhoSt.quota;
     text = `這次只發給：${lineWhoNames(picked).join('、')}（${picked.length} 位，約用 ${picked.length} 則額度；LINE 以收件人數計，不看幾頁圖）。${q ? `測試帳號本月剩 ${Math.max(0, q.limit - q.used).toLocaleString()}／${q.limit.toLocaleString()} 則。` : ''}`;
   }
   note.textContent = text; note.classList.toggle('bad', bad);
 }
-function lineWhoChanged(fromMe) {
-  if (fromMe) lineMeStore($line('lineWhoMe').value);
-  if ($line('lineWho2').value === $line('lineWhoMe').value) $line('lineWho2').value = '';
-  lineWhoSt.extra = $line('lineWho2').value;
+function lineWhoToggle(tid, on) {
+  const cur = lineWhoPicked();
+  if (on) { if (cur.includes(tid) || cur.length >= LINE_WHO_MAX) { lineWhoRender(); return; } lineWhoSt.sel = [...cur, tid]; }
+  else lineWhoSt.sel = cur.filter(v => v !== tid);
+  lineWhoStoreSel(lineWhoSt.sel);
   Object.values(lineByMode).forEach(st => { if (st) st.retryKey.test = ''; });   // 收件人換了就是另一次發送，不能沿用同一把重試金鑰（否則 LINE 會當成同一筆而不發）
   lineWhoRender(); lineUpdateSteps();
 }
-$line('lineWhoMe').addEventListener('change', () => lineWhoChanged(true));
-$line('lineWho2').addEventListener('change', () => lineWhoChanged(false));
+function lineWhoOpen(open) {
+  $line('lineWhoPanel').hidden = !open; $line('lineWhoBtn').setAttribute('aria-expanded', String(open));
+  if (open && !lineWhoSt.loaded && !lineWhoSt.loading) lineWhoLoad();
+}
+$line('lineWhoBtn').addEventListener('click', () => lineWhoOpen($line('lineWhoPanel').hidden));
+document.addEventListener('mousedown', e => { if (!$line('lineWhoPanel').hidden && !$line('lineWhoMs').contains(e.target)) lineWhoOpen(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$line('lineWhoPanel').hidden) { lineWhoOpen(false); $line('lineWhoBtn').focus(); e.stopPropagation(); } }, true);
 $line('lineWhoRefresh').addEventListener('click', lineWhoLoad);
 function lineTesterListRender() {
   const box = $line('lineTesterList'); box.textContent = '';
@@ -5938,7 +5970,7 @@ function lineTesterListRender() {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = '移除';
     b.addEventListener('click', async () => {
       if (!window.confirm(`從測試名單移除「${t.name}」嗎？\n\n移除後他仍是測試帳號的好友，但測試推播不會再發給他；他可以再傳「登記」重新加入。`)) return;
-      try { const r = await s8Api('/line/testers/remove', { tid: t.tid }); lineWhoSt.testers = r.testers || []; if (lineMeLoad() === t.tid) lineMeStore(''); }
+      try { const r = await s8Api('/line/testers/remove', { tid: t.tid }); lineWhoSt.testers = r.testers || []; lineWhoSt.sel = lineWhoSt.sel.filter(v => v !== t.tid); lineWhoStoreSel(lineWhoSt.sel); }
       catch (e) { window.alert(`移除失敗：${e.message || e}`); }
       lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
     });

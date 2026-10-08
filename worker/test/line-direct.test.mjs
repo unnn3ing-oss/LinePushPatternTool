@@ -49,7 +49,7 @@ function installFakeLine({ clicks = 'ok', followers = 1000, quota = { type: 'lim
     if (key === 'POST /v2/bot/message/validate/multicast') return validateStatus === 200 ? json({}) : json({ message: 'The request body has 1 error(s)', details: [{ message: 'must be valid', property: 'messages[0].baseUrl' }] }, validateStatus);
     if (key === 'POST /v2/bot/message/multicast') return broadcastStatus === 200 || broadcastStatus === 409 ? json({}, broadcastStatus) : json({ message: 'You have reached your monthly limit.' }, broadcastStatus);
     if (key === 'POST /v2/bot/message/reply') return json({});
-    if (/^GET \/v2\/bot\/profile\/U[0-9a-f]{32}$/.test(key)) return profileStatus === 200 ? json({ displayName: '同事A', userId: u.pathname.split('/').pop() }) : json({ message: 'Not found' }, profileStatus);
+    if (/^GET \/v2\/bot\/profile\/U[0-9a-f]{32}$/.test(key)) return profileStatus === 200 ? json({ displayName: '王小明', userId: u.pathname.split('/').pop() }) : json({ message: 'Not found' }, profileStatus);
     throw new Error(`unexpected LINE call ${key}`);
   };
   return { calls, restore: () => { globalThis.fetch = realFetch; }, count: k => calls.filter(c => `${c.method} ${c.path}` === k).length };
@@ -65,7 +65,7 @@ async function req(env, path, body, { method = 'POST', auth = true } = {}) {
 const TESTER_UID = 'U' + 'a'.repeat(32), TESTER_UID2 = 'U' + 'b'.repeat(32), TESTER_UID3 = 'U' + 'c'.repeat(32);
 const tidOf = uid => createHash('sha256').update(uid).digest('hex').slice(0, 16);
 const TID = tidOf(TESTER_UID), TID2 = tidOf(TESTER_UID2), TID3 = tidOf(TESTER_UID3);
-function seedTester(env, uid = TESTER_UID, name = '同事A') { const tid = tidOf(uid); env.LINE_IMG.store.set(`testers/${tid}.json`, { bytes: JSON.stringify({ tid, userId: uid, name, registeredAt: Date.now() }), httpMetadata: {} }); return tid; }
+function seedTester(env, uid = TESTER_UID, name = '王小明') { const tid = tidOf(uid); env.LINE_IMG.store.set(`testers/${tid}.json`, { bytes: JSON.stringify({ tid, userId: uid, name, registeredAt: Date.now() }), httpMetadata: {} }); return tid; }
 async function prepared(env, extra) { const r = await req(env, '/line/prepare', prepBody(extra)); assert.equal(r.status, 200, JSON.stringify(r.json)); if (env.LINE_IMG) seedTester(env); return r.json; }
 const sendBody = (prep, extra = {}) => ({ prepareToken: prep.prepareToken, channel: 'test', retryKey: UUID, testers: [TID], ...extra });
 const FORBIDDEN_PATHS = /message\/push|narrowcast|richmenu|webhook|oauth2\/v2|revoke/i;
@@ -204,7 +204,7 @@ test('send（測試帳號）：先 validate、再 multicast 給指定的人（�
     const prep = await prepared(env);
     const r = await req(env, '/line/send', sendBody(prep));
     assert.equal(r.status, 200, JSON.stringify(r.json));
-    assert.equal(r.json.ok, true); assert.equal(r.json.official, false); assert.equal(r.json.friends, 1); assert.deepEqual(r.json.recipients, ['同事A']);
+    assert.equal(r.json.ok, true); assert.equal(r.json.official, false); assert.equal(r.json.friends, 1); assert.deepEqual(r.json.recipients, ['王小明']);
     assert.ok(r.json.testToken);
     const order = line.calls.map(c => `${c.method} ${c.path}`).filter(k => /validate|message\/(broadcast|multicast)/.test(k));
     assert.deepEqual(order, ['POST /v2/bot/message/validate/multicast', 'POST /v2/bot/message/multicast']);
@@ -406,7 +406,7 @@ test('排程：建立（測試帳號）→ 存進 R2，狀態待發送，帶出�
     assert.deepEqual(r2.store.get(`sched/${s.id}.json`).customMetadata, { status: 'scheduled', runAt: String(stored.runAt) });
     assert.equal(line.count('POST /v2/bot/message/multicast') + line.count('POST /v2/bot/message/broadcast'), 0, '建立排程不會發送');
     assert.equal(line.count('POST /v2/bot/message/validate/multicast'), 1, '建立當下先請 LINE 檢查格式');
-    assert.deepEqual(s.recipientNames, ['同事A']); assert.deepEqual(stored.testerTids, [TID]);
+    assert.deepEqual(s.recipientNames, ['王小明']); assert.deepEqual(stored.testerTids, [TID]);
   } finally { line.restore(); }
 });
 
@@ -626,10 +626,10 @@ test('webhook：傳「登記」→ 記下 userId＋暱稱並回覆；重複登�
     const r = await hook(env, [msgEv(TESTER_UID, ' 登記 ')]);
     assert.equal(r.status, 200);
     const rep = line.calls.find(c => c.path === '/v2/bot/message/reply');
-    assert.equal(JSON.parse(rep.body).replyToken, 'rt-1'); assert.match(JSON.parse(rep.body).messages[0].text, /已加入測試名單：同事A/);
+    assert.equal(JSON.parse(rep.body).replyToken, 'rt-1'); assert.match(JSON.parse(rep.body).messages[0].text, /已加入測試名單：王小明/);
     assert.equal(rep.headers.Authorization, 'Bearer tok-111', '用測試帳號的 token');
     const l = await testersOf(env);
-    assert.deepEqual(l.testers.map(t => [t.tid, t.name]), [[TID, '同事A']]); assert.equal(l.maxPerSend, 2);
+    assert.deepEqual(l.testers.map(t => [t.tid, t.name]), [[TID, '王小明']]); assert.equal(l.maxPerSend, 2);
     assert.ok(!JSON.stringify(l).includes(TESTER_UID), '不把 LINE userId 給網頁');
     await hook(env, [msgEv(TESTER_UID, '登記', 'rt-2')]);
     assert.equal((await testersOf(env)).testers.length, 1);
@@ -668,10 +668,10 @@ test('webhook：名單上限 50 人，滿了回覆而不是記錄', async () => 
 test('測試名單端點要試驗功能憑證；remove 只移除指定的人', async () => {
   const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   for (const p of ['/line/testers/list', '/line/testers/remove']) assert.equal((await req(env, p, {}, { auth: false })).status, 401, p);
-  seedTester(env); seedTester(env, TESTER_UID2, '同事B');
+  seedTester(env); seedTester(env, TESTER_UID2, '李小華');
   assert.equal((await testersOf(env)).testers.length, 2);
   const r = await req(env, '/line/testers/remove', { tid: TID });
-  assert.deepEqual(r.json.testers.map(t => t.name), ['同事B']);
+  assert.deepEqual(r.json.testers.map(t => t.name), ['李小華']);
   assert.equal((await req(env, '/line/testers/remove', { tid: TID })).status, 404);
   assert.equal((await req(env, '/line/testers/remove', { tid: '../x' })).status, 404);
 });
@@ -679,7 +679,7 @@ test('測試名單端點要試驗功能憑證；remove 只移除指定的人', a
 test('send（測試帳號）：沒選收件人、超過 2 位、名單外的人 → 400，完全沒呼叫 LINE', async () => {
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {
-    const prep = await prepared(env); seedTester(env, TESTER_UID2, '同事B'); seedTester(env, TESTER_UID3, '同事C');
+    const prep = await prepared(env); seedTester(env, TESTER_UID2, '李小華'); seedTester(env, TESTER_UID3, '陳小美');
     const before = line.calls.length;
     for (const testers of [undefined, [], 'abc', [TID, TID2, TID3], [TID, TID2, TID3, TID, TID2, TID3, TID, TID2, TID3, TID, TID2], ['0'.repeat(16)], [TESTER_UID], [{ tid: TID }]]) {
       const r = await req(env, '/line/send', sendBody(prep, { testers }));
@@ -688,7 +688,7 @@ test('send（測試帳號）：沒選收件人、超過 2 位、名單外的人 
     assert.equal(line.calls.length, before, '任何一關沒過都沒有呼叫 LINE');
     // 2 位（含重複的同一位只算 1 位）→ 成功，且 to 是這兩位
     let r = await req(env, '/line/send', sendBody(prep, { testers: [TID, TID2] }));
-    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.friends, 2); assert.deepEqual(r.json.recipients, ['同事A', '同事B']);
+    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.friends, 2); assert.deepEqual(r.json.recipients, ['王小明', '李小華']);
     assert.deepEqual(JSON.parse(line.calls.filter(c => c.path === '/v2/bot/message/multicast').at(-1).body).to, [TESTER_UID, TESTER_UID2]);
     r = await req(env, '/line/send', sendBody(prep, { testers: [TID, TID, TID], retryKey: '123e4567-e89b-12d3-a456-426614174222' }));
     assert.equal(r.status, 200); assert.equal(r.json.friends, 1);
@@ -726,12 +726,12 @@ test('multicast／reply／profile 只用測試帳號的 token；正式帳號（n
 test('測試排程：建立時必須指定收件人（最多 2 位）；時間到只 multicast 給他們，名單被移除的略過、全沒了就失敗不發', async () => {
   const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   try {
-    const prep = await prepared(env); seedTester(env, TESTER_UID2, '同事B'); seedTester(env, TESTER_UID3, '同事C');
+    const prep = await prepared(env); seedTester(env, TESTER_UID2, '李小華'); seedTester(env, TESTER_UID3, '陳小美');
     assert.equal((await createSched(env, prep, { testers: undefined })).status, 400);
     assert.equal((await createSched(env, prep, { testers: [TID, TID2, TID3] })).status, 400);
     assert.equal([...r2.store.keys()].filter(k => k.startsWith('sched/')).length, 0, '沒過的不會建立');
     const a = (await createSched(env, prep, { testers: [TID, TID2] })).json.schedule;
-    assert.deepEqual(a.recipientNames, ['同事A', '同事B']);
+    assert.deepEqual(a.recipientNames, ['王小明', '李小華']);
     // 其中一位被移除 → 只發給還在名單的
     await req(env, '/line/testers/remove', { tid: TID });
     await setRunAt(r2, a.id, Date.now() - 20000); await cron(env);

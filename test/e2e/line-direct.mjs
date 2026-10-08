@@ -33,7 +33,7 @@ let heartbeat = Date.now(), schedFail = '';
 const schedReqs = { create: [], update: [], cancel: [], list: 0 };
 const labAuthReqs = [];
 const T_A = 'a'.repeat(16), T_B = 'b'.repeat(16), T_C = 'c'.repeat(16);
-let testers = [{ tid: T_A, name: '同事A', registeredAt: 1 }, { tid: T_B, name: '同事B', registeredAt: 2 }, { tid: T_C, name: '同事C', registeredAt: 3 }];
+let testers = [{ tid: T_A, name: '王小明', registeredAt: 1 }, { tid: T_B, name: '李小華', registeredAt: 2 }, { tid: T_C, name: '陳小美', registeredAt: 3 }];
 let testQuota = { type: 'limited', value: 200 }, testUsed = 36, testersFail = '';
 const testerReqs = { list: 0, remove: [] };
 await page.route(`${WORKER}/**`, async route => {
@@ -532,39 +532,59 @@ check((await guard()).prevented, '（再改一頁內容）編輯中');
 await page.evaluate(() => { ensureAssetsReady().then(() => { editMarkClean(mode); }); });
 await page.waitForTimeout(300);
 check(!(await guard()).prevented, '標記完成後恢復');
-// ===== 17. 測試名單：測試推播只發給「選到的人」（每次最多 2 位）=====
+// ===== 17. 測試名單：多選下拉，測試推播只發給「勾選的人」（最多 2 位，選滿就不能再選）=====
+const whoChecked = () => page.$$eval('#lineWhoPanel input:checked', i => i.map(x => x.value));
+const whoDisabled = () => page.$$eval('#lineWhoPanel input:disabled', i => i.map(x => x.value));
 await page.evaluate(() => { s8Md = 'line'; });
-await page.evaluate(() => { try { localStorage.removeItem('lineMe'); } catch (e) { /* */ } document.getElementById('lineWhoMe').value = ''; document.getElementById('lineWho2').value = ''; lineWhoSt.extra = ''; lineWhoSt.loaded = false; });
+await page.evaluate(() => { try { localStorage.removeItem('lineWho'); localStorage.removeItem('lineMe'); } catch (e) { /* */ } lineWhoSt.sel = []; lineWhoSt.loaded = false; });
 await openDialog();
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
 await page.click('#linePickNow'); await page.waitForTimeout(400);
-await page.waitForFunction(() => document.querySelectorAll('#lineWhoMe option').length === 4);
-check(await vis('#lineWho') && (await page.$$eval('#lineWhoMe option', o => o.map(x => x.textContent).join())) === '請選擇你的名字,同事A,同事B,同事C', '測試推播前出現「測試推播給」下拉選單，列出已登記的同事');
-check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled) && (await txt('#lineWhoNote')).includes('請先選你的名字') && (await page.getAttribute('#lineWhoNote', 'class')).includes('bad'), '還沒選名字：「推播測試帳號」不能按，並提示要先選');
-check(await page.evaluate(() => document.activeElement && true) && (await txt('#lineWhoNote')).includes('傳送「登記」'), '提示找不到名字時要傳「登記」給測試帳號');
+await page.waitForFunction(() => lineWhoSt.loaded && document.querySelectorAll('#lineWhoPanel input').length === 3);
+check(await vis('#lineWho') && await vis('#lineWhoBtn') && !(await page.$('#lineWhoMe')) && !(await page.$('#lineWho2')), '測試推播前只有一個「測試推播給」多選下拉（不是兩個單選）');
+check((await txt('#lineWhoBtnTxt')) === '請選擇（最多 2 位）' && await page.isHidden('#lineWhoPanel'), '還沒選：按鈕寫「請選擇（最多 2 位）」，選單收著');
+check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled) && (await txt('#lineWhoNote')).includes('請先選擇測試推播要傳給誰') && (await page.getAttribute('#lineWhoNote', 'class')).includes('bad'), '還沒選人：「推播測試帳號」不能按，並提示要先選');
+check(!(await page.evaluate(() => document.body.innerText.includes('同事'))), '畫面上沒有「同事」兩個字');
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-17a-who-empty.png') });
-await page.selectOption('#lineWhoMe', T_B);
-check(await page.evaluate(() => localStorage.getItem('lineMe')) === T_B, '選了名字之後記在這個瀏覽器（下次自動帶入）');
-check(!(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)) && (await txt('#lineWhoNote')).includes('同事B') && (await txt('#lineWhoNote')).includes('1 位') && (await txt('#lineWhoNote')).includes(`剩 ${200 - testUsed}／200`), '選好後可以按；說明只發給同事B、1 位、約用 1 則，並顯示測試帳號本月剩幾／200 則');
-await page.selectOption('#lineWho2', T_C);
-check((await txt('#lineWhoNote')).includes('同事B、同事C') && (await txt('#lineWhoNote')).includes('2 位'), '可以再加 1 位（共 2 位）');
-check((await page.$$eval('#lineWho2 option', o => o.length)) === 4 && !(await page.$('#lineWho3')), '最多只有「測試推播給」＋「加發給」兩格，沒有第 3 位可選');
-await page.selectOption('#lineWho2', T_B);
-check((await page.evaluate(() => document.getElementById('lineWho2').value)) === '' , '「加發給」選到跟自己同一位：自動清掉，不會重複');
-await page.selectOption('#lineWho2', T_C);
-await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-17b-who-picked.png') });
+await page.click('#lineWhoBtn');
+check(await vis('#lineWhoPanel') && (await page.getAttribute('#lineWhoBtn', 'aria-expanded')) === 'true' && (await page.$$eval('#lineWhoPanel .ms-opt', o => o.map(x => x.textContent.trim()).join())) === '王小明,李小華,陳小美', '點開：列出已登記的名字（勾選方塊）');
+await page.screenshot({ path: path.join(SHOTS, 'line-ui-17a2-who-open.png'), clip: { ...(await page.locator('#lineWho').boundingBox()), height: 260 } });
+await page.click(`#lineWhoPanel input[value="${T_B}"]`);
+check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B]) && (await txt('#lineWhoBtnTxt')) === '李小華' && !(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)), '勾 1 位：按鈕顯示名字，測試推播可以按');
+check(JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify([T_B]), '選擇記在這個瀏覽器（下次自動帶入）');
+check((await txt('#lineWhoNote')).includes('李小華') && (await txt('#lineWhoNote')).includes('1 位') && (await txt('#lineWhoNote')).includes(`剩 ${200 - testUsed}／200`), '說明：只發給李小華、1 位、約用 1 則，並顯示測試帳號本月剩餘額度');
+check((await whoDisabled()).length === 0, '只選 1 位時，其他人都還能勾');
+await page.click(`#lineWhoPanel input[value="${T_C}"]`);
+check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B, T_C]) && (await txt('#lineWhoBtnTxt')) === '李小華、陳小美' && (await txt('#lineWhoNote')).includes('2 位'), '勾第 2 位：按鈕顯示「李小華、陳小美」，共 2 位');
+check(JSON.stringify(await whoDisabled()) === JSON.stringify([T_A]) && (await txt('#lineWhoPanel .ms-foot')).includes('已選滿 2 位'), '選滿 2 位：沒勾的人變灰、不能再勾，並提示要取消一位才能換人');
+await page.click(`#lineWhoPanel input[value="${T_A}"]`, { force: true }).catch(() => {});
+check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B, T_C]), '硬點灰掉的選項也勾不上去（維持原本 2 位）');
+await page.screenshot({ path: path.join(SHOTS, 'line-ui-17b-who-full.png'), clip: { ...(await page.locator('#lineWho').boundingBox()), height: 260 } });
+await page.click(`#lineWhoPanel input[value="${T_C}"]`);
+check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B]) && (await whoDisabled()).length === 0, '取消 1 位：其他人又能勾');
+await page.click(`#lineWhoPanel input[value="${T_A}"]`);
+check(JSON.stringify(await whoChecked()) === JSON.stringify([T_A, T_B]) && (await txt('#lineWhoBtnTxt')) === '李小華、王小明', '換成另一位：取消後再勾');
+await page.click('#lineWhoNote'); await page.waitForTimeout(100);
+check(await page.isHidden('#lineWhoPanel'), '點選單外面：選單收起，選擇還在');
+await page.click('#lineWhoBtn'); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+check(await page.isHidden('#lineWhoPanel') && await vis('#s8Overlay'), '按 Esc：只收起選單，不會關掉整個視窗');
+await page.click(`#lineWhoBtn`); await page.click(`#lineWhoPanel input[value="${T_A}"]`); await page.click('#lineWhoNote');   // 取消王小明，剩李小華
+await page.waitForTimeout(100);
+await page.click(`#lineWhoBtn`); await page.click(`#lineWhoPanel input[value="${T_C}"]`); await page.click('#lineWhoNote');   // 加陳小美 → 李小華、陳小美
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-17c-who-picked.png') });
 const sendsBefore17 = reqs.send.length;
 await page.click('#lineTestBtn');
 await page.waitForFunction(() => /已推播到測試帳號/.test(document.getElementById('lineTestMsg').textContent));
 const b17 = reqs.send[sendsBefore17];
-check(b17.channel === 'test' && JSON.stringify(b17.testers) === JSON.stringify([T_B, T_C]), '測試推播送出：只帶選到的 2 位（同事B、同事C）');
-check((await txt('#lineTestMsg')).includes('同事B、同事C') && (await txt('#lineWin')).includes('收件人：同事B、同事C'), '結果寫明收件人是誰');
+check(b17.channel === 'test' && JSON.stringify(b17.testers) === JSON.stringify([T_B, T_C]), '測試推播送出：只帶勾選的 2 位（李小華、陳小美）');
+check((await txt('#lineTestMsg')).includes('李小華、陳小美') && (await txt('#lineWin')).includes('收件人：李小華、陳小美'), '結果寫明收件人是誰');
 check(!(await vis('#lineWho')), '測試推播完成後收件人選單收起');
-// 換收件人要換一把重試金鑰（否則 LINE 會當成同一筆，後來的人收不到）
-const keyChange = await page.evaluate(() => { const st = lineSt(); const k1 = st.retryKey.test; st.retryKey.test = 'x'; lineWhoChanged(false); return [k1, st.retryKey.test]; });
-check(keyChange[1] === '' , '換收件人：清掉原本的重試金鑰（下一次發送會產生新的）');
+// 換收件人要換一把重試金鑰
+const keyChange = await page.evaluate(() => { const st = lineSt(); st.retryKey.test = 'x'; lineWhoToggle(lineWhoPicked()[0], false); return st.retryKey.test; });
+check(keyChange === '', '換收件人：清掉原本的重試金鑰（下一次發送會產生新的）');
+await page.evaluate(() => { lineWhoSt.sel = []; lineWhoStoreSel([]); });
 // 名單空／讀不到
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
@@ -573,44 +593,48 @@ const saved17 = testers; testers = [];
 await page.click('#linePickNow'); await page.waitForTimeout(150);
 await page.click('#lineWhoRefresh');
 await page.waitForFunction(() => /名單是空的/.test(document.getElementById('lineWhoNote').textContent));
-check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled), '名單是空的：不能測試推播，並教你傳「登記」');
+check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled) && (await txt('#lineWhoBtnTxt')) === '（名單是空的）', '名單是空的：不能測試推播，並教你傳「登記」');
 testersFail = '憑證過期'; await page.click('#lineWhoRefresh');
 await page.waitForFunction(() => /讀不到測試名單/.test(document.getElementById('lineWhoNote').textContent));
 check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled) && (await txt('#lineWhoNote')).includes('憑證過期'), '名單讀不到：顯示原因，不能測試推播');
 testersFail = ''; testers = saved17; await page.click('#lineWhoRefresh');
-await page.waitForFunction(() => document.querySelectorAll('#lineWhoMe option').length === 4);
-check(await page.evaluate(() => document.getElementById('lineWhoMe').value) === T_B && !(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)), '重新整理後自動帶回你上次選的名字');
+await page.waitForFunction(() => document.querySelectorAll('#lineWhoPanel input').length === 3);
+// 記住上次的選擇：重新載入名單後自動帶回
+await page.evaluate(() => { lineWhoSt.sel = []; lineWhoSt.loaded = false; localStorage.setItem('lineWho', JSON.stringify(['b'.repeat(16), 'zzzz'])); });   // 其中一個已不在名單
+await page.click('#lineWhoRefresh');
+await page.waitForFunction(() => document.querySelectorAll('#lineWhoPanel input').length === 3);
+check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B]) && !(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)), '重新載入名單：自動帶回上次的選擇，已不在名單的人會被略過');
 // 測試排程：收件人區搬到「發佈方式」下面，沒選人不能排
-await page.evaluate(() => { localStorage.removeItem('lineMe'); const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.evaluate(() => { lineWhoSt.sel = []; lineWhoStoreSel([]); const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
 const tw17 = Date.now() + 2 * 3600e3;
 await setWhen(ymd(tw17), hm(tw17)); await page.waitForTimeout(300);
 await page.click('#lineTgtTest'); await page.waitForTimeout(400);
 check(await page.evaluate(() => document.getElementById('lineWho').parentNode.closest('.s8-step').id === 'lineStep2') && await vis('#lineWho'), '測試排程：收件人選單在第 2 步「排程對象」下面');
-await page.selectOption('#lineWhoMe', ''); await page.waitForTimeout(100);
 check(await page.evaluate(() => document.getElementById('lineGoBtn').disabled), '沒選收件人：「測試排程」不能按');
-await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-17c-who-tsched.png') });
-await page.selectOption('#lineWhoMe', T_A);
+await page.click('#lineWhoBtn'); await page.click(`#lineWhoPanel input[value="${T_A}"]`);
+await page.screenshot({ path: path.join(SHOTS, 'line-ui-17d-who-tsched.png'), clip: { x: 0, y: (await page.locator('#lineTarget').boundingBox()).y - 10, width: 760, height: 330 } });
+await page.click('#lineWhoNote');
 await page.click('#lineGoBtn'); await page.click('#lineGoBtn');
 { const kb = await page.locator('#lineKnob').boundingBox(), sb = await page.locator('#lineSlider').boundingBox();
   await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2); await page.mouse.down();
   await page.mouse.move(kb.x + sb.width + 40, kb.y + kb.height / 2, { steps: 12 }); await page.mouse.up(); }
 await page.waitForFunction(() => /已排程到測試帳號/.test(document.getElementById('lineWin').textContent), null, { timeout: 10000 });
 const tc17 = schedReqs.create.at(-1);
-check(tc17.channel === 'test' && JSON.stringify(tc17.testers) === JSON.stringify([T_A]) && (await txt('#lineWin')).includes('收件人：同事A'), '建立測試排程：帶 testers=[同事A]，結果寫明收件人');
-await page.waitForFunction(() => [...document.querySelectorAll('#lineSchedList .ttl')].some(t => t.textContent.includes('→ 給 同事A')));
-check(true, '排程狀態列出「→ 給 同事A」');
-await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-17d-sched-recipients.png') });
+check(tc17.channel === 'test' && JSON.stringify(tc17.testers) === JSON.stringify([T_A]) && (await txt('#lineWin')).includes('收件人：王小明'), '建立測試排程：帶 testers=[王小明]，結果寫明收件人');
+await page.waitForFunction(() => [...document.querySelectorAll('#lineSchedList .ttl')].some(t => t.textContent.includes('→ 給 王小明')));
+await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-17e-sched-recipients.png') });
 // 名單管理（折疊區）
 await page.evaluate(() => { document.getElementById('lineBox').open = true; lineTesterListRender(); });
-check((await page.$$eval('#lineTesterList .line-trow span', r => r.map(x => x.textContent).join())) === '同事A,同事B,同事C', '折疊區「測試名單」列出所有登記的人');
-await page.evaluate(() => localStorage.setItem('lineMe', 'a'.repeat(16)));
+check((await page.$$eval('#lineTesterList .line-trow span', r => r.map(x => x.textContent).join())) === '王小明,李小華,陳小美', '折疊區「測試名單」列出所有登記的人');
+await page.evaluate(() => { lineWhoSt.sel = ['a'.repeat(16), 'b'.repeat(16)]; lineWhoStoreSel(lineWhoSt.sel); });
 await page.click('#lineTesterList .line-trow:first-child button');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
-check(testerReqs.remove.at(-1).tid === T_A && (await page.evaluate(() => localStorage.getItem('lineMe'))) === null, '移除同事A：送出移除，名單少一位；如果那是你記住的名字就一併忘掉');
-await page.locator('#lineBox').screenshot({ path: path.join(SHOTS, 'line-ui-17e-tester-list.png') });
+check(testerReqs.remove.at(-1).tid === T_A && JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify([T_B]), '移除王小明：送出移除，名單少一位；他若在你記住的選擇裡就一併拿掉');
+await page.locator('#lineBox').screenshot({ path: path.join(SHOTS, 'line-ui-17f-tester-list.png') });
 await page.click('#s8CloseBtn');
+
 check(pageErrors.length === 0, `頁面沒有 JS 錯誤 ${pageErrors.join(' | ')}`);
 
 await browser.close();

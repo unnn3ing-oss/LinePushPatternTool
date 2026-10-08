@@ -954,7 +954,7 @@ async function lineBroadcastNow(env, key, prep, { origin, retryKey, approve }) {
   if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502, lineStatus: sent.status });
   return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends, pages: messages.length };
 }
-// ---- 測試名單：同事傳「登記」給測試帳號 → webhook 記下 userId；測試推播只用 multicast 發給名單內「勾選的人」（每次最多 2 位）----
+// ---- 測試名單：使用者傳「登記」給測試帳號 → webhook 記下 userId；測試推播只用 multicast 發給名單內「勾選的人」（每次最多 2 位）----
 const LINE_TESTER_PREFIX = 'testers/';
 const LINE_TESTER_MAX_PER_SEND = 2;
 const LINE_TESTER_MAX_TOTAL = 50;
@@ -1042,7 +1042,7 @@ async function handleLineSend(request, env) {
 // ===========================================================================
 // 測試名單（只有測試帳號）
 //   POST /line/webhook         LINE 呼叫的 webhook（要在測試帳號的 Developers Console 設定，並開啟 Use webhook）。不需要試驗功能憑證，改驗 X-Line-Signature。
-//                              同事傳「登記」→ 記下 userId＋暱稱（回覆「已加入測試名單」，reply 不計額度）；加好友或傳別的字 → 回覆提示；封鎖／刪除好友 → 自動從名單移除
+//                              使用者傳「登記」→ 記下 userId＋暱稱（回覆「已加入測試名單」，reply 不計額度）；加好友或傳別的字 → 回覆提示；封鎖／刪除好友 → 自動從名單移除
 //   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）
 //   POST /line/testers/remove  從名單移除
 // 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰。
