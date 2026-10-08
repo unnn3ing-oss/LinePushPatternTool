@@ -749,7 +749,7 @@ async function handleS8Status(request, env) {
 //   POST /line/validate  → 把準備好的內容交給 LINE 的 validate/broadcast 檢查格式（只檢查，不會發送）
 //   POST /line/clicks    → 用發送時的 request id 查這次群發每個連結的點擊次數／人數（唯讀）
 //   POST /line/schedule/create｜list｜update｜cancel → 排程推播（Worker 自己排，需 R2 與 Cron Trigger，見下方「排程推播」）
-//   POST /line/send      → validate 通過後 broadcast 給全部好友。預設只允許測試帳號；正式帳號要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
+//   POST /line/send      → validate 通過後發送。測試帳號：multicast 給「測試名單」勾選的人（每次最多 2 位，不 broadcast）；正式帳號：broadcast 給全部好友，要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
 //   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
 // 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
 //   LINE_CHANNEL_ID_NEWS / _SECRET_NEWS、LINE_CHANNEL_ID_ENT / _SECRET_ENT（正式帳號）。
@@ -760,7 +760,8 @@ const LINE_CHANNEL_SUFFIX = { test: 'TEST', news: 'NEWS', ent: 'ENT' };
 const LINE_IMG_WIDTHS = [240, 300, 460, 700, 1040];
 const LINE_PREPARE_TTL_MS = 30 * 60 * 1000;
 const LINE_MAX_IMG_BYTES = 10 * 1024 * 1024;   // LINE 上限是 10MB
-// Worker 只能對 LINE 做這幾件事（方法＋路徑），其他一律不給：沒有 push／multicast／narrowcast、沒有改頻道設定、沒有重發長效 token。
+// Worker 只能對 LINE 做這幾件事（方法＋路徑），其他一律不給：沒有 push／narrowcast、沒有改頻道設定、沒有重發長效 token。
+// multicast（只發給名單內指定的人）、reply（回覆登記訊息，不計額度）、profile（查登記者暱稱）只允許測試帳號用（見 LINE_TEST_ONLY）。
 const LINE_ALLOWED_CALLS = [
   /^POST \/oauth2\/v3\/token$/,
   /^GET \/v2\/bot\/info$/,
@@ -770,7 +771,12 @@ const LINE_ALLOWED_CALLS = [
   /^POST \/v2\/bot\/message\/validate\/broadcast$/,
   /^POST \/v2\/bot\/message\/broadcast$/,   // 只有 handleLineSend 會用到
   /^GET \/v2\/bot\/insight\/message\/event$/,   // 查某次群發的開啟／點擊統計（唯讀）
+  /^POST \/v2\/bot\/message\/validate\/multicast$/,
+  /^POST \/v2\/bot\/message\/multicast$/,
+  /^POST \/v2\/bot\/message\/reply$/,
+  /^GET \/v2\/bot\/profile\/U[0-9a-f]{32}$/,
 ];
+const LINE_TEST_ONLY = [/^POST \/v2\/bot\/message\/validate\/multicast$/, /^POST \/v2\/bot\/message\/multicast$/, /^POST \/v2\/bot\/message\/reply$/, /^GET \/v2\/bot\/profile\//];
 const lineTokenCache = new Map();   // channel key → { id, promise(token), exp }
 
 function lineChannelCreds(env, key) {
@@ -801,7 +807,10 @@ async function lineAccessToken(env, key) {
 // 對 LINE 呼叫一次；不管狀態碼都回 { status, data, requestId }（不丟例外），但方法＋路徑必須在白名單內。
 async function lineCall(env, key, method, path, body, extraHeaders) {
   const base = path.split('?')[0];
-  if (!LINE_ALLOWED_CALLS.some(re => re.test(`${method} ${base}`))) throw new Error(`不允許的 LINE 呼叫：${method} ${base}`);
+  const sig = `${method} ${base}`;
+  if (!LINE_ALLOWED_CALLS.some(re => re.test(sig))) throw new Error(`不允許的 LINE 呼叫：${sig}`);
+  if (key !== 'test' && LINE_TEST_ONLY.some(re => re.test(sig))) throw new Error(`${sig} 只能用在測試帳號`);
+  if (key === 'test' && sig === 'POST /v2/bot/message/broadcast') throw new Error('測試帳號不能 broadcast（會發給所有好友、吃掉免費額度），只能用 multicast 發給測試名單內的人');
   const token = await lineAccessToken(env, key);
   const res = await fetch(`${LINE_API}${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(extraHeaders || {}) },
@@ -945,6 +954,53 @@ async function lineBroadcastNow(env, key, prep, { origin, retryKey, approve }) {
   if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502, lineStatus: sent.status });
   return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends, pages: messages.length };
 }
+// ---- 測試名單：同事傳「登記」給測試帳號 → webhook 記下 userId；測試推播只用 multicast 發給名單內「勾選的人」（每次最多 2 位）----
+const LINE_TESTER_PREFIX = 'testers/';
+const LINE_TESTER_MAX_PER_SEND = 2;
+const LINE_TESTER_MAX_TOTAL = 50;
+const LINE_USER_ID = /^U[0-9a-f]{32}$/;
+const LINE_REGISTER_WORDS = new Set(['登記', '加入測試名單']);
+// 網頁只看得到 tid（userId 的雜湊前 16 碼），看不到 LINE 的 userId
+async function lineTid(userId) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', textEncoder.encode(userId))).slice(0, 8)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+async function lineTesterGet(env, tid) {
+  if (!/^[0-9a-f]{16}$/.test(String(tid || ''))) return null;
+  const o = await lineR2(env).get(`${LINE_TESTER_PREFIX}${tid}.json`);
+  if (!o) return null;
+  try { return JSON.parse(typeof o.text === 'function' ? await o.text() : textDecoder.decode(o.body)); } catch { return null; }
+}
+async function lineTesterAll(env) {
+  const r = await lineR2(env).list({ prefix: LINE_TESTER_PREFIX, limit: 200 }), out = [];
+  for (const o of r.objects || []) { const rec = await lineTesterGet(env, o.key.slice(LINE_TESTER_PREFIX.length, -5)); if (rec) out.push(rec); }
+  return out.sort((a, b) => (a.registeredAt || 0) - (b.registeredAt || 0));
+}
+const lineTesterPublic = r => ({ tid: r.tid, name: r.name || '（沒有暱稱）', registeredAt: r.registeredAt || 0 });
+async function lineResolveTesters(env, tids) {
+  if (!Array.isArray(tids) || !tids.length) throw badInput('請先選擇測試推播要給誰（至少 1 位）。沒有發送任何東西。');
+  if (tids.length > 10) throw badInput('收件人格式不正確。沒有發送任何東西。');
+  const uniq = [...new Set(tids.map(String))];
+  if (uniq.length > LINE_TESTER_MAX_PER_SEND) throw badInput(`每次測試推播最多只能發給 ${LINE_TESTER_MAX_PER_SEND} 位。沒有發送任何東西。`);
+  const recs = [];
+  for (const tid of uniq) {
+    const rec = await lineTesterGet(env, tid);
+    if (!rec) throw badInput('選到的收件人不在測試名單裡（可能已被移除），請重新整理名單再選。沒有發送任何東西。');
+    recs.push(rec);
+  }
+  return recs;
+}
+// 測試帳號專用：validate → 額度檢查（收件人數）→ multicast 給名單內指定的人。額度算法：LINE 以「收件人數」計（一則訊息有幾頁圖不影響）。
+async function lineMulticastTest(env, prep, { origin, retryKey, recs }) {
+  lineChannelCreds(env, 'test');
+  const messages = lineBuildMessages(prep, origin);
+  const v = await lineCall(env, 'test', 'POST', '/v2/bot/message/validate/multicast', { messages });
+  if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有發送任何東西。`), { status: 400 });
+  const info = await lineAccountInfo(env, 'test');
+  if (info.quota && info.quota.type === 'limited' && info.quota.value !== null && info.used !== null && info.quota.value - info.used < recs.length) {
+    throw Object.assign(new Error(`測試帳號本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發 ${recs.length} 位。沒有發送任何東西。`), { status: 409 });
+  }
+  const sent = await lineCall(env, 'test', 'POST', '/v2/bot/message/multicast', { to: recs.map(r => r.userId), messages }, { 'X-Line-Retry-Key': retryKey });
+  if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502, lineStatus: sent.status });
+  return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends: recs.length, recipients: recs.map(r => r.name || '（沒有暱稱）'), pages: messages.length, quota: info.quota && info.quota.value !== null && info.used !== null ? { limit: info.quota.value, used: info.used } : null };
+}
 // 正式帳號的共同前置條件（立即推播與建立排程都要過）
 async function lineOfficialGate(env, key, prep, testToken) {
   if (!env || env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。'), { status: 403 });
@@ -972,11 +1028,78 @@ async function handleLineSend(request, env) {
     const prep = await lineOpenPrep(env, body.prepareToken);
     const official = LINE_OFFICIAL.has(key);
     if (official) await lineOfficialGate(env, key, prep, body.testToken);
-    const r = await lineBroadcastNow(env, key, prep, { origin: new URL(request.url).origin, retryKey: body.retryKey, approve: lineTypedApprove(body.confirmTotal) });
+    const origin = new URL(request.url).origin;
+    const r = official
+      ? await lineBroadcastNow(env, key, prep, { origin, retryKey: body.retryKey, approve: lineTypedApprove(body.confirmTotal) })
+      : await lineMulticastTest(env, prep, { origin, retryKey: body.retryKey, recs: await lineResolveTesters(env, body.testers) });
     const out = { ok: true, channel: key, official, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
+    if (!official) { out.recipients = r.recipients; out.quota = r.quota; }
     if (!official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
     return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
+}
+
+// ===========================================================================
+// 測試名單（只有測試帳號）
+//   POST /line/webhook         LINE 呼叫的 webhook（要在測試帳號的 Developers Console 設定，並開啟 Use webhook）。不需要試驗功能憑證，改驗 X-Line-Signature。
+//                              同事傳「登記」→ 記下 userId＋暱稱（回覆「已加入測試名單」，reply 不計額度）；加好友或傳別的字 → 回覆提示；封鎖／刪除好友 → 自動從名單移除
+//   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）
+//   POST /line/testers/remove  從名單移除
+// 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰。
+// ===========================================================================
+async function lineVerifySignature(secret, rawBytes, sigB64) {
+  let sig; try { sig = Uint8Array.from(atob(String(sigB64 || '')), c => c.charCodeAt(0)); } catch { return false; }
+  if (!sig.length) return false;
+  const key = await crypto.subtle.importKey('raw', textEncoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  return crypto.subtle.verify('HMAC', key, sig, rawBytes);
+}
+async function lineReply(env, replyToken, text) {
+  if (!replyToken) return;
+  const r = await lineCall(env, 'test', 'POST', '/v2/bot/message/reply', { replyToken, messages: [{ type: 'text', text }] });
+  if (r.status !== 200) console.error('line reply failed', r.status);
+}
+async function lineHandleEvent(env, ev) {
+  const userId = ev && ev.source && ev.source.type === 'user' ? ev.source.userId : '';
+  if (!LINE_USER_ID.test(String(userId || ''))) return;
+  const tid = await lineTid(userId), key = `${LINE_TESTER_PREFIX}${tid}.json`, r2 = lineR2(env);
+  if (ev.type === 'unfollow') { await r2.delete(key); return; }
+  if (ev.type === 'follow') { await lineReply(env, ev.replyToken, '這是測試帳號。要加入測試名單，請傳送「登記」。'); return; }
+  if (ev.type !== 'message' || !ev.message || ev.message.type !== 'text') return;
+  if (!LINE_REGISTER_WORDS.has(String(ev.message.text || '').trim())) { await lineReply(env, ev.replyToken, '要加入測試名單，請傳送「登記」。'); return; }
+  const old = await lineTesterGet(env, tid);
+  if (!old && (await lineTesterAll(env)).length >= LINE_TESTER_MAX_TOTAL) { await lineReply(env, ev.replyToken, `測試名單已滿（${LINE_TESTER_MAX_TOTAL} 人），請聯絡管理者。`); return; }
+  let name = old ? old.name : '';
+  const pr = await lineCall(env, 'test', 'GET', `/v2/bot/profile/${userId}`);
+  if (pr.status === 200 && pr.data && pr.data.displayName) name = String(pr.data.displayName).slice(0, 40);
+  const rec = { tid, userId, name, registeredAt: old ? old.registeredAt : Date.now(), updatedAt: Date.now() };
+  await r2.put(key, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
+  await lineReply(env, ev.replyToken, `已${old ? '更新' : '加入'}測試名單${name ? `：${name}` : ''}。之後在推播工具選你的名字，測試推播就只會傳給你。`);
+}
+async function handleLineWebhook(request, env) {
+  const plain = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
+  if (request.method !== 'POST') return plain(405, { error: '只支援 POST' });
+  let secret; try { secret = lineChannelCreds(env, 'test').secret; } catch (e) { return plain(e.status || 503, { error: e.message }); }
+  const raw = await request.arrayBuffer();
+  if (raw.byteLength > 1024 * 1024) return plain(413, { error: '內容太大' });
+  if (!(await lineVerifySignature(secret, new Uint8Array(raw), request.headers.get('x-line-signature')))) return plain(401, { error: '簽章不正確' });
+  let body; try { body = JSON.parse(textDecoder.decode(raw)); } catch { return plain(400, { error: '格式不正確' }); }
+  const events = Array.isArray(body && body.events) ? body.events.slice(0, 20) : [];   // 按 Verify 時 events 是空陣列，直接回 200
+  for (const ev of events) { try { await lineHandleEvent(env, ev); } catch (e) { console.error('line webhook event failed', e && e.message); } }
+  return plain(200, { ok: true });
+}
+async function handleLineTesters(request, env, action) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    lineR2(env);
+    if (action === 'remove') {
+      const rec = await lineTesterGet(env, body.tid);
+      if (!rec) throw Object.assign(new Error('名單裡找不到這位'), { status: 404 });
+      await lineR2(env).delete(`${LINE_TESTER_PREFIX}${rec.tid}.json`);
+    }
+    return jsonOk({ ok: true, testers: (await lineTesterAll(env)).map(lineTesterPublic), maxPerSend: LINE_TESTER_MAX_PER_SEND }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '操作失敗', request, env); }
 }
 
 // ===========================================================================
@@ -1028,7 +1151,7 @@ async function lineSchedList(env) {
   } while (cursor);
   return out;
 }
-const lineSchedPublic = r => ({ id: r.id, channel: r.channel, org: r.org, name: r.name || '', altText: r.altText, runAt: r.runAt, runAtIso: taipeiIso(r.runAt), status: r.status, attempts: r.attempts || 0, lastError: r.lastError || '', requestId: r.requestId || '', sentAt: r.sentAt || '', approvedFriends: r.approvedFriends || null, links: r.links || [], createdAt: r.createdAt });
+const lineSchedPublic = r => ({ id: r.id, channel: r.channel, org: r.org, name: r.name || '', altText: r.altText, runAt: r.runAt, runAtIso: taipeiIso(r.runAt), status: r.status, attempts: r.attempts || 0, lastError: r.lastError || '', requestId: r.requestId || '', sentAt: r.sentAt || '', approvedFriends: r.approvedFriends || null, recipientNames: r.recipientNames || [], links: r.links || [], createdAt: r.createdAt });
 const lineSanitizeLinks = links => (Array.isArray(links) ? links : []).slice(0, 24).map(l => ({ page: Number(l && l.page) || 0, label: String((l && l.label) || '').slice(0, 20), title: String((l && l.title) || '').slice(0, 120), url: String((l && l.url) || '').slice(0, 2000) }));
 
 async function handleLineScheduleCreate(request, env) {
@@ -1043,22 +1166,24 @@ async function handleLineScheduleCreate(request, env) {
     const prep = await lineOpenPrep(env, body.prepareToken, '排程');
     const official = LINE_OFFICIAL.has(key);
     if (official) await lineOfficialGate(env, key, prep, body.testToken);
+    const recs = official ? null : await lineResolveTesters(env, body.testers);   // 測試帳號排程：建立時就要指定收件人（時間到只發給他們）
     lineChannelCreds(env, key);
     const pending = (await lineSchedList(env)).filter(x => x.status === 'scheduled' || x.status === 'sending').length;
     if (pending >= LINE_SCHED_MAX_PENDING) throw Object.assign(new Error(`待發送的排程已經 ${pending} 筆，請先刪除不需要的再建立。沒有建立排程。`), { status: 409 });
     const origin = new URL(request.url).origin;
     // 建立當下就把格式檢查與人數確認做完（發送當下還會再檢查一次）
     const messages = lineBuildMessages(prep, origin);
-    const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
+    const v = await lineCall(env, key, 'POST', official ? '/v2/bot/message/validate/broadcast' : '/v2/bot/message/validate/multicast', { messages });
     if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有建立排程。`), { status: 400 });
-    const info = await lineAccountInfo(env, key);
-    const friends = info.followers ? info.followers.followers : null;
+    const info = official ? await lineAccountInfo(env, key) : null;
+    const friends = info && info.followers ? info.followers.followers : null;
     if (official) {
       if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不排程。沒有建立排程。'), { status: 409 });
       lineTypedApprove(body.confirmTotal)(friends);
     }
     const id = lineHex(12), now = Date.now();
     const rec = { v: 1, id, channel: key, org: prep.org, name: typeof body.name === 'string' ? body.name.slice(0, 60) : '', altText: prep.altText, pages: prep.pages, links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
+    if (recs) { rec.testerTids = recs.map(r => r.tid); rec.recipientNames = recs.map(r => r.name || '（沒有暱稱）'); }
     await lineSchedPut(env, rec);
     return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '建立排程失敗', request, env); }
@@ -1119,7 +1244,13 @@ async function lineRunDue(env, now = Date.now()) {
         if (rec.channel !== rec.org) throw badInput('排程內容與帳號不符，沒有發送');
       }
       const approve = friends => { const a = rec.approvedFriends; if (a && Math.abs(friends - a) > Math.max(100, Math.round(a * LINE_SCHED_DRIFT))) throw Object.assign(new Error(`發送當下好友數約 ${friends} 人，和建立排程時確認的 ${a} 人差太多，為了安全沒有發送`), { status: 409 }); };
-      const r = await lineBroadcastNow(env, rec.channel, prep, { origin: rec.origin, retryKey: rec.retryKey, approve });
+      let r;
+      if (official) r = await lineBroadcastNow(env, rec.channel, prep, { origin: rec.origin, retryKey: rec.retryKey, approve });
+      else {   // 測試帳號：只發給建立排程時指定的人（名單裡已被移除的就略過；一個都不剩就失敗）
+        const recs = []; for (const tid of rec.testerTids || []) { const t = await lineTesterGet(env, tid); if (t) recs.push(t); }
+        if (!recs.length) throw badInput('這筆測試排程指定的收件人都已不在測試名單裡，沒有發送任何東西');
+        r = await lineMulticastTest(env, prep, { origin: rec.origin, retryKey: rec.retryKey, recs });
+      }
       rec.status = 'sent'; rec.requestId = r.requestId; rec.sentAt = taipeiIso(Date.now()); rec.friends = r.friends; rec.lastError = '';
     } catch (e) {
       const transient = !e.status || e.status >= 500 || e.lineStatus >= 500 || e.lineStatus === 429 || e.status === 429 || (e.status === 502 && !e.lineStatus && /fetch|network/i.test(e.message || ''));
@@ -1174,6 +1305,9 @@ export default {
     if (path === '/line/validate') return handleLineValidate(request, env);
     if (path === '/line/send') return handleLineSend(request, env);
     if (path === '/line/clicks') return handleLineClicks(request, env);
+    if (path === '/line/webhook') return handleLineWebhook(request, env);
+    if (path === '/line/testers/list') return handleLineTesters(request, env, 'list');
+    if (path === '/line/testers/remove') return handleLineTesters(request, env, 'remove');
     if (path === '/line/schedule/create') return handleLineScheduleCreate(request, env);
     if (path === '/line/schedule/list') return handleLineScheduleList(request, env);
     if (path === '/line/schedule/update') return handleLineScheduleChange(request, env, 'update');

@@ -82,7 +82,9 @@
 | `POST /line/status` | 用 Channel ID＋secret 現場換一個 15 分鐘的 stateless token，唯讀查帳號名稱、好友數（LINE 昨日統計）、本月訊息額度與已用 |
 | `POST /line/prepare` | 檢查內容、把每頁 1040 寬的圖片存進 R2、封存要發的內容（30 分鐘有效） |
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
-| `POST /line/send` | 再 validate 一次、確認額度與人數後 `broadcast` 給全部好友 |
+| `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給測試名單裡勾選的人（每次最多 2 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
+| `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
+| `POST /line/testers/list`｜`remove` | 查看／移除測試名單（網頁只拿到 tid 與暱稱，看不到 LINE userId） |
 | `POST /line/schedule/*` | 排程推播：建立、查看、變更時間、刪除（見下一節） |
 | `POST /line/clicks` | 用發送時 LINE 回的 request id，查這次群發每個連結的點擊次數與人數（`GET /v2/bot/insight/message/event`，唯讀） |
 
@@ -91,7 +93,16 @@
 - 一定先 `validate`，沒通過就不發；每次帶 `X-Line-Retry-Key`（UUID），同一個 key 重送 LINE 不會重複發；
 - 本月額度（上限－已用）不夠好友數就不發；
 - **正式帳號**另外要求：Worker 設了 `LINE_ALLOW_OFFICIAL=1`；**同一份內容先成功發過測試帳號**（Worker 回的 `testToken`，1 小時有效）；內容的版型要和帳號對得上（新聞內容只能發新聞帳號）；使用者輸入的好友數和 LINE 回報的相差在 2%（至少 50 人）以內；查不到好友數就不發；
-- Worker 只允許呼叫 8 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate、broadcast），**沒有** push／multicast／narrowcast、不改頻道設定、不重發長效 token。
+- Worker 只允許呼叫 12 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate／broadcast，以及**只限測試帳號**的 validate／multicast、reply、profile），**沒有** push／narrowcast、不改頻道設定、不重發長效 token。程式寫死：測試帳號不能 broadcast；正式帳號不能 multicast／reply／profile。
+
+### 測試名單（測試帳號只發給「選到的人」，省額度）
+
+LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖；封鎖的人不計；reply 不計）。測試帳號免費版每月 200 則，如果每次測試都 broadcast 給所有好友（例如 20 位同事）一個月只能測約 9 次。所以測試推播改成：
+
+1. **一次性設定（只動測試帳號，新聞／娛樂帳號的 webhook 屬於 S8，完全不碰）**：LINE Developers Console → 測試帳號頻道 → Messaging API → **Webhook URL** 填 `https://<你的 Worker 網址>/line/webhook`，開啟 **Use webhook**，按 **Verify**（要顯示 Success）。LINE Official Account Manager → 回應設定：建議關掉「加入好友的歡迎訊息」與「自動回應訊息」，避免和 Worker 的回覆重複。
+2. **同事登記**：用 LINE 傳送「登記」給測試帳號（也可傳「加入測試名單」）→ Worker 記下 userId 與暱稱（存在 R2 的 `testers/`），並回覆「已加入測試名單」。傳別的字或剛加好友只會收到提示；封鎖測試帳號會自動從名單移除；名單上限 50 人。
+3. **使用**：網頁測試推播前選「測試推播給：你的名字」（記在這個瀏覽器），可再加 1 位；Worker 強制每次最多 2 位、只能選名單內的人。收件人換了會換一把重試金鑰。
+4. 測試排程（排程對象選「測試帳號」）建立時也要選收件人，時間到只發給他們。
 
 ### 排程推播（LINE 本身沒有排程，所以由 Worker 自己排）
 
