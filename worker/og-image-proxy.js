@@ -177,8 +177,10 @@ const S8_SCOPE_READ = 'insightark-mcp:read';
 const S8_SCOPE_WRITE = 'insightark-mcp:read insightark-mcp:write';
 const S8_READ_TOOLS = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview']);   // 唯讀工具白名單（只有試算人數，沒有任何建立／發送／排程）
 const S8_ORG_NAMES = { news: 'TVBS新聞', ent: 'TVBS娛樂頭條' };   // 組織只能從這兩個名稱解析，不採信網頁傳來的 orgId
-// 查看工具定義時只列出和群發有關的工具（名稱、說明、欄位），不呼叫它們。
-const S8_TOOLS_SHOWN = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview', 'broadcast_create', 'broadcast_update', 'broadcast_get', 'messaging_message_preview', 'media_upload_url', 'crm_tag_list']);
+// 查看工具定義時只列出這些工具的名稱、說明、欄位（MCP tools/list），不呼叫它們：群發相關，以及客戶資料／單一客戶發送（想確認客戶資料有沒有 LINE userId 欄位）。
+// 這份名單只影響「列出」；真正能執行的工具另有 S8_READ_TOOLS／S8_STAGE3_TOOLS 白名單，沒有因此多開任何執行權限。
+const S8_TOOLS_SHOWN = new Set(['auth_me', 'auth_organizations', 'broadcast_audience_preview', 'broadcast_create', 'broadcast_update', 'broadcast_get', 'messaging_message_preview', 'media_upload_url', 'crm_tag_list',
+  'crm_platform_list', 'crm_customer_search', 'crm_customer_get', 'crm_customer_group_list', 'crm_customer_group_get', 'crm_customer_group_members_list', 'messaging_customer_send_message', 'credits_usage']);
 const S8_STATE_TTL_MS = 10 * 60 * 1000;
 const S8_CLIENT_NAME = 'Line推播套版產生器';
 

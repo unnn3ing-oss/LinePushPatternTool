@@ -49,7 +49,7 @@
 | `/s8/create` 的 `mode` | 只接受 `"draft"`（沒帶就是它）或 `"schedule"`，其他任何值（含 `null`、大小寫不同、空字串）一律回 400，且完全不呼叫 S8。<br>`draft`：建立 → `broadcast_get` → `broadcast_update(pause)` → `broadcast_get`，回 `{ok, mode:'draft', taskId, status, phase, scheduledWas, total, orgId}`。<br>`schedule`（使用者明確選擇、**不暫停**）：body 必須帶 `scheduleAt`（台北時間 `YYYY-MM-DDTHH:mm:00+08:00`，到分鐘），Worker 檢查格式、日期真的存在、且落在**建立當下 +30 分鐘 ～ +7 天**，不合格回 400 且完全不呼叫 S8；建立後只呼叫唯讀的 `broadcast_get` 確認狀態，回 `{ok:true, mode:'schedule', taskId, scheduleAt, status, phase, allowedActions, total, orgId}`；這筆群發會在 `scheduleAt` **實際發送**。讀不到狀態或找不到 taskId 時回 `ok:false` 與 `warning`（明寫實際發送時間），網頁會提示立即處理。<br>`draft` 的 `scheduleAt` 由 Worker 固定為建立當下 +24 小時（+08:00），帶 `scheduleAt` 會回 400；兩種模式的 `recipients` 一律忽略（固定全部 LINE 顧客） |
 | 程式內的硬規則 | 工具參數一律先過把關：發送對象只能是 LINE + 不加條件；`scheduleAt` 必須是 +08:00 的 RFC 3339，且在建立當下 +25 分鐘 ～ +7 天又 1 小時之間（把關層；`/s8/create` 對使用者指定的時間更嚴：+30 分鐘 ～ +7 天）；`broadcast_update` 只允許 `action:"pause"`；只允許 imagemap、連結只允許網址；整個程式沒有 resume、sendNow，也沒有省略 `scheduleAt` 的建立；`schedule` 模式只是「不呼叫 pause」並改用使用者指定的時間，其他把關完全沒有放寬 |
 | 試算人數 | `POST /s8/audience` 呼叫 `broadcast_audience_preview`（唯讀）：組織只能是 `news`（TVBS新聞）或 `ent`（TVBS娛樂頭條），由 Worker 依名稱向 S8 解析 id；參數固定為 LINE、只限定平台、不加標籤或其他條件、不取樣本，網頁傳來的任何篩選一律忽略 |
-| 查看工具定義 | `POST /s8/tools` 只做 MCP 的 `tools/list`（列出與群發有關的工具名稱、說明、欄位），不執行任何工具 |
+| 查看工具定義 | `POST /s8/tools` 只做 MCP 的 `tools/list`（列出群發相關，以及客戶資料／單一客戶發送這幾個工具的名稱、說明、欄位），不執行任何工具；這份清單只影響「列出」，沒有多開任何執行權限 |
 | 撤銷授權 | S8 Console → 使用者資訊 → Connected Apps；網頁上的「中斷連線」只會清掉這個分頁的連結資料 |
 
 > 若 S8 不接受 `workers.dev` 當跳轉位址，視窗會顯示 S8 回報的原因，請把那段文字貼給維護者。

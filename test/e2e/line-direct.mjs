@@ -67,8 +67,9 @@ await page.route(`${WORKER}/**`, async route => {
     if (sendFail && body.channel !== 'test') return json({ error: sendFail }, 502);
     const official = body.channel !== 'test';
     if (!official && !(body.testers || []).length) return json({ error: '請先選擇測試推播要給誰（至少 1 位）。沒有發送任何東西。' }, 400);
+    const usedBefore = testUsed;
     if (!official) testUsed += body.testers.length;
-    return json({ ok: true, channel: body.channel, official, sentAt: '2026-10-07T12:00:00+08:00', requestId: official ? '22222222-2222-4222-8222-222222222222' : '11111111-1111-4111-8111-111111111111', retryKey: body.retryKey, friends: official ? followers : body.testers.length, pages: 2, ...(official ? {} : { testToken: 'ttok', recipients: body.testers.map(t => (testers.find(x => x.tid === t) || {}).name), quota: { limit: testQuota.value, used: testUsed } }) });
+    return json({ ok: true, channel: body.channel, official, sentAt: '2026-10-07T12:00:00+08:00', requestId: official ? '22222222-2222-4222-8222-222222222222' : '11111111-1111-4111-8111-111111111111', retryKey: body.retryKey, friends: official ? followers : body.testers.length, pages: 2, ...(official ? {} : { testToken: 'ttok', recipients: body.testers.map(t => (testers.find(x => x.tid === t) || {}).name), quota: { limit: testQuota.value, used: usedBefore } }) });
   }
   return json({ error: `unexpected ${url.pathname}` }, 404);
 });
@@ -575,12 +576,16 @@ await page.waitForTimeout(100);
 await page.click(`#lineWhoBtn`); await page.click(`#lineWhoPanel input[value="${T_C}"]`); await page.click('#lineWhoNote');   // 加陳小美 → 李小華、陳小美
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-17c-who-picked.png') });
 const sendsBefore17 = reqs.send.length;
+await page.evaluate(() => { lineUsageCheckMs = 100; });
+const usedBefore17 = testUsed;
 await page.click('#lineTestBtn');
 await page.waitForFunction(() => /已推播到測試帳號/.test(document.getElementById('lineTestMsg').textContent));
 const b17 = reqs.send[sendsBefore17];
 check(b17.channel === 'test' && JSON.stringify(b17.testers) === JSON.stringify([T_B, T_C]), '測試推播送出：只帶勾選的 2 位（李小華、陳小美）');
 check((await txt('#lineTestMsg')).includes('李小華、陳小美') && (await txt('#lineWin')).includes('收件人：李小華、陳小美'), '結果寫明收件人是誰');
 check(!(await vis('#lineWho')), '測試推播完成後收件人選單收起');
+await page.waitForFunction(() => /用量核對/.test(document.getElementById('lineWin').textContent), null, { timeout: 5000 });
+check((await txt('#lineWin')).includes(`本月已用 ${usedBefore17} → ${usedBefore17 + 2}（+2），和「收件人數 2 位 = 2 則」一致`), '發送後向 LINE 核對實際用量：前後差 +2，與「收件人數 = 則數」一致');
 // 換收件人要換一把重試金鑰
 const keyChange = await page.evaluate(() => { const st = lineSt(); st.retryKey.test = 'x'; lineWhoToggle(lineWhoPicked()[0], false); return st.retryKey.test; });
 check(keyChange === '', '換收件人：清掉原本的重試金鑰（下一次發送會產生新的）');

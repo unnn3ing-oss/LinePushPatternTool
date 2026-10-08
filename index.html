@@ -1320,7 +1320,7 @@
         <button type="button" class="primary" id="s8cConnect">連結 S8</button>
         <button type="button" id="s8cDisconnect">中斷連結</button>
         <button type="button" id="s8cCheck">檢查連結狀態</button>
-        <button type="button" id="s8cTools" hidden>查看工具定義</button>
+        <button type="button" id="s8cTools">查看工具定義</button>
       </div>
     </div>
   </div>
@@ -5943,6 +5943,22 @@ function lineWhoRender() {
   }
   note.textContent = text; note.classList.toggle('bad', bad);
 }
+// 測試推播後向 LINE 核對實際扣了幾則（LINE 的「本月已發送數」是約略值、可能延遲幾秒到幾分鐘；沒變就請稍後按 ↻）
+let lineUsageCheckMs = 8000;
+async function lineVerifyUsage(before, n, st) {
+  await new Promise(r => setTimeout(r, lineUsageCheckMs));
+  try {
+    const sr = await s8Api('/line/status', { channel: 'test' });
+    if (!Number.isFinite(sr.used) || !sr.quota || !Number.isFinite(sr.quota.value)) return;
+    lineWhoSt.quota = { limit: sr.quota.value, used: sr.used };
+    const diff = sr.used - before;
+    const msg = diff === n ? `用量核對：本月已用 ${before} → ${sr.used}（+${diff}），和「收件人數 ${n} 位 = ${n} 則」一致。`
+      : (diff === 0 ? `用量核對：LINE 目前仍回報已用 ${sr.used}（還沒更新，LINE 的用量是約略值，可能延遲）。稍後按 ↻ 再看；預計會變成 ${before + n}。`
+        : `用量核對：本月已用 ${before} → ${sr.used}（+${diff}），和預計的 +${n} 不同（可能同時有別的發送，或 LINE 還沒更新完）。`);
+    if (st && st.win && st.win.text && !st.win.text.includes('用量核對')) { st.win = { text: `${st.win.text}\n\n${msg}`, kind: st.win.kind }; if (st === lineByMode[mode]) lineRenderWin(); }
+    lineWhoRender();
+  } catch (e) { /* 核對失敗不影響發送結果 */ }
+}
 function lineWhoToggle(tid, on) {
   const cur = lineWhoPicked();
   if (on) { if (cur.includes(tid) || cur.length >= LINE_WHO_MAX) { lineWhoRender(); return; } lineWhoSt.sel = [...cur, tid]; }
@@ -6174,9 +6190,10 @@ $line('lineTestBtn').addEventListener('click', async () => {
   try {
     const picked = lineWhoPicked(); if (!picked.length) throw new Error('請先選擇測試推播要給誰');
     const r = await lineSend('test', { testers: picked });
-    if (r.quota) lineWhoSt.quota = r.quota;
+    if (r.quota) lineWhoSt.quota = { limit: r.quota.limit, used: r.quota.used + (r.friends || 0) };   // 先用「發送前用量＋收件人數」估計；稍後再向 LINE 查實際用量核對
     const names = (r.recipients || lineWhoNames(picked)).join('、');
     st.test = 'ok'; st.testToken = r.testToken || ''; st.testMsg = `✓ 已推播到測試帳號（${names}），請到手機確認`;
+    if (r.quota && Number.isFinite(r.quota.used)) lineVerifyUsage(r.quota.used, r.friends || 0, st);
     lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: 'test', mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
     lineWin(`✓ 已推播到測試帳號（收件人：${names}）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n請到手機的測試帳號確認版面與連結都正確，沒問題再按「測試完成」。`, 'ok');
   } catch (e) { st.test = 'bad'; st.testMsg = `✗ 推播失敗：${String(e.message || e).slice(0, 160)}`; lineWin(`測試推播失敗：${e.message || e}`, 'bad'); }

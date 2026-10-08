@@ -55,7 +55,7 @@ check((await page.textContent('#s8cOut')).includes('讀取＋寫入') && (await 
 check(await page.locator('#s8cUpgrade').count() === 0, '「升級為可建立草稿」按鈕已移除');
 check(await vis('#s8cConnect') && await vis('#s8cDisconnect') && await vis('#s8cCheck'), '看得到「連結 S8」「中斷連結」「檢查連結狀態」');
 check((await page.textContent('#s8cConnect')) === '連結 S8' && (await page.textContent('#s8cDisconnect')) === '中斷連結' && (await page.textContent('#s8cCheck')) === '檢查連結狀態', '三個按鈕文字');
-check(await page.locator('#s8cTools').count() === 1 && !(await vis('#s8cTools')), '「查看工具定義」已隱藏，但功能（元素）還在');
+check(await page.locator('#s8cTools').count() === 1 && (await vis('#s8cTools')), '「查看工具定義」按鈕顯示（唯讀，只列出工具名稱與欄位）');
 const ys = await page.evaluate(() => ['s8cState', 's8cOut', 's8cConnect'].map(id => document.getElementById(id).getBoundingClientRect().top));
 check(ys[0] < ys[1] && ys[1] < ys[2], '由上到下：連結狀態 → 提示窗 → 按鈕');
 await page.screenshot({ path: path.join(SHOTS, 's8c-1-disconnected.png') });
