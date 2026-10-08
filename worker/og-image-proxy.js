@@ -763,7 +763,8 @@ const LINE_IMG_WIDTHS = [240, 300, 460, 700, 1040];
 const LINE_PREPARE_TTL_MS = 30 * 60 * 1000;
 const LINE_MAX_IMG_BYTES = 10 * 1024 * 1024;   // LINE 上限是 10MB
 // Worker 只能對 LINE 做這幾件事（方法＋路徑），其他一律不給：沒有 push／narrowcast、沒有改頻道設定、沒有重發長效 token。
-// multicast（只發給名單內指定的人）、reply（回覆登記訊息，不計額度）、profile（查登記者暱稱）只允許測試帳號用（見 LINE_TEST_ONLY）。
+// multicast／validate-multicast／profile：測試帳號與正式帳號都能用，但正式帳號的 multicast 在 lineCall 內強制「最多 LINE_TESTER_MAX_PER_SEND 位、每個都要是合法 userId」，而且呼叫端只會拿「正式帳號測試名單」（管理者親自加入、並經 LINE profile 驗證過）裡的人；正式帳號仍然沒有 push／narrowcast，broadcast 閘門不變。
+// reply（回覆登記訊息，不計額度）只允許測試帳號用（見 LINE_TEST_ONLY）。
 const LINE_ALLOWED_CALLS = [
   /^POST \/oauth2\/v3\/token$/,
   /^GET \/v2\/bot\/info$/,
@@ -778,7 +779,7 @@ const LINE_ALLOWED_CALLS = [
   /^POST \/v2\/bot\/message\/reply$/,
   /^GET \/v2\/bot\/profile\/U[0-9a-f]{32}$/,
 ];
-const LINE_TEST_ONLY = [/^POST \/v2\/bot\/message\/validate\/multicast$/, /^POST \/v2\/bot\/message\/multicast$/, /^POST \/v2\/bot\/message\/reply$/, /^GET \/v2\/bot\/profile\//];
+const LINE_TEST_ONLY = [/^POST \/v2\/bot\/message\/reply$/];
 const lineTokenCache = new Map();   // channel key → { id, promise(token), exp }
 
 function lineChannelCreds(env, key) {
@@ -812,6 +813,10 @@ async function lineCall(env, key, method, path, body, extraHeaders) {
   const sig = `${method} ${base}`;
   if (!LINE_ALLOWED_CALLS.some(re => re.test(sig))) throw new Error(`不允許的 LINE 呼叫：${sig}`);
   if (key !== 'test' && LINE_TEST_ONLY.some(re => re.test(sig))) throw new Error(`${sig} 只能用在測試帳號`);
+  if (key !== 'test' && sig === 'POST /v2/bot/message/multicast') {   // 正式帳號的 multicast：最多 2 位、每個都必須是合法 userId（其餘一律拒絕）
+    const to = body && body.to;
+    if (!Array.isArray(to) || to.length < 1 || to.length > LINE_TESTER_MAX_PER_SEND || !to.every(u => LINE_USER_ID.test(String(u)))) throw new Error(`正式帳號的 multicast 最多只能發給 ${LINE_TESTER_MAX_PER_SEND} 位指定的人`);
+  }
   if (key === 'test' && sig === 'POST /v2/bot/message/broadcast') throw new Error('測試帳號不能 broadcast（會發給所有好友、吃掉免費額度），只能用 multicast 發給測試名單內的人');
   const token = await lineAccessToken(env, key);
   const res = await fetch(`${LINE_API}${path}`, {
@@ -964,42 +969,50 @@ const LINE_USER_ID = /^U[0-9a-f]{32}$/;
 const LINE_REGISTER_WORDS = new Set(['登記', '加入測試名單']);
 // 網頁只看得到 tid（userId 的雜湊前 16 碼），看不到 LINE 的 userId
 async function lineTid(userId) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', textEncoder.encode(userId))).slice(0, 8)].map(b => b.toString(16).padStart(2, '0')).join(''); }
-async function lineTesterGet(env, tid) {
+const lineTesterDir = ch => (ch === 'test' ? LINE_TESTER_PREFIX : `${LINE_TESTER_PREFIX}${ch}/`);   // 測試帳號：testers/<tid>.json；正式帳號：testers/<news|ent>/<tid>.json
+const LINE_TESTER_MAX_OFFICIAL = 20;   // 每個正式帳號的測試名單上限
+const lineAcctLabel = ch => (ch === 'test' ? '測試帳號' : (ch === 'news' ? 'TVBS新聞' : 'TVBS娛樂頭條'));
+async function lineTesterGet(env, tid, ch = 'test') {
   if (!/^[0-9a-f]{16}$/.test(String(tid || ''))) return null;
-  const o = await lineR2(env).get(`${LINE_TESTER_PREFIX}${tid}.json`);
+  const o = await lineR2(env).get(`${lineTesterDir(ch)}${tid}.json`);
   if (!o) return null;
   try { return JSON.parse(typeof o.text === 'function' ? await o.text() : textDecoder.decode(o.body)); } catch { return null; }
 }
-async function lineTesterAll(env) {
-  const r = await lineR2(env).list({ prefix: LINE_TESTER_PREFIX, limit: 200 }), out = [];
-  for (const o of r.objects || []) { const rec = await lineTesterGet(env, o.key.slice(LINE_TESTER_PREFIX.length, -5)); if (rec) out.push(rec); }
+async function lineTesterAll(env, ch = 'test') {
+  const dir = lineTesterDir(ch), r = await lineR2(env).list({ prefix: dir, limit: 200 }), out = [];
+  for (const o of r.objects || []) {
+    const rest = o.key.slice(dir.length);
+    if (!/^[0-9a-f]{16}\.json$/.test(rest)) continue;   // 測試帳號的目錄底下還有 news／ent 子目錄，不能混進來
+    const rec = await lineTesterGet(env, rest.slice(0, -5), ch); if (rec) out.push(rec);
+  }
   return out.sort((a, b) => (a.registeredAt || 0) - (b.registeredAt || 0));
 }
 const lineTesterPublic = r => ({ tid: r.tid, name: r.name || '（沒有暱稱）', registeredAt: r.registeredAt || 0 });
-async function lineResolveTesters(env, tids) {
+async function lineResolveTesters(env, tids, ch = 'test') {
   if (!Array.isArray(tids) || !tids.length) throw badInput('請先選擇測試推播要給誰（至少 1 位）。沒有發送任何東西。');
   if (tids.length > 10) throw badInput('收件人格式不正確。沒有發送任何東西。');
   const uniq = [...new Set(tids.map(String))];
   if (uniq.length > LINE_TESTER_MAX_PER_SEND) throw badInput(`每次測試推播最多只能發給 ${LINE_TESTER_MAX_PER_SEND} 位。沒有發送任何東西。`);
   const recs = [];
   for (const tid of uniq) {
-    const rec = await lineTesterGet(env, tid);
+    const rec = await lineTesterGet(env, tid, ch);
     if (!rec) throw badInput('選到的收件人不在測試名單裡（可能已被移除），請重新整理名單再選。沒有發送任何東西。');
     recs.push(rec);
   }
   return recs;
 }
-// 測試帳號專用：validate → 額度檢查（收件人數）→ multicast 給名單內指定的人。額度算法：LINE 以「收件人數」計（一則訊息有幾頁圖不影響）。
-async function lineMulticastTest(env, prep, { origin, retryKey, recs }) {
-  lineChannelCreds(env, 'test');
+// 測試推播專用：validate → 額度檢查（收件人數）→ multicast 給名單內指定的人。額度算法：LINE 以「收件人數」計（一則訊息有幾頁圖不影響）。
+// key 預設是測試帳號；也可以是 news／ent（「正式帳號的測試推播」：只發給該帳號測試名單裡的人，broadcast 閘門完全不受影響）。
+async function lineMulticastTest(env, prep, { origin, retryKey, recs, key = 'test' }) {
+  lineChannelCreds(env, key);
   const messages = lineBuildMessages(prep, origin);
-  const v = await lineCall(env, 'test', 'POST', '/v2/bot/message/validate/multicast', { messages });
+  const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/multicast', { messages });
   if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有發送任何東西。`), { status: 400 });
-  const info = await lineAccountInfo(env, 'test');
+  const info = await lineAccountInfo(env, key);
   if (info.quota && info.quota.type === 'limited' && info.quota.value !== null && info.used !== null && info.quota.value - info.used < recs.length) {
-    throw Object.assign(new Error(`測試帳號本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發 ${recs.length} 位。沒有發送任何東西。`), { status: 409 });
+    throw Object.assign(new Error(`${lineAcctLabel(key)}本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發 ${recs.length} 位。沒有發送任何東西。`), { status: 409 });
   }
-  const sent = await lineCall(env, 'test', 'POST', '/v2/bot/message/multicast', { to: recs.map(r => r.userId), messages }, { 'X-Line-Retry-Key': retryKey });
+  const sent = await lineCall(env, key, 'POST', '/v2/bot/message/multicast', { to: recs.map(r => r.userId), messages }, { 'X-Line-Retry-Key': retryKey });
   if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502, lineStatus: sent.status });
   return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends: recs.length, recipients: recs.map(r => r.name || '（沒有暱稱）'), pages: messages.length, quota: info.quota && info.quota.value !== null && info.used !== null ? { limit: info.quota.value, used: info.used } : null };
 }
@@ -1029,14 +1042,16 @@ async function handleLineSend(request, env) {
     if (typeof body.retryKey !== 'string' || !LINE_RETRY_KEY.test(body.retryKey)) throw badInput('缺少 retryKey（UUID），用來避免重複發送。沒有發送任何東西。');
     const prep = await lineOpenPrep(env, body.prepareToken);
     const official = LINE_OFFICIAL.has(key);
-    if (official) await lineOfficialGate(env, key, prep, body.testToken);
+    const officialTest = official && body.mode === 'test';   // 「正式帳號的測試推播」：只 multicast 給該帳號測試名單裡勾選的人，不是正式群發
+    if (official && !officialTest) await lineOfficialGate(env, key, prep, body.testToken);
+    if (officialTest && key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能測試發到這個正式帳號。沒有發送任何東西。');
     const origin = new URL(request.url).origin;
-    const r = official
+    const r = official && !officialTest
       ? await lineBroadcastNow(env, key, prep, { origin, retryKey: body.retryKey, approve: lineTypedApprove(body.confirmTotal) })
-      : await lineMulticastTest(env, prep, { origin, retryKey: body.retryKey, recs: await lineResolveTesters(env, body.testers) });
-    const out = { ok: true, channel: key, official, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
-    if (!official) { out.recipients = r.recipients; out.quota = r.quota; }
-    if (!official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
+      : await lineMulticastTest(env, prep, { origin, retryKey: body.retryKey, recs: await lineResolveTesters(env, body.testers, key), key });
+    const out = { ok: true, channel: key, official: official && !officialTest, testOnly: !official || officialTest, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
+    if (!out.official) { out.recipients = r.recipients; out.quota = r.quota; }
+    if (!out.official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
     return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
 }
@@ -1045,9 +1060,13 @@ async function handleLineSend(request, env) {
 // 測試名單（只有測試帳號）
 //   POST /line/webhook         LINE 呼叫的 webhook（要在測試帳號的 Developers Console 設定，並開啟 Use webhook）。不需要試驗功能憑證，改驗 X-Line-Signature。
 //                              使用者傳「登記」→ 記下 userId＋暱稱（回覆「已加入測試名單」，reply 不計額度）；加好友或傳別的字 → 回覆提示；封鎖／刪除好友 → 自動從名單移除
-//   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）
-//   POST /line/testers/remove  從名單移除
-// 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰。
+//   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）。body.channel：test（預設）｜news｜ent
+//   POST /line/testers/remove  從名單移除（同上，可指定 channel）
+//   POST /line/testers/lookup  （只有 news／ent）貼上 LINE userId → 向該帳號查 profile 驗證有效，回暱稱，不存
+//   POST /line/testers/add     （只有 news／ent）同上，驗證通過才加入該帳號的測試名單（上限 20 人）
+// 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰：正式帳號的測試名單不靠 webhook，而是管理者從 S8 客戶中心複製 userId 貼進來，再由 LINE 的 profile 驗證。
+// 「正式帳號的測試推播」：POST /line/send 帶 mode:'test'＋testers，只 multicast 給該帳號測試名單裡勾選的人（每次最多 2 位）；
+// 它不需要 LINE_ALLOW_OFFICIAL，成功後一樣回 testToken；真正的 broadcast 閘門（旗標、testToken、人數確認）完全沒變。
 // ===========================================================================
 async function lineVerifySignature(secret, rawBytes, sigB64) {
   let sig; try { sig = Uint8Array.from(atob(String(sigB64 || '')), c => c.charCodeAt(0)); } catch { return false; }
@@ -1095,12 +1114,32 @@ async function handleLineTesters(request, env, action) {
   const { body, error } = await lineReadBody(request, env); if (error) return error;
   try {
     lineR2(env);
+    const ch = body.channel === undefined ? 'test' : body.channel;
+    if (!LINE_CHANNEL_SUFFIX[ch]) throw badInput('channel 只能是 test、news 或 ent');
+    const out = { ok: true, channel: ch, maxPerSend: LINE_TESTER_MAX_PER_SEND };
     if (action === 'remove') {
-      const rec = await lineTesterGet(env, body.tid);
+      const rec = await lineTesterGet(env, body.tid, ch);
       if (!rec) throw Object.assign(new Error('名單裡找不到這位'), { status: 404 });
-      await lineR2(env).delete(`${LINE_TESTER_PREFIX}${rec.tid}.json`);
+      await lineR2(env).delete(`${lineTesterDir(ch)}${rec.tid}.json`);
+    } else if (action === 'lookup' || action === 'add') {
+      // 正式帳號的測試名單：管理者貼上 LINE userId（可從 S8 客戶中心複製），Worker 先向 LINE 查暱稱驗證「這個 ID 在這個帳號有效」才存。測試帳號用 webhook 登記，不走這裡。
+      if (!LINE_OFFICIAL.has(ch)) throw badInput('測試帳號的名單由同事傳「登記」自動加入，這裡只能管理新聞／娛樂正式帳號的測試名單');
+      const userId = String(body.userId || '').trim();
+      if (!LINE_USER_ID.test(userId)) throw badInput('LINE userId 格式不對，應該是 U 開頭加 32 個英數字（小寫 a–f 與數字）');
+      lineChannelCreds(env, ch);
+      const pr = await lineCall(env, ch, 'GET', `/v2/bot/profile/${userId}`);
+      if (pr.status === 404) throw Object.assign(new Error(`LINE 查不到這個 ID：他可能不是「${lineAcctLabel(ch)}」的好友（或已封鎖），或這個 ID 屬於別的 Provider（不同 Provider 的 userId 不通用）。沒有加入名單。`), { status: 404 });
+      if (pr.status !== 200 || !pr.data || !pr.data.displayName) throw Object.assign(new Error(`${lineErrText(pr)}。沒有加入名單。`), { status: 502 });
+      const tid = await lineTid(userId), name = String(pr.data.displayName).slice(0, 40), old = await lineTesterGet(env, tid, ch);
+      out.found = { tid, name, already: !!old };
+      if (action === 'add') {
+        if (!old && (await lineTesterAll(env, ch)).length >= LINE_TESTER_MAX_OFFICIAL) throw Object.assign(new Error(`${lineAcctLabel(ch)}的測試名單已滿（${LINE_TESTER_MAX_OFFICIAL} 人），請先移除不需要的。`), { status: 409 });
+        const rec = { tid, userId, name, channel: ch, registeredAt: old ? old.registeredAt : Date.now(), updatedAt: Date.now() };
+        await lineR2(env).put(`${lineTesterDir(ch)}${tid}.json`, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
+      }
     }
-    return jsonOk({ ok: true, testers: (await lineTesterAll(env)).map(lineTesterPublic), maxPerSend: LINE_TESTER_MAX_PER_SEND }, request, env);
+    out.testers = (await lineTesterAll(env, ch)).map(lineTesterPublic);
+    return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '操作失敗', request, env); }
 }
 
@@ -1310,6 +1349,8 @@ export default {
     if (path === '/line/webhook') return handleLineWebhook(request, env);
     if (path === '/line/testers/list') return handleLineTesters(request, env, 'list');
     if (path === '/line/testers/remove') return handleLineTesters(request, env, 'remove');
+    if (path === '/line/testers/lookup') return handleLineTesters(request, env, 'lookup');
+    if (path === '/line/testers/add') return handleLineTesters(request, env, 'add');
     if (path === '/line/schedule/create') return handleLineScheduleCreate(request, env);
     if (path === '/line/schedule/list') return handleLineScheduleList(request, env);
     if (path === '/line/schedule/update') return handleLineScheduleChange(request, env, 'update');

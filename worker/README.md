@@ -84,7 +84,8 @@
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
 | `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給測試名單裡勾選的人（每次最多 2 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
 | `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
-| `POST /line/testers/list`｜`remove` | 查看／移除測試名單（網頁只拿到 tid 與暱稱，看不到 LINE userId） |
+| `POST /line/testers/list`｜`remove` | 查看／移除測試名單（網頁只拿到 tid 與暱稱，看不到 LINE userId）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
+| `POST /line/testers/lookup`｜`add` | **只有 news／ent**：貼上對方的 LINE userId → Worker 用該正式帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效並取得暱稱；`add` 驗證通過才存（每個帳號上限 20 人） |
 | `POST /line/schedule/*` | 排程推播：建立、查看、變更時間、刪除（見下一節） |
 | `POST /line/clicks` | 用發送時 LINE 回的 request id，查這次群發每個連結的點擊次數與人數（`GET /v2/bot/insight/message/event`，唯讀） |
 
@@ -103,6 +104,15 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 2. **登記**：用 LINE 傳送「登記」給測試帳號（也可傳「加入測試名單」）→ Worker 記下 userId 與暱稱（存在 R2 的 `testers/`），並回覆「已加入測試名單」。傳別的字或剛加好友只會收到提示；封鎖測試帳號會自動從名單移除；名單上限 50 人。
 3. **使用**：網頁測試推播前在「測試推播給」多選下拉勾選收件人（最多 2 位，選滿後其他人不能再勾；選擇記在這個瀏覽器）；Worker 強制每次最多 2 位、只能選名單內的人。收件人換了會換一把重試金鑰。
 4. 測試排程（排程對象選「測試帳號」）建立時也要選收件人，時間到只發給他們。
+
+### 正式帳號的測試推播（不需要同事加測試帳號）
+
+新聞／娛樂正式帳號的 webhook 屬於 S8，無法改，所以**不靠 webhook 取得 userId**：S8 客戶中心裡每位 LINE 客戶的客戶 ID 就是該帳號下的 LINE userId（`U` 加 32 碼）。
+
+1. **設定（一次性）**：Worker Secret 設 `LINE_CHANNEL_ID_NEWS`／`LINE_CHANNEL_SECRET_NEWS`（娛樂同理 `_ENT`）。**`LINE_ALLOW_OFFICIAL` 照樣不設**——這個功能不需要它，正式 broadcast 仍然鎖死。
+2. **建立名單**：網頁「排入LINE推播」→ 折疊區「帳號與額度…」→ 選「正式帳號」→ 貼上 userId →「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
+3. **測試推播**：第 3 步「測試推播發到」選「TVBS新聞（正式帳號）」，勾選收件人（最多 2 位）→ `POST /line/send` 帶 `mode:"test"`＋`testers`，Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內勾選的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
+4. **安全**：`lineCall` 內強制正式帳號的 multicast 最多 2 位、每個都是合法 userId；reply 仍只有測試帳號能用；沒有 push／narrowcast；正式 broadcast 的所有閘門（旗標、先測試、輸入好友數、版型）完全沒變。測試排程仍然只能排給測試帳號。
 
 ### 排程推播（LINE 本身沒有排程，所以由 Worker 自己排）
 

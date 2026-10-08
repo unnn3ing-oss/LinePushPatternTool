@@ -35,6 +35,10 @@ const labAuthReqs = [];
 const T_A = 'a'.repeat(16), T_B = 'b'.repeat(16), T_C = 'c'.repeat(16);
 let testers = [{ tid: T_A, name: '王小明', registeredAt: 1 }, { tid: T_B, name: '李小華', registeredAt: 2 }, { tid: T_C, name: '陳小美', registeredAt: 3 }];
 let testQuota = { type: 'limited', value: 200 }, testUsed = 36, testersFail = '';
+const T_N1 = '1'.repeat(16), T_N2 = '2'.repeat(16), UID_OK = 'U8f0fba4524410d1cbc7c95ce37d96b80';
+const officialTesters = { news: [{ tid: T_N1, name: '小編本人', registeredAt: 1 }], ent: [] };
+let lookupFail = '';
+const offReqs = { lookup: [], add: [], remove: [], send: [] };
 const testerReqs = { list: 0, remove: [] };
 await page.route(`${WORKER}/**`, async route => {
   const url = new URL(route.request().url());
@@ -42,8 +46,15 @@ await page.route(`${WORKER}/**`, async route => {
   const json = (obj, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(obj) });
   if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
   if (url.pathname === '/lab-auth') { labAuthReqs.push(body); return body.password === 'pw' ? json({ token: 'lab-token-2', expiresAt: Date.now() + 3600e3 }) : json({ error: '密碼不正確' }, 401); }
-  if (url.pathname === '/line/testers/list') { testerReqs.list++; return testersFail ? json({ error: testersFail }, 502) : json({ ok: true, testers, maxPerSend: 2 }); }
-  if (url.pathname === '/line/testers/remove') { testerReqs.remove.push(body); testers = testers.filter(t => t.tid !== body.tid); return json({ ok: true, testers, maxPerSend: 2 }); }
+  if (url.pathname === '/line/testers/list') { testerReqs.list++; if (body.channel === 'news' || body.channel === 'ent') return json({ ok: true, channel: body.channel, testers: officialTesters[body.channel], maxPerSend: 2 }); return testersFail ? json({ error: testersFail }, 502) : json({ ok: true, testers, maxPerSend: 2 }); }
+  if (url.pathname === '/line/testers/remove') { if (body.channel === 'news' || body.channel === 'ent') { offReqs.remove.push(body); officialTesters[body.channel] = officialTesters[body.channel].filter(t => t.tid !== body.tid); return json({ ok: true, testers: officialTesters[body.channel], maxPerSend: 2 }); } testerReqs.remove.push(body); testers = testers.filter(t => t.tid !== body.tid); return json({ ok: true, testers, maxPerSend: 2 }); }
+  if (url.pathname === '/line/testers/lookup' || url.pathname === '/line/testers/add') {
+    const add = url.pathname.endsWith('add'); (add ? offReqs.add : offReqs.lookup).push(body);
+    if (lookupFail) return json({ error: lookupFail }, 404);
+    const already = officialTesters[body.channel].some(t => t.tid === T_N2);
+    if (add && !already) officialTesters[body.channel].push({ tid: T_N2, name: '新同仁', registeredAt: 5 });
+    return json({ ok: true, channel: body.channel, found: { tid: T_N2, name: '新同仁', already }, testers: officialTesters[body.channel], maxPerSend: 2 });
+  }
   if (url.pathname === '/line/schedule/list') { schedReqs.list++; return json({ ok: true, schedules: scheds.filter(x => x.status !== 'hidden').sort((a, b) => (a.status === 'scheduled' ? 0 : 1) - (b.status === 'scheduled' ? 0 : 1) || a.runAt - b.runAt), heartbeatAt: heartbeat, serverNow: Date.now(), officialAllowed: true }); }
   if (url.pathname === '/line/schedule/create') {
     schedReqs.create.push(body);
@@ -65,6 +76,11 @@ await page.route(`${WORKER}/**`, async route => {
     reqs.send.push(body);
     if (sendDelay) await new Promise(r => setTimeout(r, sendDelay));
     if (sendFail && body.channel !== 'test') return json({ error: sendFail }, 502);
+    if (body.channel !== 'test' && body.mode === 'test') {   // 正式帳號的測試推播：只 multicast 給該帳號名單內勾選的人
+      offReqs.send.push(body);
+      if (!(body.testers || []).length) return json({ error: '請先選擇測試推播要給誰（至少 1 位）。沒有發送任何東西。' }, 400);
+      return json({ ok: true, channel: body.channel, official: false, testOnly: true, sentAt: '2026-10-07T12:00:00+08:00', requestId: '44444444-4444-4444-8444-444444444444', retryKey: body.retryKey, friends: body.testers.length, pages: 2, testToken: 'ttok-off', recipients: body.testers.map(t => (officialTesters[body.channel].find(x => x.tid === t) || {}).name), quota: { limit: 100000000, used: 17266349 } });
+    }
     const official = body.channel !== 'test';
     if (!official && !(body.testers || []).length) return json({ error: '請先選擇測試推播要給誰（至少 1 位）。沒有發送任何東西。' }, 400);
     const usedBefore = testUsed;
@@ -537,13 +553,13 @@ check(!(await guard()).prevented, '標記完成後恢復');
 const whoChecked = () => page.$$eval('#lineWhoPanel input:checked', i => i.map(x => x.value));
 const whoDisabled = () => page.$$eval('#lineWhoPanel input:disabled', i => i.map(x => x.value));
 await page.evaluate(() => { s8Md = 'line'; });
-await page.evaluate(() => { try { localStorage.removeItem('lineWho'); localStorage.removeItem('lineMe'); } catch (e) { /* */ } lineWhoSt.sel = []; lineWhoSt.loaded = false; });
+await page.evaluate(() => { try { localStorage.removeItem('lineWho'); localStorage.removeItem('lineMe'); } catch (e) { /* */ } lineWhoFor('test').sel = []; lineWhoFor('test').loaded = false; });
 await openDialog();
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
 await page.click('#linePickNow'); await page.waitForTimeout(400);
-await page.waitForFunction(() => lineWhoSt.loaded && document.querySelectorAll('#lineWhoPanel input').length === 3);
+await page.waitForFunction(() => lineWhoFor('test').loaded && document.querySelectorAll('#lineWhoPanel input').length === 3);
 check(await vis('#lineWho') && await vis('#lineWhoBtn') && !(await page.$('#lineWhoMe')) && !(await page.$('#lineWho2')), '測試推播前只有一個「測試推播給」多選下拉（不是兩個單選）');
 check((await txt('#lineWhoBtnTxt')) === '請選擇（最多 2 位）' && await page.isHidden('#lineWhoPanel'), '還沒選：按鈕寫「請選擇（最多 2 位）」，選單收著');
 check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled) && (await txt('#lineWhoNote')).includes('請先選擇測試推播要傳給誰') && (await page.getAttribute('#lineWhoNote', 'class')).includes('bad'), '還沒選人：「推播測試帳號」不能按，並提示要先選');
@@ -554,7 +570,7 @@ check(await vis('#lineWhoPanel') && (await page.getAttribute('#lineWhoBtn', 'ari
 await page.screenshot({ path: path.join(SHOTS, 'line-ui-17a2-who-open.png'), clip: { ...(await page.locator('#lineWho').boundingBox()), height: 260 } });
 await page.click(`#lineWhoPanel input[value="${T_B}"]`);
 check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B]) && (await txt('#lineWhoBtnTxt')) === '李小華' && !(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)), '勾 1 位：按鈕顯示名字，測試推播可以按');
-check(JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify([T_B]), '選擇記在這個瀏覽器（下次自動帶入）');
+check(JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify({ test: [T_B] }), '選擇記在這個瀏覽器（每個帳號各記各的，下次自動帶入）');
 check((await txt('#lineWhoNote')).includes('李小華') && (await txt('#lineWhoNote')).includes('1 位') && (await txt('#lineWhoNote')).includes(`剩 ${200 - testUsed}／200`), '說明：只發給李小華、1 位、約用 1 則，並顯示測試帳號本月剩餘額度');
 check((await whoDisabled()).length === 0, '只選 1 位時，其他人都還能勾');
 await page.click(`#lineWhoPanel input[value="${T_C}"]`);
@@ -589,7 +605,7 @@ check((await txt('#lineWin')).includes(`本月已用 ${usedBefore17} → ${usedB
 // 換收件人要換一把重試金鑰
 const keyChange = await page.evaluate(() => { const st = lineSt(); st.retryKey.test = 'x'; lineWhoToggle(lineWhoPicked()[0], false); return st.retryKey.test; });
 check(keyChange === '', '換收件人：清掉原本的重試金鑰（下一次發送會產生新的）');
-await page.evaluate(() => { lineWhoSt.sel = []; lineWhoStoreSel([]); });
+await page.evaluate(() => { lineWhoFor('test').sel = []; lineWhoSelStore('test', []); });
 // 名單空／讀不到
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
@@ -605,12 +621,12 @@ check(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)
 testersFail = ''; testers = saved17; await page.click('#lineWhoRefresh');
 await page.waitForFunction(() => document.querySelectorAll('#lineWhoPanel input').length === 3);
 // 記住上次的選擇：重新載入名單後自動帶回
-await page.evaluate(() => { lineWhoSt.sel = []; lineWhoSt.loaded = false; localStorage.setItem('lineWho', JSON.stringify(['b'.repeat(16), 'zzzz'])); });   // 其中一個已不在名單
+await page.evaluate(() => { delete lineWhoBy.test; localStorage.setItem('lineWho', JSON.stringify({ test: ['b'.repeat(16), 'zzzz'] })); });   // 其中一個已不在名單
 await page.click('#lineWhoRefresh');
 await page.waitForFunction(() => document.querySelectorAll('#lineWhoPanel input').length === 3);
 check(JSON.stringify(await whoChecked()) === JSON.stringify([T_B]) && !(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)), '重新載入名單：自動帶回上次的選擇，已不在名單的人會被略過');
 // 測試排程：收件人區搬到「發佈方式」下面，沒選人不能排
-await page.evaluate(() => { lineWhoSt.sel = []; lineWhoStoreSel([]); const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.evaluate(() => { lineWhoFor('test').sel = []; lineWhoSelStore('test', []); const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
 await page.click('#linePrepBtn');
 await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
 const tw17 = Date.now() + 2 * 3600e3;
@@ -633,11 +649,74 @@ await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-17
 // 名單管理（折疊區）
 await page.evaluate(() => { document.getElementById('lineBox').open = true; lineTesterListRender(); });
 check((await page.$$eval('#lineTesterList .line-trow span', r => r.map(x => x.textContent).join())) === '王小明,李小華,陳小美', '折疊區「測試名單」列出所有登記的人');
-await page.evaluate(() => { lineWhoSt.sel = ['a'.repeat(16), 'b'.repeat(16)]; lineWhoStoreSel(lineWhoSt.sel); });
+await page.evaluate(() => { lineWhoFor('test').sel = ['a'.repeat(16), 'b'.repeat(16)]; lineWhoSelStore('test', lineWhoFor('test').sel); });
 await page.click('#lineTesterList .line-trow:first-child button');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
-check(testerReqs.remove.at(-1).tid === T_A && JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify([T_B]), '移除王小明：送出移除，名單少一位；他若在你記住的選擇裡就一併拿掉');
+check(testerReqs.remove.at(-1).tid === T_A && JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify({ test: [T_B] }), '移除王小明：送出移除，名單少一位；他若在你記住的選擇裡就一併拿掉');
 await page.locator('#lineBox').screenshot({ path: path.join(SHOTS, 'line-ui-17f-tester-list.png') });
+await page.click('#s8CloseBtn');
+
+// ===== 18. 正式帳號的測試推播：只發給「該帳號測試名單」裡勾選的人（名單由管理者貼 userId，LINE 驗證後加入）=====
+await page.evaluate(() => { s8Md = 'line'; try { localStorage.removeItem('lineTestOn'); localStorage.removeItem('lineWho'); } catch (e) { /* */ } Object.keys(lineWhoBy).forEach(k => delete lineWhoBy[k]); Object.values(lineByMode).forEach(st => { if (st) st.testOn = 'test'; }); });
+await openDialog();
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); st.testOn = 'test'; lineUpdateSteps(); });
+await page.click('#linePrepBtn');
+await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await page.click('#linePickNow'); await page.waitForTimeout(400);
+await page.waitForFunction(() => lineWhoFor('test').loaded);
+check(await vis('#lineWhoDest') && (await txt('#lineDestTest')) === '測試帳號' && (await txt('#lineDestOff')) === 'TVBS新聞（正式帳號）' && await page.evaluate(() => document.getElementById('lineDestTest').classList.contains('on') && !document.getElementById('lineDestOff').classList.contains('on')), '「測試推播發到」有兩個選項：測試帳號（預設）／TVBS新聞（正式帳號）');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-18a-dest-test.png') });
+await page.click('#lineDestOff');
+await page.waitForFunction(() => lineWhoFor('news').loaded && document.querySelectorAll('#lineWhoPanel input').length === 1);
+check(await page.evaluate(() => document.getElementById('lineDestOff').classList.contains('on') && lineWhoCh() === 'news') && (await txt('#lineTestBtn')) === '推播測試（TVBS新聞）' && await page.evaluate(() => document.getElementById('lineTestBtn').disabled), '切到正式帳號：載入「新聞」自己的名單，按鈕改成「推播測試（TVBS新聞）」，沒選人不能按');
+check(JSON.stringify(await page.evaluate(() => lineWhoFor('news').testers.map(t => t.name))) === JSON.stringify(['小編本人']) && (await page.getAttribute('#lineWhoNote', 'class')).includes('bad') && (await txt('#lineWhoNote')).includes('貼上 LINE userId') === false && (await txt('#lineWhoNote')).includes('請先選擇'), '新聞名單只看得到新聞自己的人（不是測試帳號那三位），並提示先選人');
+await page.click('#lineWhoBtn'); await page.click(`#lineWhoPanel input[value="${T_N1}"]`); await page.click('#lineWhoNote');
+check(!(await page.evaluate(() => document.getElementById('lineTestBtn').disabled)) && (await txt('#lineWhoNote')).includes('小編本人') && (await txt('#lineWhoNote')).includes('不是群發') && (await txt('#lineWhoNote')).includes('TVBS新聞本月剩 82,733,651／100,000,000'), '選好人：可以按；說明寫明發到「TVBS新聞」正式帳號但只有勾選的人收得到、不是群發，並顯示該帳號剩餘額度');
+check(JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify({ news: [T_N1] }) && (await page.evaluate(() => localStorage.getItem('lineTestOn'))) === 'official', '每個帳號各記各的勾選，並記住上次選的是「正式帳號」');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-18b-dest-official.png') });
+await page.click('#lineTestBtn');
+await page.waitForFunction(() => /已測試推播到TVBS新聞/.test(document.getElementById('lineTestMsg').textContent));
+const o18 = offReqs.send.at(-1);
+check(o18.channel === 'news' && o18.mode === 'test' && JSON.stringify(o18.testers) === JSON.stringify([T_N1]) && /^[0-9a-f-]{36}$/.test(o18.retryKey) && o18.confirmTotal === undefined, '送出：channel=news、mode=test、只帶勾選的人；沒有人數確認（這不是正式群發）');
+check((await txt('#lineTestMsg')).includes('小編本人') && (await txt('#lineWin')).includes('不是群發') && (await txt('#lineWin')).includes('請到手機的TVBS新聞確認'), '結果寫明發到哪個正式帳號、只給誰、不是群發');
+await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-18c-official-sent.png') });
+check(await page.evaluate(() => { const r = JSON.parse(localStorage.getItem('lineSends'))[0]; return r.channel === 'news' && r.test === true; }) && (await page.$$eval('#lineHist option', o => o[0].textContent)).includes('（測試推播）'), '發送紀錄標示「（測試推播）」，不會被當成正式群發');
+await page.click('#lineDoneBtn');
+check(await page.evaluate(() => lineSt().testToken) === 'ttok-off' && await vis('#lineStep4'), '「測試完成」後照常進入第 4 步確認人數；測試憑證帶到後面的正式推播閘門');
+// 測試排程固定測試帳號
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.click('#linePrepBtn');
+await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+const tw18 = Date.now() + 2 * 3600e3;
+await setWhen(ymd(tw18), hm(tw18)); await page.waitForTimeout(300);
+check(await vis('#lineWhoDest') && await page.evaluate(() => lineWhoCh() === 'news'), '排程推播（正式）時，測試推播仍可選發到正式帳號');
+await page.click('#lineTgtTest'); await page.waitForTimeout(400);
+check(await page.evaluate(() => lineWhoCh() === 'test') && await page.isHidden('#lineWhoDest'), '改選「排程對象：測試帳號」：測試排程固定發到測試帳號，不顯示「發到哪個帳號」');
+await page.click('#lineTgtOfficial'); await page.waitForTimeout(300);
+// 折疊區：管理正式帳號測試名單
+await page.evaluate(() => { document.getElementById('lineBox').open = true; });
+await page.click('#lineChOfficial'); await page.waitForTimeout(300);
+check((await txt('#lineTesterTitle')).includes('TVBS新聞 的測試名單') && await vis('#lineAddRow') && (await page.$$eval('#lineTesterList .line-trow span', r => r.map(x => x.textContent).join())) === '小編本人', '選「正式帳號」：顯示 TVBS新聞 的測試名單與「貼上 userId」新增列');
+await page.fill('#lineAddUid', 'abc'); await page.click('#lineAddFind');
+check((await txt('#lineAddOut')).includes('格式不對') && offReqs.lookup.length === 0, '貼了格式不對的 ID：直接擋掉，不會去問 LINE');
+await page.fill('#lineAddUid', UID_OK); await page.click('#lineAddFind');
+await page.waitForFunction(() => /LINE 查到這個 ID 的暱稱是「新同仁」/.test(document.getElementById('lineAddOut').textContent));
+check(offReqs.lookup.at(-1).channel === 'news' && offReqs.lookup.at(-1).userId === UID_OK && !(await page.evaluate(() => document.getElementById('lineAddOk').disabled)) && (await page.$$eval('#lineTesterList .line-trow', r => r.length)) === 1, '「查詢」：向 LINE 驗證並顯示暱稱「新同仁」，還沒加入名單，要你確認後才能按「加入名單」');
+await page.locator('#lineBox').screenshot({ path: path.join(SHOTS, 'line-ui-18d-add-tester.png') });
+await page.click('#lineAddOk');
+await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
+check(offReqs.add.at(-1).userId === UID_OK && (await page.inputValue('#lineAddUid')) === '' && (await txt('#lineAddOut')).includes('已加入「新同仁」'), '「加入名單」：名單多一位，輸入框清空（不留著 userId）');
+lookupFail = 'LINE 查不到這個 ID：他可能不是「TVBS新聞」的好友，或這個 ID 屬於別的 Provider。沒有加入名單。';
+await page.fill('#lineAddUid', 'U' + 'c'.repeat(32)); await page.click('#lineAddFind');
+await page.waitForFunction(() => /Provider/.test(document.getElementById('lineAddOut').textContent));
+check((await page.getAttribute('#lineAddOut', 'class')).includes('bad') && await page.evaluate(() => document.getElementById('lineAddOk').disabled), 'LINE 查不到：顯示原因（不是好友／別的 Provider），不能加入');
+lookupFail = '';
+await page.click('#lineTesterList .line-trow:first-child button');
+await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
+check(offReqs.remove.at(-1).channel === 'news' && offReqs.remove.at(-1).tid === T_N1 && JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho') || '{}').news || [])) === '[]', '移除：只動 TVBS新聞 的名單，並把他從記住的勾選拿掉');
+await page.click('#lineChTest'); await page.waitForTimeout(300);
+check(await page.isHidden('#lineAddRow') && (await txt('#lineTesterTitle')).includes('傳「登記」給測試帳號'), '切回「測試帳號」：新增列收起，名單回到用「登記」加入的那一份');
+await page.evaluate(() => { try { localStorage.removeItem('lineTestOn'); } catch (e) { /* */ } const st = lineSt(); st.testOn = 'test'; });
 await page.click('#s8CloseBtn');
 
 check(pageErrors.length === 0, `頁面沒有 JS 錯誤 ${pageErrors.join(' | ')}`);
