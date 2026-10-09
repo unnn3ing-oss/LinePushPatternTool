@@ -253,6 +253,28 @@
   .line-who[hidden] { display: none; }
   .line-who-row[hidden] { display: none; }
   .line-who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .qr-sec { grid-column: 1 / -1; margin-top: 6px; font-size: 13px; }   /* 外層是「標籤｜欄位」兩欄的格線，這一塊要橫跨整列 */
+  .qr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .qr-title { font-weight: 700; font-size: 14px; }
+  .qr-head button { padding: 3px 12px; font-size: 13px; }
+  .qr-note { margin: 4px 0 8px; color: var(--muted); line-height: 1.6; }
+  .qr-tpl { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+  .qr-tpl[hidden] { display: none; }
+  .qr-tpl label { margin: 0; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .qr-tpl input { flex: 1 1 auto; min-width: 0; }
+  .qr-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(160px, 1.6fr) auto; gap: 6px; align-items: start; margin-bottom: 6px; }
+  .qr-lab { position: relative; }
+  .qr-lab input, .qr-url input { width: 100%; }
+  .qr-cnt { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--muted); pointer-events: none; }
+  .qr-lab input { padding-right: 42px; }
+  .qr-acts { display: flex; gap: 4px; }
+  .qr-acts button { padding: 2px 8px; }
+  .qr-row .bad { border-color: #dc2626; }
+  .qr-hint { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: -2px; word-break: break-all; }
+  .qr-hint.bad { color: #b91c1c; font-weight: 600; }
+  .qr-prev { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 4px; }
+  .qr-prev[hidden] { display: none; }
+  .qr-pill { flex: none; padding: 7px 16px; border-radius: 99px; background: #1f2a4a; color: #fff; font-size: 14px; white-space: nowrap; }
   .line-who-lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
   .ms { position: relative; }
   .ms-btn { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 200px; max-width: 280px; padding: 4px 10px 4px 12px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, .25); background: #fff; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; text-align: left; }
@@ -1354,6 +1376,13 @@
           <details id="s8CountRawBox" hidden style="margin-top:6px"><summary style="cursor:pointer; font-size:13px; color:var(--muted)">查看 S8 原始回傳</summary><pre class="s8c-out" id="s8CountRaw"></pre></details>
         </div>
         <label for="s8Alt">推播通知</label><input type="text" id="s8Alt" autocomplete="off" placeholder="填入推播標題，例如★我是推播標題 推播標題是我">
+        <div class="qr-sec" id="qrSec">
+          <div class="qr-head"><span class="qr-title">快速回覆按鈕（選填，最多 13 顆）</span><button type="button" id="qrAdd">＋ 新增快速回覆按鈕</button></div>
+          <div class="qr-note">訊息下方那排圓角按鈕（只出現在最後一則，點了或收到新訊息就消失）。每次推播都不同，所以不會保留上次的內容。連結留空＝用「顯示文字」當關鍵字，到下面的搜尋網站搜尋。</div>
+          <div class="qr-tpl" id="qrTplRow" hidden><label for="qrTpl">搜尋網站網址</label><input type="text" id="qrTpl" autocomplete="off" spellcheck="false" placeholder="https://example.com/search?q={keyword}（{keyword} 會換成按鈕文字）"></div>
+          <div id="qrRows"></div>
+          <div class="qr-prev" id="qrPrev" hidden aria-label="快速回覆預覽"></div>
+        </div>
       </div>
       <div class="s8-page">連結預覽（點圖上的格子，下方會顯示該格的完整連結）</div>
       <div class="s8-prev">
@@ -5277,6 +5306,83 @@ document.getElementById('s8CellUrl').addEventListener('input', e => {
   s8SyncOpen();
   s8Refresh();
 });
+// ---- 快速回覆按鈕：每次推播都不同，所以只在這次的網頁作業中保留（不寫進瀏覽器，避免昨天的按鈕被不小心帶進今天的推播）----
+// 每顆：顯示文字（最多 20 字）＋連結（選填，https）。連結留空 → 用顯示文字當關鍵字，套進「搜尋網站網址」（{keyword} 會換成關鍵字）。兩種都是「開啟連結」。
+const QR_MAX = 13, QR_LABEL_MAX = 20;
+const qrByMode = { news: [], ent: [] };
+const qrRowsNow = () => (qrByMode[mode] = qrByMode[mode] || []);
+const qrTplGet = () => { try { return localStorage.getItem('qrSearchTpl') || ''; } catch (e) { return ''; } };
+function qrFinalUrl(row) {
+  const url = String(row.url || '').trim();
+  if (url) return url;
+  const tpl = document.getElementById('qrTpl').value.trim(), label = String(row.label || '').trim();
+  if (!tpl || !label || !/\{(keyword|關鍵字)\}/.test(tpl)) return '';
+  return tpl.replace(/\{(keyword|關鍵字)\}/g, encodeURIComponent(label));
+}
+const qrRowUsed = r => !!(String(r.label || '').trim() || String(r.url || '').trim());
+function qrItems() { return qrRowsNow().filter(qrRowUsed).map(r => ({ label: String(r.label || '').trim(), kind: 'url', value: qrFinalUrl(r) })); }
+function qrErrors() {
+  const errs = [], rows = qrRowsNow().filter(qrRowUsed);
+  if (rows.length > QR_MAX) errs.push(`快速回覆最多 ${QR_MAX} 顆`);
+  const tpl = document.getElementById('qrTpl').value.trim();
+  rows.forEach((r, i) => {
+    const n = `快速回覆第 ${i + 1} 顆`, label = String(r.label || '').trim(), url = String(r.url || '').trim();
+    if (!label) { errs.push(`${n}缺少顯示文字`); return; }
+    if ([...label].length > QR_LABEL_MAX) errs.push(`${n}的顯示文字最多 ${QR_LABEL_MAX} 字`);
+    if (url) { if (!/^https:\/\/\S+$/.test(url) || url.length > 1000) errs.push(`${n}的連結要以 https:// 開頭`); }
+    else if (!tpl) errs.push(`${n}沒有連結：請填連結，或在上方填「搜尋網站網址」`);
+    else if (!/^https:\/\/\S+$/.test(tpl.replace(/\{(keyword|關鍵字)\}/g, 'x')) || !/\{(keyword|關鍵字)\}/.test(tpl)) errs.push('「搜尋網站網址」要以 https:// 開頭，並包含 {keyword}');
+    else if (qrFinalUrl(r).length > 1000) errs.push(`${n}的搜尋網址太長`);
+  });
+  return [...new Set(errs)];
+}
+function qrRenderPreview() {
+  const prev = document.getElementById('qrPrev'), rows = qrRowsNow().filter(r => String(r.label || '').trim());
+  prev.textContent = ''; prev.hidden = !rows.length;
+  rows.forEach(r => { const b = document.createElement('span'); b.className = 'qr-pill'; b.textContent = String(r.label).trim(); b.title = qrFinalUrl(r) || '（還沒有連結）'; prev.appendChild(b); });
+  document.getElementById('qrTplRow').hidden = !qrRowsNow().some(r => qrRowUsed(r) && !String(r.url || '').trim());
+}
+function qrChanged() { qrRenderPreview(); qrMarkRows(); if (typeof s8Refresh === 'function' && s8State) s8Refresh(); }
+function qrMarkRows() {   // 每列的提示：連結留空時顯示實際會開的搜尋網址
+  document.querySelectorAll('#qrRows .qr-row').forEach((el, i) => {
+    const r = qrRowsNow()[i]; if (!r) return;
+    const hint = el.querySelector('.qr-hint'), label = String(r.label || '').trim(), url = String(r.url || '').trim();
+    const over = [...label].length > QR_LABEL_MAX;
+    el.querySelector('.qr-lab input').classList.toggle('bad', over);
+    el.querySelector('.qr-cnt').textContent = `${[...label].length}/${QR_LABEL_MAX}`;
+    const bad = !!url && !/^https:\/\/\S+$/.test(url);
+    el.querySelector('.qr-url input').classList.toggle('bad', bad);
+    const fin = qrFinalUrl(r);
+    hint.classList.toggle('bad', bad);
+    hint.textContent = bad ? '連結要以 https:// 開頭' : (url ? '' : (label ? (fin ? `沒填連結：會開啟搜尋 ${fin}` : '沒填連結：請在上方填「搜尋網站網址」') : ''));
+    hint.hidden = !hint.textContent;
+  });
+}
+function qrRender() {
+  const box = document.getElementById('qrRows'), rows = qrRowsNow();
+  box.textContent = '';
+  rows.forEach((r, i) => {
+    const el = document.createElement('div'); el.className = 'qr-row';
+    const lab = document.createElement('div'); lab.className = 'qr-lab';
+    const li = document.createElement('input'); li.type = 'text'; li.value = r.label || ''; li.placeholder = '顯示文字'; li.autocomplete = 'off'; li.setAttribute('aria-label', `第 ${i + 1} 顆顯示文字`);
+    const cnt = document.createElement('span'); cnt.className = 'qr-cnt'; lab.append(li, cnt);
+    const uw = document.createElement('div'); uw.className = 'qr-url';
+    const ui = document.createElement('input'); ui.type = 'text'; ui.value = r.url || ''; ui.placeholder = '連結（選填，https://；留空＝用文字搜尋）'; ui.autocomplete = 'off'; ui.spellcheck = false; ui.setAttribute('aria-label', `第 ${i + 1} 顆連結`); uw.appendChild(ui);
+    const acts = document.createElement('div'); acts.className = 'qr-acts';
+    const mk = (txt, title, fn, dis) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = txt; b.title = title; b.disabled = !!dis; b.addEventListener('click', fn); return b; };
+    acts.append(mk('↑', '往前移', () => { [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]]; qrRender(); qrChanged(); }, i === 0), mk('↓', '往後移', () => { [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]]; qrRender(); qrChanged(); }, i === rows.length - 1), mk('✕', '刪除這顆', () => { rows.splice(i, 1); qrRender(); qrChanged(); }));
+    const hint = document.createElement('div'); hint.className = 'qr-hint'; hint.hidden = true;
+    el.append(lab, uw, acts, hint); box.appendChild(el);
+    li.addEventListener('input', () => { r.label = li.value; qrChanged(); });
+    ui.addEventListener('input', () => { r.url = ui.value; qrChanged(); });
+  });
+  document.getElementById('qrAdd').disabled = rows.length >= QR_MAX;
+  document.getElementById('qrAdd').textContent = rows.length >= QR_MAX ? `已達上限 ${QR_MAX} 顆` : '＋ 新增快速回覆按鈕';
+  qrRenderPreview(); qrMarkRows();
+}
+document.getElementById('qrAdd').addEventListener('click', () => { const rows = qrRowsNow(); if (rows.length >= QR_MAX) return; rows.push({ label: '', url: '' }); qrRender(); qrChanged(); const ins = document.querySelectorAll('#qrRows .qr-lab input'); if (ins.length) ins[ins.length - 1].focus(); });
+document.getElementById('qrTpl').value = qrTplGet();
+document.getElementById('qrTpl').addEventListener('input', e => { try { localStorage.setItem('qrSearchTpl', e.target.value.trim()); } catch (err) { /* ok */ } qrChanged(); });   // 搜尋網站網址是固定設定（不像按鈕每次不同），記在這個瀏覽器
 function s8Collect() {
   const d = {
     account: S8_ACCOUNT[mode],
@@ -5284,6 +5390,7 @@ function s8Collect() {
     target: document.getElementById('s8TargetTag').checked ? 'tag' : 'all',
     tag: document.getElementById('s8Tag').value.trim(),
     alt: document.getElementById('s8Alt').value.trim(),
+    quick: qrItems(),
     pages: [],
   };
   s8State.regions.forEach((regs, p) => {
@@ -5306,6 +5413,7 @@ function s8Validate(d) {
     if (d.target === 'tag' && !d.tag) errs.push('請填發送對象標籤');
   }
   if (!d.alt) errs.push('請填推播通知（推播標題）');
+  errs.push(...qrErrors());
   d.pages.forEach(pg => pg.cells.forEach(c => {
     if (!c.url) errs.push(`第 ${pg.page} 頁 項目${c.n}（${c.label}）沒有連結`);
     else if (!/^https?:\/\//i.test(c.url)) errs.push(`第 ${pg.page} 頁 項目${c.n}（${c.label}）的連結要以 http(s):// 開頭`);
@@ -5439,6 +5547,7 @@ async function openS8Dialog() {
     s8ShowPage(0);
     s8ResetCreate();
   }
+  qrRender();   // 快速回覆列依目前版型（新聞／娛樂）重畫
   s8Overlay.classList.add('open');
   placeSegKnob(document.getElementById('s8Ptabs'));
   s8FitControls();
@@ -5786,7 +5895,7 @@ $s8('s8PrepBtn').addEventListener('click', async () => {
   btn.disabled = true; s8PrepSet('傳送中…（約數秒）', false, false, true);
   try {
     const body = {
-      org: mode, name: d.name, altText: d.alt,
+      org: mode, name: d.name, altText: d.alt, quick: d.quick,
       pages: d.pages.map((pg, p) => ({
         title: `${d.name} 第${pg.page}則`, width: L().exportW, height: L().exportH,
         buttons: pg.cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })),
@@ -6076,7 +6185,7 @@ $line('lineAddOk').addEventListener('click', async () => {
 });
 const LINE_MIN_LEAD_MIN = 5, LINE_MAX_LEAD_DAYS = 14;   // 與 Worker 的限制一致（Worker 才是最後把關）
 const lineDigits = v => Number(String(v || '').replace(/[,\s]/g, ''));
-function lineSig() { const d = s8Collect(); return JSON.stringify([mode, d.alt, d.pages.map(pg => pg.cells.map(c => [c.url, c.pct])), s8Signature()]); }
+function lineSig() { const d = s8Collect(); return JSON.stringify([mode, d.alt, d.quick, d.pages.map(pg => pg.cells.map(c => [c.url, c.pct])), s8Signature()]); }
 function lineWin(text, kind) { const st = lineSt(); st.win = { text: text || '', kind: kind || '' }; lineRenderWin(); }
 function lineRenderWin() {
   const w = $line('lineWin'), st = lineSt();
@@ -6252,7 +6361,7 @@ $line('linePrepBtn').addEventListener('click', async () => {
       if (im.tooBig) throw new Error(`第 ${p + 1} 頁圖片超過 2MB，請換掉細節很多的照片後重做`);
       payload.push({ width: L().exportW, height: L().exportH, images: { 1040: await blobToBase64(im.blob) }, buttons: d.pages[p].cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })) });
     }
-    const pr = await s8Api('/line/prepare', { org: mode, name: d.name, altText: d.alt, pages: payload });
+    const pr = await s8Api('/line/prepare', { org: mode, name: d.name, altText: d.alt, quick: d.quick, pages: payload });
     const vr = await s8Api('/line/validate', { prepareToken: pr.prepareToken, channel: 'test' });
     if (!vr.valid) { set('✗ LINE 說格式不對，沒有發送任何東西（詳見下方）', 'bad'); lineWin(`LINE 說格式不對，沒有發送任何東西：\n${vr.message}`, 'bad'); return; }
     st.prep = { prepareToken: pr.prepareToken, id: pr.id, sig };

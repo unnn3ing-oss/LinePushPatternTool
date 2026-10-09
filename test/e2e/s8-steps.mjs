@@ -159,6 +159,7 @@ check(open.cls && open.w === open.full, `有狀態更新後，灰框往右彈開
 check((await page.textContent('#s8PrepMsg')).includes('1,234 人') && !(await page.textContent('#s8PrepMsg')).includes('分鐘內有效'), '成功：顯示「傳送完成」與可發送人數，沒有「預覽 20 分鐘內有效」');
 check(reqs.prepare[1].pages[0].buttons[1].title === expectTitle && reqs.prepare[1].pages[0].buttons[0].title.startsWith('項目1'), '傳給 S8 的區塊名稱：有標題的格子用「★標題」，沒標題的退回「項目N」');
 check(reqs.prepare.length === 2 && reqs.prepare[1].pages.length === 2 && reqs.prepare[1].pages[0].buttons.length === 6 && reqs.prepare[1].pages[0].buttons[1].url === 'https://example.com/p1/n2?utm_source=x', '傳送內容：兩頁、每頁 6 格、連結用目前字框的值');
+check(Array.isArray(reqs.prepare[1].quick) && reqs.prepare[1].quick.length === 0, '沒設快速回覆：傳給 S8 的 quick 是空陣列（行為跟以前一樣）');
 check(await vis('#s8Step2') && !(await vis('#s8Step3')), '成功後出現步驟 2，步驟 3 還沒出現');
 await page.waitForTimeout(600);
 const hl = id => page.evaluate(i => { const e = document.getElementById(i); return { done: e.classList.contains('done'), scale: Number((String(getComputedStyle(e, '::after').transform).match(/matrix\(([^)]+)\)/) || [0, '0,0,0,0'])[1].split(',')[0]) }; }, id);

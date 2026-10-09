@@ -379,10 +379,11 @@ function s8Guard(name, args, canWrite, now = Date.now()) {
   } else if (name === 'media_upload_url') {
     if (keysOf(a) !== 'contentType,filename,orgId,purpose' || a.contentType !== 'image/png' || a.purpose !== 'imagemap') fail('只允許上傳 image/png（purpose=imagemap）');
   } else if (name === 'messaging_message_preview') {
-    if (keysOf(a) !== 'messages,orgId,platform' || a.platform !== 'line') fail('只允許 {orgId, platform:"line", messages}');
+    if (keysOf(a) !== (a.quickReply === undefined ? 'messages,orgId,platform' : 'messages,orgId,platform,quickReply') || a.platform !== 'line') fail('只允許 {orgId, platform:"line", messages, quickReply?}');
     s8CheckMessages(a.messages, fail);
+    if (a.quickReply !== undefined) s8CheckQuick(a.quickReply, fail);
   } else if (name === 'broadcast_create') {
-    if (keysOf(a) !== 'messages,orgId,platform,previewRef,recipients,scheduleAt') fail('只允許 {orgId, platform, recipients, previewRef, messages, scheduleAt}');
+    if (keysOf(a) !== (a.quickReply === undefined ? 'messages,orgId,platform,previewRef,recipients,scheduleAt' : 'messages,orgId,platform,previewRef,quickReply,recipients,scheduleAt')) fail('只允許 {orgId, platform, recipients, previewRef, messages, scheduleAt, quickReply?}');
     if (a.platform !== 'line') fail('平台只能是 line');
     if (JSON.stringify(a.recipients) !== JSON.stringify(S8_FIXED_RECIPIENTS)) fail('發送對象只能是全部 LINE 顧客（不加條件）');
     if (typeof a.previewRef !== 'string' || !a.previewRef) fail('缺少 previewRef');
@@ -391,6 +392,7 @@ function s8Guard(name, args, canWrite, now = Date.now()) {
     if (!(at >= now + S8_MIN_LEAD_MS)) fail('scheduleAt 必須在 25 分鐘之後（不得立即發送）');
     if (!(at <= now + S8_MAX_LEAD_MS)) fail('scheduleAt 不可超過 7 天');
     s8CheckMessages(a.messages, fail);
+    if (a.quickReply !== undefined) s8CheckQuick(a.quickReply, fail);
   }
 }
 function s8CheckMessages(messages, fail) {
@@ -529,6 +531,35 @@ async function s8AudienceTotal(mcp, orgId) {
   return { total, previewRef: r.data.previewRef };
 }
 
+// ---- 快速回覆（Quick Reply）：訊息下方那排圓角按鈕；附在「最後一則訊息」，最多 13 顆；點了或收到新訊息就消失 ----
+// 網頁與 Worker 共用格式 { label, kind:'text'|'url', value }：text＝使用者點了會「送出」這段文字（之後由帳號自己的自動回覆／關鍵字機制接手，例如 S8）；url＝直接開啟連結。
+const QUICK_MAX = 13, QUICK_LABEL_MAX = 20, QUICK_TEXT_MAX = 300;
+function quickNormalize(items) {
+  if (items === undefined || items === null) return [];
+  if (!Array.isArray(items)) throw badInput('快速回覆格式不正確');
+  if (items.length > QUICK_MAX) throw badInput(`快速回覆最多 ${QUICK_MAX} 顆`);
+  return items.map((it, i) => {
+    const label = String((it && it.label) || '').trim(), kind = it && it.kind, value = String((it && it.value) || '').trim(), n = `第 ${i + 1} 顆快速回覆`;
+    if (!label) throw badInput(`${n}缺少顯示文字`);
+    if ([...label].length > QUICK_LABEL_MAX) throw badInput(`${n}的顯示文字最多 ${QUICK_LABEL_MAX} 字`);
+    if (kind === 'text') { if (!value) throw badInput(`${n}缺少「點了送出的文字」`); if ([...value].length > QUICK_TEXT_MAX) throw badInput(`${n}送出的文字最多 ${QUICK_TEXT_MAX} 字`); }
+    else if (kind === 'url') { if (!/^https:\/\/\S+$/.test(value) || value.length > 1000) throw badInput(`${n}的連結必須以 https:// 開頭（最多 1000 字）`); }
+    else throw badInput(`${n}的類型只能是 text 或 url`);
+    return { label, kind, value };
+  });
+}
+const lineQuickReply = q => (q && q.length ? { items: q.map(x => ({ type: 'action', action: x.kind === 'url' ? { type: 'uri', label: x.label, uri: x.value } : { type: 'message', label: x.label, text: x.value } })) } : undefined);
+const s8QuickReply = q => (q || []).map(x => (x.kind === 'url' ? { action: 'uri', label: x.label, url: x.value } : { action: 'message', label: x.label, text: x.value }));
+function s8CheckQuick(qr, fail) {
+  if (!Array.isArray(qr) || qr.length < 1 || qr.length > QUICK_MAX) fail(`快速回覆必須是 1～${QUICK_MAX} 顆`);
+  for (const q of qr) {
+    if (!q || typeof q.label !== 'string' || !q.label.trim() || [...q.label].length > QUICK_LABEL_MAX) fail('快速回覆的顯示文字不合格');
+    if (q.action === 'message') { if (keysOf(q) !== 'action,label,text' || typeof q.text !== 'string' || !q.text.trim() || [...q.text].length > QUICK_TEXT_MAX) fail('快速回覆（傳送文字）不合格'); }
+    else if (q.action === 'uri') { if (keysOf(q) !== 'action,label,url' || typeof q.url !== 'string' || !/^https:\/\/\S+$/.test(q.url)) fail('快速回覆（連結）必須是 https'); }
+    else fail('快速回覆只允許「傳送文字」或「連結」');
+  }
+}
+
 function s8BuildMessages(pages, altText, imageUrls) {
   return pages.map((pg, i) => ({
     contentType: 'application/x-template',
@@ -568,6 +599,7 @@ async function handleS8Prepare(request, env) {
     const altText = typeof body.altText === 'string' ? body.altText.trim().slice(0, 400) : '';
     if (!altText) return jsonError(400, '缺少推播通知文字', request, env);
     s8ValidatePages(body.pages);
+    const quickReply = s8QuickReply(quickNormalize(body.quick));   // 先驗證（格式不對就不會連 S8、不會上傳圖）；沒設就是空陣列：不帶 quickReply，行為和以前完全一樣
     const images = Array.isArray(body.images) ? body.images : [];
     if (images.length !== body.pages.length) return jsonError(400, '圖片數量和頁數不一致', request, env);
     const mcp = await mcpOpen(env, sess.a, true);
@@ -588,9 +620,9 @@ async function handleS8Prepare(request, env) {
       imageUrls.push(info.assetUrl);
     }
     const messages = s8BuildMessages(body.pages, altText, imageUrls);
-    const prev = await mcp.call('messaging_message_preview', { orgId: org.id, platform: 'line', messages });
+    const prev = await mcp.call('messaging_message_preview', { orgId: org.id, platform: 'line', messages, ...(quickReply.length ? { quickReply } : {}) });
     if (prev.isError) throw new Error(`產生預覽失敗：${toolText(prev)}`);
-    const prepareToken = await s8Seal(env, { t: 'prepare', org: body.org, orgId: org.id, messages, x: Date.now() + S8_PREPARE_TTL_MS });
+    const prepareToken = await s8Seal(env, { t: 'prepare', org: body.org, orgId: org.id, messages, quickReply, x: Date.now() + S8_PREPARE_TTL_MS });
     return jsonOk({ ok: true, org: { id: org.id, name: org.displayName }, total, preview: prev.data, imageUrls, prepareToken, expiresInMinutes: S8_PREPARE_TTL_MS / 60000, session: refreshed }, request, env);
   } catch (e) {
     return jsonError(e.status === 401 || e.status === 400 ? e.status : 502, e.message || '無法呼叫 S8', request, env);
@@ -668,7 +700,7 @@ async function handleS8Create(request, env) {
     // 驗證過後經過了 S8 人數試算的時間，這裡再確認一次下限，避免剛好卡在邊界。
     if (mode === 'schedule' && Date.parse(userAt) < Date.now() + S8_MIN_LEAD_MS) return jsonError(409, '排程時間已經太接近現在，請重新設定時間。沒有建立任何東西。', request, env);
     const scheduleAt = mode === 'schedule' ? userAt : taipeiIso(Date.now() + 24 * 3600 * 1000);
-    created = await mcp.call('broadcast_create', { orgId: prep.orgId, platform: 'line', recipients: S8_FIXED_RECIPIENTS, previewRef, messages: prep.messages, scheduleAt });
+    created = await mcp.call('broadcast_create', { orgId: prep.orgId, platform: 'line', recipients: S8_FIXED_RECIPIENTS, previewRef, messages: prep.messages, scheduleAt, ...(prep.quickReply && prep.quickReply.length ? { quickReply: prep.quickReply } : {}) });
     if (created.isError) throw new Error(`建立失敗：${toolText(created)}`);
     const taskId = pickTaskId(created.data);
     if (!taskId) return jsonOk({ ok: false, created: true, mode, warning: `群發已建立（排程在 ${scheduleAt}），但我找不到 taskId，無法自動${mode === 'schedule' ? '確認狀態' : '暫停'}。它會在 ${scheduleAt} 實際發送，請立即到 Super 8 Console 暫停或刪除這筆群發！`, scheduleAt, total, raw: created.data, session: refreshed }, request, env);
@@ -884,6 +916,7 @@ async function handleLinePrepare(request, env) {
     const altText = typeof body.altText === 'string' ? body.altText.trim().slice(0, 400) : '';
     if (!altText) throw badInput('缺少推播通知文字');
     s8ValidatePages(body.pages);
+    const quick = quickNormalize(body.quick);   // 先驗證（格式不對就不會存任何圖）
     const pages = [];
     for (const pg of body.pages) {
       const imgs = pg.images && typeof pg.images === 'object' ? pg.images : {};
@@ -897,7 +930,7 @@ async function handleLinePrepare(request, env) {
       });
     }
     const id = lineHex(12);
-    const prepareToken = await s8Seal(env, { t: 'line-prepare', id, org: body.org, altText, pages, x: Date.now() + LINE_PREPARE_TTL_MS });
+    const prepareToken = await s8Seal(env, { t: 'line-prepare', id, org: body.org, altText, pages, quick, x: Date.now() + LINE_PREPARE_TTL_MS });
     return jsonOk({ ok: true, id, prepareToken, expiresInMinutes: LINE_PREPARE_TTL_MS / 60000, pages: pages.length }, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '準備失敗', request, env); }
 }
@@ -914,11 +947,14 @@ async function handleLineImage(request, env) {
 
 // 把準備好的內容組成 LINE 的 imagemap 訊息物件（階段一只拿來做格式檢查）
 function lineBuildMessages(prep, origin) {
-  return prep.pages.map(pg => ({
+  const msgs = prep.pages.map(pg => ({
     type: 'imagemap', baseUrl: `${origin}/line-img/${pg.pid}`, altText: prep.altText,
     baseSize: { width: 1040, height: pg.height },
     actions: pg.areas.map(a => ({ type: 'uri', linkUri: a.url, area: { x: a.x, y: a.y, width: a.width, height: a.height } })),
   }));
+  const qr = lineQuickReply(prep.quick);
+  if (qr && msgs.length) msgs[msgs.length - 1].quickReply = qr;   // 快速回覆只會顯示在「最後一則」訊息下方
+  return msgs;
 }
 async function handleLineValidate(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
@@ -1223,7 +1259,7 @@ async function handleLineScheduleCreate(request, env) {
       lineTypedApprove(body.confirmTotal)(friends);
     }
     const id = lineHex(12), now = Date.now();
-    const rec = { v: 1, id, channel: key, org: prep.org, name: typeof body.name === 'string' ? body.name.slice(0, 60) : '', altText: prep.altText, pages: prep.pages, links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
+    const rec = { v: 1, id, channel: key, org: prep.org, name: typeof body.name === 'string' ? body.name.slice(0, 60) : '', altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
     if (recs) { rec.testerTids = recs.map(r => r.tid); rec.recipientNames = recs.map(r => r.name || '（沒有暱稱）'); }
     await lineSchedPut(env, rec);
     return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
@@ -1278,7 +1314,7 @@ async function lineRunDue(env, now = Date.now()) {
     rec.status = 'sending'; rec.sendingAt = now; rec.attempts = (rec.attempts || 0) + 1;
     await lineSchedPut(env, rec);
     try {
-      const prep = { org: rec.org, altText: rec.altText, pages: rec.pages };
+      const prep = { org: rec.org, altText: rec.altText, pages: rec.pages, quick: rec.quick || [] };
       const official = LINE_OFFICIAL.has(rec.channel);
       if (official) {
         if (env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送已關閉（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1），沒有發送'), { status: 403 });
