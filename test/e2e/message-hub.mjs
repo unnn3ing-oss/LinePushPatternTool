@@ -97,10 +97,10 @@ let rows = await rowsOf();
 check(rows.map(r => r.name).join('｜') === '10/09新聞｜10/10新聞｜10/09晚間｜10/08新聞測試｜10/07新聞', `每列的訊息命名：${rows.map(r => r.name).join('｜')}`);
 check(rows[0].when.startsWith('發送 ') && rows[1].when.startsWith('排程 ') && /^排程 \d\d\/\d\d \d\d:\d\d$/.test(rows[1].when), `命名下方寫發送時間／排程時間：${rows[0].when}、${rows[1].when}`);
 check(rows.map(r => r.status).join('｜') === '已發送｜排程｜發送中｜已發送｜發送失敗', `發送狀態：${rows.map(r => r.status).join('｜')}`);
-await page.waitForFunction(() => /280,000 人/.test(document.querySelector('#hubListBox .hub-row .cnt').textContent));
 rows = await rowsOf();
-check(reqs.stats.length === 1 && reqs.stats[0].id === 'a'.repeat(24) && reqs.stats[0].force === false, '打開列表時，「正式發送但還沒有人數」的那筆自動向 LINE 查一次（測試推播不查）');
-check(rows[0].people.includes('280,000 人') && rows[0].people.includes('發送成功'), `推播人數（發送成功）：${rows[0].people}`);
+await page.waitForTimeout(400);
+check(reqs.stats.length === 0, '打開列表不會向 LINE 查統計（列表的人數不用它，省 LINE 的查詢額度）');
+check(rows[0].people.includes('約 287,091 人') && rows[0].people.includes('發送時好友數') && !rows[0].people.includes('280,000'), `推播人數＝發送當下好友數，不拿 LINE 的 delivered（那是訊息則數）：${rows[0].people}`);
 check(rows[1].people.includes('287,000') && rows[1].people.includes('預計') && rows[3].people.includes('1 人') && rows[3].people.includes('小編本人'), `排程顯示預計人數；測試推播顯示收件人：${rows[1].people}／${rows[3].people}`);
 check(!(await page.isHidden('#hubListWarn')) === false, '有 Cron 心跳：沒有警告');
 await page.locator('#s8Modal').screenshot({ path: path.join(SHOTS, 'hub-1-list.png') });
@@ -112,8 +112,8 @@ let kv = await page.$$eval('#hubDetail .hub-kv > div', d => d.map(x => x.textCon
 check(kv.includes('★今晚重點新聞') && kv.includes('推播標題'), '顯示「推播標題」');
 let trs = await page.$$eval('#hubDetail table.hub-tbl tr', t => t.map(tr => [...tr.children].map(c => c.textContent)));
 check(trs.length === 6 && trs[1][0].includes('★蔣萬安專訪') && trs[1][1] === '1,234' && trs[1][2] === '1,000', '每則訊息標題一列：點擊次數 1,234／點擊人數 1,000');
-check(trs[2][1] === '—' && trs[3][1] === '—' && trs.some(r => r[0].includes('（其他連結）')) && trs.at(-1)[0].includes('發送成功 280,000') && trs.at(-1)[2] === '41,000', 'LINE 沒提供（<20）顯示「—」；其他連結另列；最後一列是整則統計');
-check(reqs.stats.length === 2 && reqs.stats[1].force === false, '進入詳細畫面時查一次統計（5 分鐘內 Worker 會直接用快取）');
+check(trs[2][1] === '—' && trs[3][1] === '—' && trs.some(r => r[0].includes('（其他連結）')) && trs.at(-1)[0].includes('送達 280,000 則訊息') && trs.at(-1)[0].includes('開啟 90,000 人') && trs.at(-1)[2] === '41,000', 'LINE 沒提供（<20）顯示「—」；其他連結另列；最後一列是整則統計');
+check(reqs.stats.length === 1 && reqs.stats[0].force === false, '進入詳細畫面時查一次統計（5 分鐘內 Worker 會直接用快取）');
 await page.locator('#hubDetail table.hub-tbl tr:nth-child(2) .lk button:first-child').click();
 check((await page.evaluate(() => window.__opened)).join() === LINKS[0].url, '每則標題旁的「打開連結」：新分頁打開該格的推播連結');
 await page.locator('#hubDetail').screenshot({ path: path.join(SHOTS, 'hub-2-detail.png') });
@@ -128,6 +128,19 @@ await page.waitForFunction(() => document.querySelector('#hubDetail .hub-d-name'
 check(reqs.rename.at(-1).id === 'a'.repeat(24) && reqs.rename.at(-1).name === '10/09 晚間重點', '改名：送出新名稱');
 await page.click('#hubDetail .hub-back');
 check((await rowsOf())[0].name === '10/09 晚間重點', '返回列表：訊息命名已更新');
+
+check(kv.some(v => v.includes('約 287,091 人（發送時好友數）')), '詳細頁「推播人數」＝發送當下好友數（不是 LINE 的 delivered）');
+// 每格對應自己的點擊數：同一個連結出現在兩格（LINE 合併計算）、網址只差結尾斜線也要對得上
+await page.evaluate(() => {
+  const r = { ...hubFindRec('a'.repeat(24)), id: 'f'.repeat(24), name: '重複連結', links: [{ page: 1, label: '左上', title: '格一', url: 'https://example.com/d/' }, { page: 1, label: '右上', title: '格二', url: 'https://example.com/d' }, { page: 2, label: '左下', title: '格三', url: 'https://example.com/e' }] };
+  hubFor('news').records.push(r);
+  hubStats[r.id] = { stats: { at: '2026-10-10T05:00:00+08:00', overview: { delivered: 100, uniqueImpression: 50, uniqueClick: 30 }, messages: [], clicks: [{ seq: 1, url: 'https://example.com/d', click: 77, uniqueClick: 66 }, { seq: 2, url: 'https://example.com/e', click: 21, uniqueClick: 20 }] } };
+  hubDetailId = r.id; hubDetailRender();
+});
+trs = await page.$$eval('#hubDetail table.hub-tbl tr', t => t.map(tr => [...tr.children].map(c => c.textContent)));
+check(trs[1][1] === '77' && trs[1][2] === '66' && trs[2][1] === '77' && trs[2][2] === '66' && trs[3][1] === '21' && trs[3][2] === '20', '每一格各自寫出對應的點擊次數與點擊人數（網址只差結尾斜線也對得上）');
+check(trs[1][0].includes('和另外 1 格是同一個連結') && trs[2][0].includes('和另外 1 格是同一個連結') && !trs[3][0].includes('同一個連結'), '同一個連結用在兩格時，註明 LINE 合併計算、數字相同');
+await page.evaluate(() => { hubFor('news').records = hubFor('news').records.filter(r => r.id !== 'f'.repeat(24)); hubCloseDetail(); });
 
 // ===== 4. 排程、測試、失敗 =====
 await page.click('#hubListBox .hub-row:nth-child(2)');

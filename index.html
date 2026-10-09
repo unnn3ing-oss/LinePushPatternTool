@@ -6645,7 +6645,6 @@ function hubPeople(r) {   // 推播人數：{ main, sub }
   const names = (r.recipientNames || []).join('、');
   if (r.test) return { main: `${hubNum((r.recipientNames || []).length || r.friends)} 人`, sub: names || '測試推播' };
   if (r.status === 'sent') {
-    if (Number.isFinite(r.delivered)) return { main: `${hubNum(r.delivered)} 人`, sub: '發送成功' };
     if (Number.isFinite(r.friends)) return { main: `約 ${hubNum(r.friends)} 人`, sub: '發送時好友數' };
   } else if (hubLive(r) && Number.isFinite(r.approvedFriends)) return { main: `約 ${hubNum(r.approvedFriends)} 人`, sub: '預計' };
   return { main: '—', sub: '' };
@@ -6666,7 +6665,7 @@ async function hubListLoad(ch) {
     d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true;
   } catch (e) { d.error = String(e.message || e); }
   d.loading = false;
-  if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); hubAutoStats(ch); }
+  if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
 }
 function hubListRender() {
   const box = hubEl('hubListBox'), warn = hubEl('hubListWarn'), d = hubFor(hubCh);
@@ -6698,17 +6697,10 @@ function hubListRender() {
   });
 }
 hubEl('hubListRefresh').addEventListener('click', () => { if (hubDetailId) { hubStatsLoad(hubDetailId, true); return; } hubListLoad(hubCh); });
-// 打開列表時，最近幾筆「正式發送、還沒有人數」的順便向 LINE 查一次（最多 3 筆；查到的會存在 Worker，之後不用再查）
-async function hubAutoStats(ch) {
-  const d = hubFor(ch); if (d.auto) return; d.auto = true;
-  const todo = d.records.filter(r => r.status === 'sent' && !r.test && !Number.isFinite(r.delivered) && !r.statAt && Date.now() - Date.parse(r.sentAt) < HUB_STATS_DAYS * 86400e3).slice(0, 3);
-  for (const r of todo) { if (!hubIsOpen()) break; await hubStatsLoad(r.id, false, true); }
-  d.auto = false;
-}
-async function hubStatsLoad(id, force, quiet) {
+async function hubStatsLoad(id, force) {
   const st = (hubStats[id] = hubStats[id] || {});
   if (st.busy) return;
-  st.busy = true; st.error = ''; if (!quiet && hubDetailId === id) hubStatsRender();
+  st.busy = true; st.error = ''; if (hubDetailId === id) hubStatsRender();
   try {
     const r = await s8Api('/line/history/stats', { id, force: !!force });
     st.stats = r.stats || null; st.message = r.unavailable ? (r.message || '') : ''; st.cached = !!r.cached;
@@ -6772,8 +6764,9 @@ function hubStatsRender() {
   const rec = hubFindRec(hubDetailId); if (!rec) return;
   box.textContent = ''; hubLastTable = null;
   const st = hubStats[rec.id] || {}, data = st.stats || null;
+  const normUrl = u => String(u || '').trim().replace(/\/+(?=[?#]|$)/, '');   // LINE 回的網址和我們存的可能差一個結尾斜線
   const byUrl = new Map();
-  ((data && data.clicks) || []).forEach(c => { const o = byUrl.get(c.url); if (!o) byUrl.set(c.url, { click: c.click, uniqueClick: c.uniqueClick }); else { if (Number.isFinite(c.click)) o.click = (o.click || 0) + c.click; if (Number.isFinite(c.uniqueClick)) o.uniqueClick = Math.max(o.uniqueClick || 0, c.uniqueClick); } });
+  ((data && data.clicks) || []).forEach(c => { const o = byUrl.get(normUrl(c.url)); if (!o) byUrl.set(normUrl(c.url), { click: c.click, uniqueClick: c.uniqueClick }); else { if (Number.isFinite(c.click)) o.click = (o.click || 0) + c.click; if (Number.isFinite(c.uniqueClick)) o.uniqueClick = Math.max(o.uniqueClick || 0, c.uniqueClick); } });
   const used = new Set();
   const title = document.createElement('div'); title.className = 'line-sub'; title.style.margin = '16px 0 4px'; title.textContent = '每則訊息的點擊'; box.appendChild(title);
   const rows = [['位置', '訊息標題', '連結', '點擊次數', '點擊人數']];
@@ -6781,11 +6774,11 @@ function hubStatsRender() {
   const hr = document.createElement('tr'); ['訊息標題', '點擊次數', '點擊人數'].forEach((h, i) => { const th = document.createElement('th'); th.textContent = h; if (i) th.className = 'num'; hr.appendChild(th); }); t.appendChild(hr);
   const links = rec.links || [];
   links.forEach(l => {
-    const c = byUrl.get(l.url); if (c) used.add(l.url);
+    const c = byUrl.get(normUrl(l.url)); if (c) used.add(normUrl(l.url));
     const tr = document.createElement('tr');
     const td = document.createElement('td'); td.className = 'ttl';
     const tt = document.createElement('div'); tt.textContent = l.title || '（沒有標題）'; td.appendChild(tt);
-    const pos = document.createElement('div'); pos.className = 'line-note'; pos.style.margin = '0'; pos.textContent = `第 ${l.page} 頁 ${l.label}`; td.appendChild(pos);
+    const pos = document.createElement('div'); pos.className = 'line-note'; pos.style.margin = '0'; const dup = links.filter(x => normUrl(x.url) === normUrl(l.url)).length; pos.textContent = `第 ${l.page} 頁 ${l.label}${dup > 1 ? `（和另外 ${dup - 1} 格是同一個連結，LINE 合併計算，數字相同）` : ''}`; td.appendChild(pos);
     const lk = document.createElement('div'); lk.className = 'lk';
     const go = document.createElement('button'); go.type = 'button'; go.textContent = '打開連結'; go.title = l.url; go.addEventListener('click', () => { window.open(l.url, '_blank', 'noopener'); });
     const cp = document.createElement('button'); cp.type = 'button'; cp.textContent = '複製';
@@ -6795,18 +6788,18 @@ function hubStatsRender() {
     t.appendChild(tr);
     rows.push([`第 ${l.page} 頁 ${l.label}`, l.title, l.url, hubNum(c && c.click), hubNum(c && c.uniqueClick)]);
   });
-  ((data && data.clicks) || []).filter(c => !used.has(c.url)).forEach(c => {
-    if (used.has(`#${c.url}`)) return; used.add(`#${c.url}`);
+  ((data && data.clicks) || []).filter(c => !used.has(normUrl(c.url))).forEach(c => {
+    if (used.has(`#${normUrl(c.url)}`)) return; used.add(`#${normUrl(c.url)}`);
     const tr = document.createElement('tr'); const td = document.createElement('td'); td.className = 'ttl'; td.textContent = `（其他連結）${c.url}`; tr.appendChild(td);
-    const v = byUrl.get(c.url);
+    const v = byUrl.get(normUrl(c.url));
     [v.click, v.uniqueClick].forEach(x => { const n = document.createElement('td'); n.className = 'num'; n.textContent = hubNum(x); tr.appendChild(n); });
     t.appendChild(tr); rows.push(['（其他連結）', '', c.url, hubNum(v.click), hubNum(v.uniqueClick)]);
   });
   if (!links.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 3; td.className = 'dim'; td.textContent = '這筆沒有記下每則訊息的連結（早期排程沒有記錄）。'; tr.appendChild(td); t.appendChild(tr); }
   if (data) {
     const ov = data.overview || {}, sum = document.createElement('tr'); sum.className = 'sum';
-    [`整則推播：發送成功 ${hubNum(ov.delivered)}、開啟 ${hubNum(ov.uniqueImpression)} 人`, '', hubNum(ov.uniqueClick)].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i) td.className = 'num'; sum.appendChild(td); });
-    t.appendChild(sum); rows.push(['整則推播', `發送成功 ${hubNum(ov.delivered)}、開啟 ${hubNum(ov.uniqueImpression)} 人`, '', '', hubNum(ov.uniqueClick)]);
+    [`整則推播：送達 ${hubNum(ov.delivered)} 則訊息、開啟 ${hubNum(ov.uniqueImpression)} 人（右側＝點了任何連結的不重複人數）`, '', hubNum(ov.uniqueClick)].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i) td.className = 'num'; sum.appendChild(td); });
+    t.appendChild(sum); rows.push(['整則推播', `送達 ${hubNum(ov.delivered)} 則訊息、開啟 ${hubNum(ov.uniqueImpression)} 人`, '', '', hubNum(ov.uniqueClick)]);
   }
   box.appendChild(t);
   hubLastTable = rows;
@@ -6818,7 +6811,7 @@ function hubStatsRender() {
   else {
     if (st.message) lines.push(st.message);
     if (data) lines.push(`統計更新時間：${hubFmt(data.at)}${st.cached ? '（5 分鐘內查過，直接用上次的；按「重新整理統計」會再問 LINE）' : ''}`);
-    lines.push(`「—」表示 LINE 沒提供（數字小於 20，或認證帳號以外沒有統計）、或這個連結目前沒有點擊。統計只保留發送後 ${HUB_STATS_DAYS} 天，每次查到的數字都會存起來，超過後還能看最後一次的。`);
+    lines.push(`「送達」是 LINE 回報的訊息則數（每人收到 2 頁會算 2 則），不是人數。「—」表示 LINE 沒提供（數字小於 20，或認證帳號以外沒有統計）、或這個連結目前沒有點擊。統計只保留發送後 ${HUB_STATS_DAYS} 天，每次查到的數字都會存起來，超過後還能看最後一次的。`);
   }
   msg.textContent = lines.join('\n'); box.appendChild(msg);
   const acts = document.createElement('div'); acts.className = 'hub-bar2';
