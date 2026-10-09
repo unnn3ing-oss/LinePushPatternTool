@@ -629,7 +629,7 @@ test('webhook：傳「登記」→ 記下 userId＋暱稱並回覆；重複登�
     assert.equal(JSON.parse(rep.body).replyToken, 'rt-1'); assert.match(JSON.parse(rep.body).messages[0].text, /已加入測試名單：王小明/);
     assert.equal(rep.headers.Authorization, 'Bearer tok-111', '用測試帳號的 token');
     const l = await testersOf(env);
-    assert.deepEqual(l.testers.map(t => [t.tid, t.name]), [[TID, '王小明']]); assert.equal(l.maxPerSend, 2);
+    assert.deepEqual(l.testers.map(t => [t.tid, t.name]), [[TID, '王小明']]); assert.equal(l.maxPerSend, 1);
     assert.equal(l.testers[0].userId, TESTER_UID, '權限管理要列出名字對應的 userId');
     await hook(env, [msgEv(TESTER_UID, '登記', 'rt-2')]);
     assert.equal((await testersOf(env)).testers.length, 1);
@@ -676,20 +676,20 @@ test('測試名單端點要試驗功能憑證；remove 只移除指定的人', a
   assert.equal((await req(env, '/line/testers/remove', { tid: '../x' })).status, 404);
 });
 
-test('send（測試帳號）：沒選收件人、超過 2 位、名單外的人 → 400，完全沒呼叫 LINE', async () => {
+test('send（測試帳號）：沒選收件人、超過 1 位（只傳給操作者本人）、名單外的人 → 400，完全沒呼叫 LINE', async () => {
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {
     const prep = await prepared(env); seedTester(env, TESTER_UID2, '李小華'); seedTester(env, TESTER_UID3, '陳小美');
     const before = line.calls.length;
-    for (const testers of [undefined, [], 'abc', [TID, TID2, TID3], [TID, TID2, TID3, TID, TID2, TID3, TID, TID2, TID3, TID, TID2], ['0'.repeat(16)], [TESTER_UID], [{ tid: TID }]]) {
+    for (const testers of [undefined, [], 'abc', [TID, TID2], [TID, TID2, TID3], [TID, TID2, TID3, TID, TID2, TID3, TID, TID2, TID3, TID, TID2], ['0'.repeat(16)], [TESTER_UID], [{ tid: TID }]]) {
       const r = await req(env, '/line/send', sendBody(prep, { testers }));
       assert.equal(r.status, 400, JSON.stringify(testers));
     }
     assert.equal(line.calls.length, before, '任何一關沒過都沒有呼叫 LINE');
-    // 2 位（含重複的同一位只算 1 位）→ 成功，且 to 是這兩位
-    let r = await req(env, '/line/send', sendBody(prep, { testers: [TID, TID2] }));
-    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.friends, 2); assert.deepEqual(r.json.recipients, ['王小明', '李小華']);
-    assert.deepEqual(JSON.parse(line.calls.filter(c => c.path === '/v2/bot/message/multicast').at(-1).body).to, [TESTER_UID, TESTER_UID2]);
+    // 1 位（含重複的同一位只算 1 位）→ 成功，且 to 只有他
+    let r = await req(env, '/line/send', sendBody(prep, { testers: [TID2] }));
+    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.friends, 1); assert.deepEqual(r.json.recipients, ['李小華']);
+    assert.deepEqual(JSON.parse(line.calls.filter(c => c.path === '/v2/bot/message/multicast').at(-1).body).to, [TESTER_UID2]);
     r = await req(env, '/line/send', sendBody(prep, { testers: [TID, TID, TID], retryKey: '123e4567-e89b-12d3-a456-426614174222' }));
     assert.equal(r.status, 200); assert.equal(r.json.friends, 1);
   } finally { line.restore(); }
@@ -723,17 +723,15 @@ test('multicast／reply／profile 只用測試帳號的 token；正式帳號（n
   } finally { line.restore(); }
 });
 
-test('測試排程：建立時必須指定收件人（最多 2 位）；時間到只 multicast 給他們，名單被移除的略過、全沒了就失敗不發', async () => {
+test('測試排程：建立時必須指定收件人（最多 1 位）；時間到只 multicast 給他，名單被移除的就失敗不發', async () => {
   const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   try {
     const prep = await prepared(env); seedTester(env, TESTER_UID2, '李小華'); seedTester(env, TESTER_UID3, '陳小美');
     assert.equal((await createSched(env, prep, { testers: undefined })).status, 400);
-    assert.equal((await createSched(env, prep, { testers: [TID, TID2, TID3] })).status, 400);
+    assert.equal((await createSched(env, prep, { testers: [TID, TID2] })).status, 400);
     assert.equal([...r2.store.keys()].filter(k => k.startsWith('sched/')).length, 0, '沒過的不會建立');
-    const a = (await createSched(env, prep, { testers: [TID, TID2] })).json.schedule;
-    assert.deepEqual(a.recipientNames, ['王小明', '李小華']);
-    // 其中一位被移除 → 只發給還在名單的
-    await req(env, '/line/testers/remove', { tid: TID });
+    const a = (await createSched(env, prep, { testers: [TID2] })).json.schedule;
+    assert.deepEqual(a.recipientNames, ['李小華']);
     await setRunAt(r2, a.id, Date.now() - 20000); await cron(env);
     assert.equal(recOf(r2, a.id).status, 'sent');
     assert.deepEqual(JSON.parse(line.calls.find(c => c.path === '/v2/bot/message/multicast').body).to, [TESTER_UID2]);
@@ -819,7 +817,7 @@ test('正式帳號的測試推播：mode:test 只 multicast 給該帳號名單�
   } finally { line.restore(); }
 });
 
-test('正式帳號的測試推播：收件人必須在「該帳號」的名單內（最多 2 位）；版型要對；別的帳號的人不能混用', async () => {
+test('正式帳號的測試推播：收件人必須在「該帳號」的名單內（最多 1 位）；版型要對；別的帳號的人不能混用', async () => {
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {
     const prep = await prepared(env);   // 內容是 news 版型；seedTester 只在測試帳號名單
@@ -827,14 +825,14 @@ test('正式帳號的測試推播：收件人必須在「該帳號」的名單�
     await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID2 });
     await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID3 });
     const before = line.calls.length;
-    for (const [extra, why] of [[{ testers: [TID] }, '測試帳號名單裡的人不能發到新聞帳號'], [{ testers: [OTID, OTID2, OTID3] }, '超過 2 位'], [{ testers: [] }, '沒選人'], [{ testers: undefined }, '沒帶'], [{ testers: [OFFICIAL_UID] }, '直接給 userId'], [{ channel: 'ent', testers: [OTID] }, '版型不對（news 內容發 ent）']]) {
+    for (const [extra, why] of [[{ testers: [TID] }, '測試帳號名單裡的人不能發到新聞帳號'], [{ testers: [OTID, OTID2] }, '超過 1 位'], [{ testers: [OTID, OTID2, OTID3] }, '超過 1 位'], [{ testers: [] }, '沒選人'], [{ testers: undefined }, '沒帶'], [{ testers: [OFFICIAL_UID] }, '直接給 userId'], [{ channel: 'ent', testers: [OTID] }, '版型不對（news 內容發 ent）']]) {
       const r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'test', ...extra }));
       assert.equal(r.status, 400, why);
     }
     assert.equal(line.calls.length, before, '前面任何一關沒過都沒有呼叫 LINE');
-    const ok = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'test', testers: [OTID, OTID2] }));
-    assert.equal(ok.status, 200); assert.equal(ok.json.friends, 2);
-    assert.deepEqual(JSON.parse(line.calls.filter(c => c.path === '/v2/bot/message/multicast').at(-1).body).to, [OFFICIAL_UID, OFFICIAL_UID2]);
+    const ok = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'test', testers: [OTID2] }));
+    assert.equal(ok.status, 200); assert.equal(ok.json.friends, 1);
+    assert.deepEqual(JSON.parse(line.calls.filter(c => c.path === '/v2/bot/message/multicast').at(-1).body).to, [OFFICIAL_UID2]);
   } finally { line.restore(); }
 });
 
@@ -861,7 +859,7 @@ test('正式帳號的 broadcast 閘門完全沒變：沒帶 mode:test 就走原�
   } finally { line.restore(); }
 });
 
-test('reply 仍只有測試帳號能用；正式帳號的 multicast 每次最多 2 個合法 userId', async () => {
+test('reply 仍只有測試帳號能用；正式帳號的 multicast 每次最多 1 個合法 userId', async () => {
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {
     const prep = await prepared(env);
@@ -869,7 +867,7 @@ test('reply 仍只有測試帳號能用；正式帳號的 multicast 每次最多
     await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'test', testers: [OTID] }));
     await hook(env, [msgEv(TESTER_UID, '登記')]);
     for (const c of line.calls.filter(c => c.path === '/v2/bot/message/reply')) assert.equal(c.headers.Authorization, 'Bearer tok-111', 'reply 只用測試帳號');
-    for (const c of line.calls.filter(c => c.path === '/v2/bot/message/multicast' && c.headers.Authorization === 'Bearer tok-222')) { const to = JSON.parse(c.body).to; assert.ok(to.length >= 1 && to.length <= 2 && to.every(u => /^U[0-9a-f]{32}$/.test(u))); }
+    for (const c of line.calls.filter(c => c.path === '/v2/bot/message/multicast' && c.headers.Authorization === 'Bearer tok-222')) { const to = JSON.parse(c.body).to; assert.ok(to.length === 1 && to.every(u => /^U[0-9a-f]{32}$/.test(u))); }
     assert.equal(line.calls.filter(c => c.path === '/v2/bot/message/broadcast' && c.headers.Authorization === 'Bearer tok-111').length, 0, '測試帳號從不 broadcast');
   } finally { line.restore(); }
 });

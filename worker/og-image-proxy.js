@@ -784,7 +784,7 @@ async function handleS8Status(request, env) {
 //   POST /line/clicks    → 用發送時的 request id 查這次群發每個連結的點擊次數／人數（唯讀）
 //   POST /line/history/list｜stats｜rename → 「訊息推播 → 推播列表」：發送紀錄（立即推播 hist/、排程 sched/）、點擊統計快照、改名
 //   POST /line/schedule/create｜list｜update｜cancel → 排程推播（Worker 自己排，需 R2 與 Cron Trigger，見下方「排程推播」）
-//   POST /line/send      → validate 通過後發送。測試帳號：multicast 給「測試名單」勾選的人（每次最多 2 位，不 broadcast）；正式帳號：broadcast 給全部好友，要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
+//   POST /line/send      → validate 通過後發送。測試帳號：multicast 給「測試名單」勾選的人（每次最多 1 位＝操作者本人，不 broadcast）；正式帳號：broadcast 給全部好友，要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
 //   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
 // 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
 //   LINE_CHANNEL_ID_NEWS / _SECRET_NEWS、LINE_CHANNEL_ID_ENT / _SECRET_ENT（正式帳號）。
@@ -846,7 +846,7 @@ async function lineCall(env, key, method, path, body, extraHeaders) {
   const sig = `${method} ${base}`;
   if (!LINE_ALLOWED_CALLS.some(re => re.test(sig))) throw new Error(`不允許的 LINE 呼叫：${sig}`);
   if (key !== 'test' && LINE_TEST_ONLY.some(re => re.test(sig))) throw new Error(`${sig} 只能用在測試帳號`);
-  if (key !== 'test' && sig === 'POST /v2/bot/message/multicast') {   // 正式帳號的 multicast：最多 2 位、每個都必須是合法 userId（其餘一律拒絕）
+  if (key !== 'test' && sig === 'POST /v2/bot/message/multicast') {   // 正式帳號的 multicast：最多 1 位、每個都必須是合法 userId（其餘一律拒絕）
     const to = body && body.to;
     if (!Array.isArray(to) || to.length < 1 || to.length > LINE_TESTER_MAX_PER_SEND || !to.every(u => LINE_USER_ID.test(String(u)))) throw new Error(`正式帳號的 multicast 最多只能發給 ${LINE_TESTER_MAX_PER_SEND} 位指定的人`);
   }
@@ -1001,9 +1001,9 @@ async function lineBroadcastNow(env, key, prep, { origin, retryKey, approve }) {
   if (sent.status !== 200 && sent.status !== 409) throw Object.assign(new Error(`${lineErrText(sent)}。請到 LINE 官方帳號後台確認有沒有發出去。`), { status: 502, lineStatus: sent.status });
   return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends, pages: messages.length };
 }
-// ---- 測試名單：使用者傳「登記」給測試帳號 → webhook 記下 userId；測試推播只用 multicast 發給名單內「勾選的人」（每次最多 2 位）----
+// ---- 測試名單：使用者傳「登記」給測試帳號 → webhook 記下 userId；測試推播只用 multicast 發給名單內「勾選的人」（每次最多 1 位＝操作者本人）----
 const LINE_TESTER_PREFIX = 'testers/';
-const LINE_TESTER_MAX_PER_SEND = 2;
+const LINE_TESTER_MAX_PER_SEND = 1;   // 測試推播只傳給「操作者本人」一位（網頁的操作者＝名單裡的自己）；Worker 不知道誰在操作，所以至少把上限鎖在 1
 const LINE_TESTER_MAX_TOTAL = 50;
 const LINE_USER_ID = /^U[0-9a-f]{32}$/;
 const LINE_REGISTER_WORDS = new Set(['登記', '加入測試名單']);
@@ -1118,7 +1118,7 @@ async function handleLineSend(request, env) {
 //   POST /line/testers/lookup  （只有 news／ent）貼上 LINE userId → 向該帳號查 profile 驗證有效，回暱稱，不存
 //   POST /line/testers/add     （只有 news／ent）同上，驗證通過才加入該帳號的測試名單（上限 20 人）
 // 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰：正式帳號的測試名單不靠 webhook，而是管理者從 S8 客戶中心複製 userId 貼進來，再由 LINE 的 profile 驗證。
-// 「正式帳號的測試推播」：POST /line/send 帶 mode:'test'＋testers，只 multicast 給該帳號測試名單裡勾選的人（每次最多 2 位）；
+// 「正式帳號的測試推播」：POST /line/send 帶 mode:'test'＋testers，只 multicast 給該帳號測試名單裡勾選的人（每次最多 1 位＝操作者本人）；
 // 它不需要 LINE_ALLOW_OFFICIAL，成功後一樣回 testToken；真正的 broadcast 閘門（旗標、testToken、人數確認）完全沒變。
 // ===========================================================================
 async function lineVerifySignature(secret, rawBytes, sigB64) {
