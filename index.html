@@ -1220,7 +1220,7 @@
           <div class="help-marks"><i class="dot ok">圖</i><i class="dot ok">字</i> 綠色圓圈＝這項沒問題　<i class="dot warn">!</i> 黃色＝圖片疑似露白　<i class="dot bad">!</i> 紅色＝缺圖片或缺標題</div>
           <span class="help-note">預覽圖有問題的格子左上角也會標同樣的圓圈，滑鼠移上去會顯示原因，移開後約 1 秒淡出。底部的提示會統計兩頁的狀況。</span></li>
         <li><b>疑似露白怎麼判斷</b>：只看照片「看得到」的範圍（被範本遮住的部分不算）。照片沒蓋滿這個範圍（例如被拖離格子），或照片邊緣本身接近白色／透明（任一邊有 90% 以上），就會標黃色「!」。這只是提醒，<b>不鎖定下載</b>。</li>
-        <li><b>複製推播連結</b>：在步驟 2 點預覽圖的格子，該格整個會淡淡反灰（暗 10%，沒有藍框線），正中間會出現「複製推播連結」按鈕（編輯畫面時不會出現；點空白處或換頁會收起），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
+        <li><b>複製推播連結</b>：在步驟 2 把游標移到預覽圖的格子上，該格整個會淡淡反灰（暗 10%，沒有藍框線），正中間會出現「複製推播連結」按鈕（游標移開就收起；編輯畫面時不會出現；觸控螢幕沒有游標，改成點一下格子），只複製該格的連結（來自快速填入時標題下一行的網址）。連結會先清成文章網址，再加上追蹤碼：新聞 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=push</span>、娛樂 <span class="help-code-inline">?utm_source=LineNewsPush&amp;utm_medium=enewsline</span>。</li>
         <li><b>下載</b>：
           <ul>
             <li>「下載本頁」存目前這頁；若還有缺漏或疑似露白，會先問你。</li>
@@ -4756,9 +4756,10 @@ async function copyPushLink(i, btn) {
     setTimeout(() => { btn.textContent = old === '已複製 ✓' ? '複製推播連結' : old; }, 1500);
   }
 }
-// Step 2: clicking a cell dims it a little (see stepTwoCellRect) and shows 「複製推播連結」 in its centre.
+// Step 2: hovering a cell (or tapping it on a touch screen) dims it a little (see stepTwoCellRect) and shows 「複製推播連結」 in its centre.
 const cellCopyBtn = document.getElementById('cellCopyBtn');
 let copyBtnCell = -1;
+let copyViaHover = false;
 function showCellCopy(i) {
   if (!isLocked() || mode === 'collage' || i < 0) { hideCellCopy(); return; }
   const pg = activePage();
@@ -4767,10 +4768,11 @@ function showCellCopy(i) {
     copyBtnCell = i;
     cellCopyBtn.textContent = link ? '複製推播連結' : '這格沒有連結';
     cellCopyBtn.classList.toggle('no-link', !link);
-    // The button appears right under the click that picked the cell (often the very centre): ignore the
-    // rest of that click so it does not copy by accident.
-    cellCopyBtn.style.pointerEvents = 'none';
-    setTimeout(() => { cellCopyBtn.style.pointerEvents = ''; }, 350);
+    // Touch / click: the button appears right under the tap that picked the cell (often the very centre), so ignore
+    // the rest of that tap and it does not copy by accident. With the mouse (hover) the button just appears under
+    // a resting cursor and the next click is a deliberate one, so there is no such delay.
+    cellCopyBtn.style.pointerEvents = copyViaHover ? '' : 'none';
+    if (!copyViaHover) setTimeout(() => { cellCopyBtn.style.pointerEvents = ''; }, 350);
   }
   const rc = stepTwoCellRect(i, pg.showHeader);
   const r = canvas.getBoundingClientRect();
@@ -4789,6 +4791,19 @@ window.addEventListener('resize', () => { if (copyBtnCell >= 0) requestAnimation
 cellCopyBtn.addEventListener('click', () => {
   if (copyBtnCell >= 0) copyPushLink(copyBtnCell, cellCopyBtn);
 });
+// 游標移到哪一格，那一格就淡淡反灰、正中間出現「複製推播連結」（不用再點）；游標移開（也不在按鈕上）就收起。觸控螢幕沒有 hover，仍然是點一下格子。
+let hoverCell = -1;
+function hoverCellUpdate(i) {
+  if (!isLocked() || mode === 'collage') { hoverCell = -1; return; }
+  if (i === hoverCell) return;
+  hoverCell = i;
+  if (i >= 0) { copyViaHover = true; try { setActiveCard(i, true); } finally { copyViaHover = false; } }
+  else clearSelection();
+}
+canvas.addEventListener('mousemove', evt => { if (isLocked() && !drag && !lockProbe) { const p = getCanvasPos(evt); hoverCellUpdate(cellIndexAt(p.x, p.y)); } });
+canvas.addEventListener('mouseleave', evt => { if (evt.relatedTarget === cellCopyBtn) return; hoverCellUpdate(-1); });   // 移到按鈕上不算離開
+cellCopyBtn.addEventListener('mouseleave', evt => { if (evt.relatedTarget !== canvas) hoverCellUpdate(-1); });
+document.addEventListener('mouseout', evt => { if (!evt.relatedTarget) hoverCellUpdate(-1); });   // 游標離開整個視窗
 
 // Step 2's left panel: the existing completeness rules (headline lines + photo),
 // plus a 露白 warning, listed per cell of the current page.
@@ -4840,7 +4855,7 @@ function renderCheckPanel() {
     ? '紅色「!」＝缺圖片或缺標題，補齊前不能全部下載；黃色「!」＝圖片疑似露白，仍可下載。要修改請按下方「返回編輯」。'
     : (warn
       ? '黃色「!」＝圖片疑似露白，仍可下載，下載前會再確認；要調整請按下方「返回編輯」。'
-      : '每格都有圖、有標題。點預覽圖的格子，格子正中間會出現「複製推播連結」。');
+      : '每格都有圖、有標題。游標移到預覽圖的格子上，格子正中間會出現「複製推播連結」。');
   panel.appendChild(note);
   // The other page counts too: 全部下載 needs both pages complete.
   const otherIdx = 1 - activePageIndex;
