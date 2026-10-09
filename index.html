@@ -245,14 +245,8 @@
   .line-srow:last-child { margin-bottom: 0; }
   .line-srow .top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .line-srow .when { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
-  .line-target { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; color: var(--muted); }
-  .line-target[hidden] { display: none; }
   .line-tbtn { padding: 3px 12px; border-radius: 99px; border: 1px solid rgba(0, 0, 0, .18); background: #fff; font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
   .line-tbtn.on { background: #dbeafe; border-color: #93c5fd; color: #1e40af; font-weight: 700; }
-  .line-who { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
-  .line-who[hidden] { display: none; }
-  .line-who-row[hidden] { display: none; }
-  .line-who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
   .qr-sec { grid-column: 1 / -1; margin-top: 6px; font-size: 13px; }   /* 外層是「標籤｜欄位」兩欄的格線，這一塊要橫跨整列 */
   .qr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .qr-title { font-weight: 700; font-size: 14px; }
@@ -275,23 +269,7 @@
   .qr-prev { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 4px; }
   .qr-prev[hidden] { display: none; }
   .qr-pill { flex: none; padding: 7px 16px; border-radius: 99px; background: #1f2a4a; color: #fff; font-size: 14px; white-space: nowrap; }
-  .line-who-lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
-  .ms { position: relative; }
-  .ms-btn { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 200px; max-width: 280px; padding: 4px 10px 4px 12px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, .25); background: #fff; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; text-align: left; }
-  .ms-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ms-btn.empty span { color: var(--muted); }
-  .ms-btn[aria-expanded="true"] { border-color: var(--accent); }
-  .ms-panel { position: absolute; z-index: 6; left: 0; top: calc(100% + 4px); min-width: 100%; max-height: 240px; overflow: auto; background: #fff; border: 1px solid rgba(0, 0, 0, .2); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); padding: 6px; }
-  .ms-panel[hidden] { display: none; }
-  .ms-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap; }
-  .ms-opt:hover { background: rgba(0, 0, 0, .06); }
-  .ms-opt.off { color: var(--muted); opacity: .55; cursor: not-allowed; }
-  .ms-opt.off:hover { background: transparent; }
-  .ms-foot { padding: 6px 8px 2px; font-size: 12px; color: var(--muted); }
   .line-trow span { font-size: 14px; color: var(--text); }
-  .line-who button { padding: 2px 10px; }
-  .line-who-note { margin-top: 6px; line-height: 1.6; }
-  .line-who-note.bad { color: #b91c1c; font-weight: 600; }
   .line-trow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; }
   .line-trow button { padding: 2px 12px; font-size: 13px; }
   .line-chip { display: inline-block; padding: 1px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: rgba(0, 0, 0, .08); color: var(--text); }
@@ -6127,12 +6105,13 @@ const lineWhoBy = {};   // 帳號（test｜news｜ent）→ { loaded, loading, t
 const lineWhoFor = ch => (lineWhoBy[ch] = lineWhoBy[ch] || { loaded: false, loading: false, testers: [], error: '', quota: null });
 const lineWhoAcct = ch => (ch === 'test' ? '測試帳號' : (S8_ACCOUNT[ch] || ch));
 const LINE_OP_KEY = 'lineOp';
+try { localStorage.removeItem('lineWho'); localStorage.removeItem('lineMe'); } catch (e) { /* 舊版多選收件人留下的紀錄，不再使用 */ }
 let lineOp = (() => { try { return localStorage.getItem(LINE_OP_KEY) || ''; } catch (e) { return ''; } })();
 const lineTestCh = st => ((st || lineSt()).testOn === 'official' ? mode : 'test');
 const lineOpTid = ch => { const t = lineWhoFor(ch).testers.find(x => x.name === lineOp); return t ? t.tid : ''; };
 const lineResetTestKeys = () => Object.values(lineByMode).forEach(st => { if (st) { st.retryKey.test = ''; st.retryKey.otest = ''; } });   // 收件人或帳號換了就是另一次發送，不能沿用同一把重試金鑰（否則 LINE 會當成同一筆而不發）
 function lineTestInvalidate() {   // 操作者或測試帳號換了：之前的測試推播不算數，要重新測試
-  Object.values(lineByMode).forEach(st => { if (st && st.goState !== 'ok' && st.goState !== 'busy') { st.test = ''; st.testMsg = ''; st.testToken = ''; } });
+  Object.values(lineByMode).forEach(st => { if (st && st.goState !== 'ok' && st.goState !== 'busy') { st.test = ''; st.testMsg = ''; st.testToken = ''; st.go = 0; if (st.step > 3) st.step = 3; } });   // 測試作廢了：正式推播那一步不能再停著，退回測試推播
   lineResetTestKeys();
 }
 function lineTestInvalidateIfOperator(name) { if (name === lineOp) lineTestInvalidate(); }   // 操作者本人被移出名單：之前的測試推播不算數
@@ -6154,7 +6133,6 @@ async function lineWhoLoad(ch) {
   w.loaded = true; w.loading = false;
   lineOpRender(); lineTesterListRender(); lineUpdateSteps();
 }
-const lineWhoRender = () => lineOpRender();   // 名單變動後（設定頁新增／移除成員）重畫
 const lineOpChannels = () => [mode, 'test'];
 function lineOpNames() {   // 目前版型的正式帳號名單在前，再接測試帳號名單裡沒重複的
   const out = [];
@@ -6201,7 +6179,7 @@ async function lineVerifyUsage(before, n, st, ch = 'test') {
       : (diff === 0 ? `用量核對：LINE 目前仍回報已用 ${sr.used}（還沒更新，LINE 的用量是約略值，可能延遲）。稍後按 ↻ 再看；預計會變成 ${before + n}。`
         : `用量核對：本月已用 ${before} → ${sr.used}（+${diff}），和預計的 +${n} 不同（可能同時有別的發送，或 LINE 還沒更新完）。`);
     if (st && st.win && st.win.text && !st.win.text.includes('用量核對')) { st.win = { text: `${st.win.text}\n\n${msg}`, kind: st.win.kind }; if (st === lineByMode[mode]) lineRenderWin(); }
-    lineWhoRender();
+    lineOpRender();
   } catch (e) { /* 核對失敗不影響發送結果 */ }
 }
 const LINE_MIN_LEAD_MIN = 5, LINE_MAX_LEAD_DAYS = 14;   // 與 Worker 的限制一致（Worker 才是最後把關）
@@ -6216,7 +6194,7 @@ function lineRenderWin() {
 function lineResetFlow(st) { Object.assign(st, { step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
 function lineInvalidateIfChanged() {
   const st = lineByMode[mode];
-  if (st && st.prep && st.prep.sig !== lineSig() && !lineBusyNow() && st.goState !== 'ok') { lineResetFlow(st); st.win = { text: '內容有更動，已作廢上傳的資料，請重新「傳送資料」。', kind: 'bad' }; }
+  if (st && st.prep && st.prep.sig !== lineSig() && !lineBusyNow()) { const done = st.goState === 'ok'; lineResetFlow(st); st.win = { text: done ? '內容有更動：上一則推播已完成並鎖定，這是新的一則，請從第 1 步重新「傳送資料」。' : '內容有更動，已作廢上傳的資料，請重新「傳送資料」。', kind: done ? '' : 'bad' }; }
   lineUpdateSteps();
 }
 // ---- 排程時間（跟 S8 同款：MM/DD 日期選擇器＋HH:MM 時間選擇器，預設現在＋3 小時）----
@@ -6304,7 +6282,7 @@ function lineGoTo(n) {
   if (n > st.step) { for (let i = st.step; i < n; i++) if (!lineStepDone(st, i)) return; }
   st.step = n; st.win = { text: '', kind: '' };   // 上一步留下的結果訊息換頁就清掉（正式推播的結果留在最後一步）
   if (n === 2) lineOpChannels().forEach(ch => { const w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); });
-  if (n === 3) { const w = lineWhoFor(lineTestCh(st)); if (!w.loaded && !w.loading) lineWhoLoad(lineTestCh(st)); }
+  if (n === 3) lineOpChannels().forEach(ch => { const w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); });
   if (n === 4 && !Number.isFinite(st.friends) && !st.friendsBusy) lineFetchFriends();
   lineUpdateSteps();
   const body = $line('composeBody'); if (body) body.scrollTop = 0;
@@ -6334,7 +6312,7 @@ function lineChatRender(st) {
   const body = el('div', 'chat-body');
   const grp = el('div', 'chat-grp'); grp.appendChild(el('div', 'chat-av', 'T'));
   const msgs = el('div', 'chat-msgs');
-  (imgs.length ? imgs : ['', '']).forEach((u, i) => {
+  Array.from({ length: s8State.regions.length }, (_, i) => imgs[i] || '').forEach((u, i) => {
     if (u) { const im = el('img', 'chat-img'); im.src = u; im.alt = `第 ${i + 1} 頁訊息`; msgs.appendChild(im); }
     else msgs.appendChild(el('div', 'chat-img ph', '圖片產生中…'));
   });
@@ -6367,8 +6345,9 @@ function lineUpdateSteps() {
   // ③ 測試推播：只傳給操作者本人
   if (cur === 3) {
     const offOk = !!lineOpTid(mode), tstOk = !!lineOpTid('test');
-    if (st.testOn === 'official' && !offOk && tstOk && st.test !== 'busy') { st.testOn = 'test'; st.test = ''; st.testMsg = ''; st.testToken = ''; lineResetTestKeys(); }
-    else if (st.testOn === 'test' && !tstOk && offOk && st.test !== 'busy') { st.testOn = 'official'; st.test = ''; st.testMsg = ''; st.testToken = ''; lineResetTestKeys(); }
+    const listsReady = lineOpChannels().every(ch => lineWhoFor(ch).loaded && !lineWhoFor(ch).loading && !lineWhoFor(ch).error);   // 名單還沒讀完（或讀失敗）不能亂切換測試目標
+    if (listsReady && st.testOn === 'official' && !offOk && tstOk && st.test !== 'busy') { st.testOn = 'test'; st.test = ''; st.testMsg = ''; st.testToken = ''; lineResetTestKeys(); }
+    else if (listsReady && st.testOn === 'test' && !tstOk && offOk && st.test !== 'busy') { st.testOn = 'official'; st.test = ''; st.testMsg = ''; st.testToken = ''; lineResetTestKeys(); }
     const ch = lineTestCh(st), w = lineWhoFor(ch), toOff = ch !== 'test';
     $line('lineDestOff').textContent = `${S8_ACCOUNT[mode]}（正式帳號）`;
     $line('lineDestTest').classList.toggle('on', !toOff); $line('lineDestOff').classList.toggle('on', toOff);
@@ -6477,11 +6456,13 @@ $line('lineTestBtn').addEventListener('click', async () => {
   if (st.prep.sig !== lineSig()) { lineInvalidateIfChanged(); return; }
   const ch = lineTestCh(st), toOfficial = ch !== 'test', acct = lineWhoAcct(ch), tid = lineOpTid(ch);
   if (!tid) { st.test = 'bad'; st.testMsg = `✗ 「${acct}」的名單裡沒有操作者「${lineOp}」`; lineUpdateSteps(); return; }
+  const opAt = lineOp;
   if (st.test === 'ok') st.retryKey[toOfficial ? 'otest' : 'test'] = '';   // 「再推一次」是另一次發送，要換一把重試金鑰（否則 LINE 會當成同一筆而不發）
   st.test = 'busy'; st.testMsg = '推播中…'; lineWin('', ''); lineUpdateSteps();
   try {
     const r = toOfficial ? await lineSend(ch, { mode: 'test', testers: [tid] }) : await lineSend('test', { testers: [tid] });
     if (r.quota) lineWhoFor(ch).quota = { limit: r.quota.limit, used: r.quota.used + (r.friends || 0) };   // 先用「發送前用量＋收件人數」估計；稍後再向 LINE 查實際用量核對
+    if (lineOp !== opAt || lineTestCh(st) !== ch) { st.test = ''; st.testMsg = ''; st.testToken = ''; lineWin('測試推播的操作者或帳號在傳送途中換了，這次結果不算數，請重新測試推播。', 'bad'); lineUpdateSteps(); return; }
     const names = (r.recipients || [lineOp]).join('、');
     st.test = 'ok'; st.testToken = r.testToken || ''; st.testMsg = `✓ 已測試推播到${acct}（只有${names}），請到手機確認`;
     if (r.quota && Number.isFinite(r.quota.used)) lineVerifyUsage(r.quota.used, r.friends || 0, st, ch);
@@ -6858,7 +6839,7 @@ function hubStatsRender() {
     const tt = document.createElement('div'); tt.textContent = l.title || '（沒有標題）'; td.appendChild(tt);
     const pos = document.createElement('div'); pos.className = 'line-note'; pos.style.margin = '0'; const dup = links.filter(x => normUrl(x.url) === normUrl(l.url)).length; pos.textContent = `第 ${l.page} 頁 ${l.label}${dup > 1 ? `（和另外 ${dup - 1} 格是同一個連結，LINE 合併計算，數字相同）` : ''}`; td.appendChild(pos);
     const lk = document.createElement('div'); lk.className = 'lk';
-    const go = document.createElement('button'); go.type = 'button'; go.textContent = '打開連結'; go.title = l.url; go.addEventListener('click', () => { window.open(l.url, '_blank', 'noopener'); });
+    const go = document.createElement('button'); go.type = 'button'; go.textContent = '打開連結'; go.title = l.url; go.disabled = !/^https?:\/\//i.test(l.url || ''); go.addEventListener('click', () => { if (/^https?:\/\//i.test(l.url || '')) window.open(l.url, '_blank', 'noopener'); });
     const cp = document.createElement('button'); cp.type = 'button'; cp.textContent = '複製';
     cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(l.url); cp.textContent = '已複製'; setTimeout(() => { cp.textContent = '複製'; }, 1500); } catch (e) { statusEl.show('無法複製，請手動選取', 'error'); } });
     lk.append(go, cp); td.appendChild(lk); tr.appendChild(td);
@@ -6974,7 +6955,7 @@ function lineTesterListRender() {
       if (!window.confirm(`從「${lineWhoAcct(ch)}」的名單移除「${t.name}」嗎？\n\n移除後測試推播不會再發給他；${ch === 'test' ? '他可以再傳「登記」重新加入，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
       try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; lineTestInvalidateIfOperator(t.name); }
       catch (e) { window.alert(`移除失敗：${e.message || e}`); }
-      lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
+      lineOpRender(); lineTesterListRender(); lineUpdateSteps();
     });
     row.append(mem, b); box.appendChild(row);
   });
@@ -7007,7 +6988,7 @@ $line('lineAddOk').addEventListener('click', async () => {
     const w = lineWhoFor(ch); w.testers = r.testers || []; w.loaded = true;
     const added = (r.found && r.found.name) || name || '';
     $line('lineAddUid').value = ''; $line('lineAddName').value = ''; lineAddReset(`✓ 已加入「${added}」。`);
-    lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
+    lineOpRender(); lineTesterListRender(); lineUpdateSteps();
   } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
 });
 

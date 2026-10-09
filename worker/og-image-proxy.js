@@ -1257,7 +1257,7 @@ async function lineSchedList(env) {
   return out;
 }
 const lineSchedPublic = r => ({ kind: r.kind === 'now' ? 'now' : 'sched', test: !!r.test, pageCount: Array.isArray(r.pages) ? r.pages.length : 0, friends: Number.isFinite(r.friends) ? r.friends : null, delivered: r.stat && r.stat.overview && Number.isFinite(r.stat.overview.delivered) ? r.stat.overview.delivered : null, statAt: r.stat ? r.stat.at : '', id: r.id, channel: r.channel, org: r.org, name: r.name || '', altText: r.altText, runAt: r.runAt, runAtIso: taipeiIso(r.runAt), status: r.status, attempts: r.attempts || 0, lastError: r.lastError || '', requestId: r.requestId || '', sentAt: r.sentAt || '', approvedFriends: r.approvedFriends || null, recipientNames: r.recipientNames || [], links: r.links || [], createdAt: r.createdAt });
-const lineSanitizeLinks = links => (Array.isArray(links) ? links : []).slice(0, 24).map(l => ({ page: Number(l && l.page) || 0, label: String((l && l.label) || '').slice(0, 20), title: String((l && l.title) || '').slice(0, 120), url: String((l && l.url) || '').slice(0, 2000) }));
+const lineSanitizeLinks = links => (Array.isArray(links) ? links : []).slice(0, 24).map(l => ({ page: Number(l && l.page) || 0, label: String((l && l.label) || '').slice(0, 20), title: String((l && l.title) || '').slice(0, 120), url: /^https?:\/\//i.test(String((l && l.url) || '')) ? String(l.url).slice(0, 2000) : '' }));   // 只留 http(s) 連結（推播列表的「打開連結」會用它開新分頁）
 
 async function handleLineScheduleCreate(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);

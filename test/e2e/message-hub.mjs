@@ -38,7 +38,7 @@ const ENT = rec({ id: '9'.repeat(24), channel: 'ent', org: 'ent', name: '10/09�
 const db = { news: [A, B, C, D, E], ent: [ENT], test: [] };
 const reqs = { list: [], stats: [], rename: [], cancel: [], status: [], testers: [], lookup: [], add: [], remove: [] };
 let heartbeat = NOW, statsMode = 'ok', statsFail = '';
-const testersDb = { news: [{ tid: '1'.repeat(16), name: '小編本人', userId: 'U8f0fba4524410d1cbc7c95ce37d96b80', registeredAt: 1 }], ent: [], test: [{ tid: 'a'.repeat(16), name: '王小明', userId: 'U' + 'a'.repeat(32), registeredAt: 1 }] };
+const testersDb = { news: [{ tid: '1'.repeat(16), name: '小編本人', userId: 'U0123456789abcdef0123456789abcdef', registeredAt: 1 }], ent: [], test: [{ tid: 'a'.repeat(16), name: '王小明', userId: 'U' + 'a'.repeat(32), registeredAt: 1 }] };
 const UID2 = 'U' + 'd'.repeat(32);
 const labAuthReqs = [];
 const findRec = id => Object.values(db).flat().find(r => r.id === id);
@@ -178,7 +178,7 @@ const st = await txt('#hubStatusBox');
 check(st.includes('TVBS新聞（@abc）') && st.includes('287,091') && st.includes('無上限') && st.includes('已綁定') && st.includes('運作中') && st.includes('LINE_ALLOW_OFFICIAL'), '連線狀態：帳號、好友數、訊息額度、圖片空間、排程引擎、正式群發開關');
 check(reqs.status.at(-1).channel === 'news', '連線狀態向 LINE 查的是目前選的帳號');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
-check((await txt('#lineTesterTitle')).includes('權限管理') && (await txt('#lineTesterList')).includes('小編本人') && (await txt('#lineTesterList')).includes('U8f0fba4524410d1cbc7c95ce37d96b80'), '權限管理：列表顯示名字＋對應的 userId');
+check((await txt('#lineTesterTitle')).includes('權限管理') && (await txt('#lineTesterList')).includes('小編本人') && (await txt('#lineTesterList')).includes('U0123456789abcdef0123456789abcdef'), '權限管理：列表顯示名字＋對應的 userId');
 await page.locator('#hubBody').screenshot({ path: path.join(SHOTS, 'hub-3-settings.png') });
 // 新增成員：名字＋userId
 await page.fill('#lineAddUid', 'abc'); await page.click('#lineAddFind');

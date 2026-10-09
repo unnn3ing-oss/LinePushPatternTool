@@ -36,7 +36,7 @@ const labAuthReqs = [];
 const T_A = 'a'.repeat(16), T_B = 'b'.repeat(16), T_C = 'c'.repeat(16);
 let testers = [{ tid: T_A, name: '王小明', registeredAt: 1 }, { tid: T_B, name: '李小華', registeredAt: 2 }, { tid: T_C, name: '陳小美', registeredAt: 3 }];
 let testQuota = { type: 'limited', value: 200 }, testUsed = 36, testersFail = '';
-const T_N1 = '1'.repeat(16), T_N2 = '2'.repeat(16), UID_OK = 'U8f0fba4524410d1cbc7c95ce37d96b80';
+const T_N1 = '1'.repeat(16), T_N2 = '2'.repeat(16), UID_OK = 'U0123456789abcdef0123456789abcdef';
 const officialTesters = { news: [{ tid: T_N1, name: '小編本人', registeredAt: 1 }], ent: [] };
 let lookupFail = '';
 const offReqs = { lookup: [], add: [], remove: [], send: [] };

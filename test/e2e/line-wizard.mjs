@@ -35,7 +35,7 @@ const labAuthReqs = [];
 const T_A = 'a'.repeat(16), T_B = 'b'.repeat(16), T_C = 'c'.repeat(16);
 let testers = [{ tid: T_A, name: '小編本人', registeredAt: 1 }, { tid: T_B, name: '王小明', registeredAt: 2 }, { tid: T_C, name: '陳小美', registeredAt: 3 }];
 let testQuota = { type: 'limited', value: 200 }, testUsed = 36, testersFail = '';
-const T_N1 = '1'.repeat(16), T_N2 = '2'.repeat(16), UID_OK = 'U8f0fba4524410d1cbc7c95ce37d96b80';
+const T_N1 = '1'.repeat(16), T_N2 = '2'.repeat(16), UID_OK = 'U0123456789abcdef0123456789abcdef';
 const officialTesters = { news: [{ tid: T_N1, name: '小編本人', registeredAt: 1 }, { tid: T_N2, name: '新同仁', registeredAt: 2 }], ent: [] };
 let lookupFail = '';
 const offReqs = { lookup: [], add: [], remove: [], send: [] };
@@ -283,7 +283,24 @@ check((await stepNow()) === 4 && await page.evaluate(() => lineSt().goState === 
 // 內容改了才會解鎖重來
 await page.evaluate(() => { document.getElementById('s8Alt').value = '另一則推播'; document.getElementById('s8Alt').dispatchEvent(new Event('input', { bubbles: true })); });
 await page.waitForTimeout(100);
-check((await stepNow()) === 4 || (await stepNow()) === 1, '（鎖定後內容被改：流程狀態見下一項）');
+check((await stepNow()) === 1 && await page.evaluate(() => !lineSt().prep && lineSt().goState === '') && (await txt('#lineWin')).includes('這是新的一則'), '鎖定後內容被改：視為新的一則推播，回到第 1 步重新傳送資料（不會永遠鎖死）');
+
+// 測試被作廢時，不能停在正式推播那一步
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await toStep(4);
+await page.evaluate(() => { lineOpSet('陳小美'); });
+await page.waitForTimeout(150);
+check((await stepNow()) === 3 && await page.evaluate(() => lineSt().test === '' && lineSt().testToken === ''), '在第 4 步時操作者被換掉（例如從訊息推播移除成員）：測試作廢並退回第 3 步，不會停在按了沒反應的正式推播');
+await page.evaluate(() => { lineOpSet('小編本人'); });
+// 名單還沒讀完：不能自動改測試目標
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await page.click('#linePrepBtn');
+await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await page.evaluate(() => { lineOpSet('小編本人'); lineWhoFor('news').loaded = false; lineWhoFor('news').testers = []; lineSt().testOn = 'official'; lineSt().step = 3; lineWhoLoad = async () => {}; lineUpdateSteps(); });
+check(await page.evaluate(() => lineSt().testOn === 'official'), '正式帳號名單還沒讀完時，不會偷偷把測試目標改成測試帳號');
+await page.reload();
+await page.evaluate(() => { setLab(true); });
+await openDialog();
 
 // ===== 6. 排程路徑 =====
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });

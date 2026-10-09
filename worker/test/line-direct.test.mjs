@@ -747,7 +747,7 @@ test('測試排程：建立時必須指定收件人（最多 1 位）；時間�
 });
 
 // ===================== 正式帳號的測試名單與測試推播（只 multicast 給名單內的人）=====================
-const OFFICIAL_UID = 'U8f0fba4524410d1cbc7c95ce37d96b80', OFFICIAL_UID2 = 'U' + 'd'.repeat(32), OFFICIAL_UID3 = 'U' + 'e'.repeat(32);
+const OFFICIAL_UID = 'U0123456789abcdef0123456789abcdef', OFFICIAL_UID2 = 'U' + 'd'.repeat(32), OFFICIAL_UID3 = 'U' + 'e'.repeat(32);
 const OTID = tidOf(OFFICIAL_UID), OTID2 = tidOf(OFFICIAL_UID2), OTID3 = tidOf(OFFICIAL_UID3);
 const tReq = (env, path, body) => req(env, path, body);
 
