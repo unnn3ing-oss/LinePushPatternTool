@@ -407,6 +407,10 @@
   .line-sub { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
   .line-hist select { max-width: 100%; }
   .line-note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+  .line-note.bad, .line-who-note.bad { color: #b91c1c; font-weight: 600; }
+  .line-who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .line-who-lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .line-who-note { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--muted); }
   .line-tbl { width: 100%; border-collapse: collapse; margin: 10px 0 0; font-size: 13px; }
   .line-tbl th, .line-tbl td { padding: 6px 8px; border-bottom: 1px solid rgba(0,0,0,.08); text-align: left; vertical-align: top; }
   .line-tbl th { font-weight: 700; color: var(--muted); white-space: nowrap; }
@@ -1644,11 +1648,11 @@
       </div>
     </div>
     <div class="modal-foot" id="lineFoot" data-only="line">
-      <div class="lsb-bar" id="lineStepbar" role="list" aria-label="推播步驟">
-        <button type="button" class="lsb on" id="lineSb1" data-n="1" role="listitem"><i>1</i><b>推播內容</b></button><span class="lsl" id="lineSl1"></span>
-        <button type="button" class="lsb" id="lineSb2" data-n="2" role="listitem"><i>2</i><b>推播方式</b></button><span class="lsl" id="lineSl2"></span>
-        <button type="button" class="lsb" id="lineSb3" data-n="3" role="listitem"><i>3</i><b>測試推播</b></button><span class="lsl" id="lineSl3"></span>
-        <button type="button" class="lsb" id="lineSb4" data-n="4" role="listitem"><i>4</i><b>正式推播</b></button>
+      <div class="lsb-bar" id="lineStepbar" role="group" aria-label="推播步驟">
+        <button type="button" class="lsb on" id="lineSb1" data-n="1"><i>1</i><b>推播內容</b></button><span class="lsl" id="lineSl1"></span>
+        <button type="button" class="lsb" id="lineSb2" data-n="2"><i>2</i><b>推播方式</b></button><span class="lsl" id="lineSl2"></span>
+        <button type="button" class="lsb" id="lineSb3" data-n="3"><i>3</i><b>測試推播</b></button><span class="lsl" id="lineSl3"></span>
+        <button type="button" class="lsb" id="lineSb4" data-n="4"><i>4</i><b>正式推播</b></button>
       </div>
       <div class="lsb-act">
         <button type="button" id="linePrevBtn" class="lsb-prev" hidden>上一步</button>
@@ -6093,9 +6097,10 @@ $s8('s8RetryPause').addEventListener('click', async () => {
 // LINE 本身沒有草稿也沒有排程：「立即推播」成功就是已經發出；「排程推播」是 Worker 自己排（Cron），到時間才發。每個版型（新聞／娛樂）各自一份進度。
 const $line = id => document.getElementById(id);
 const lineByMode = { news: null, ent: null };
+let lineUiMode = '';   // 目前「確認人數」「排程日期時間」輸入框裡放的是哪個版型的內容（兩個版型共用同一組輸入框）
 // 測試推播發到哪個帳號：'official'（目前版型的正式帳號，只 multicast 給操作者一位）或 'test'（測試帳號）；記在這個瀏覽器
 function lineTestOnLoad() { try { return localStorage.getItem('lineTestOn') === 'test' ? 'test' : 'official'; } catch (e) { return 'official'; } }
-const lineNewState = () => ({ step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', testOn: lineTestOnLoad(), test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' } });
+const lineNewState = () => ({ step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', testOn: lineTestOnLoad(), test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' }, confirmVal: '', whenDate: '', whenTime: '' });
 const lineSt = () => (lineByMode[mode] = lineByMode[mode] || lineNewState());
 const lineBusyNow = () => { const st = lineByMode[mode]; return !!st && (st.prepMsg.kind === 'busy' || st.test === 'busy' || st.goState === 'busy'); };
 // ---- 成員名單與操作者 ----
@@ -6110,11 +6115,20 @@ let lineOp = (() => { try { return localStorage.getItem(LINE_OP_KEY) || ''; } ca
 const lineTestCh = st => ((st || lineSt()).testOn === 'official' ? mode : 'test');
 const lineOpTid = ch => { const t = lineWhoFor(ch).testers.find(x => x.name === lineOp); return t ? t.tid : ''; };
 const lineResetTestKeys = () => Object.values(lineByMode).forEach(st => { if (st) { st.retryKey.test = ''; st.retryKey.otest = ''; } });   // 收件人或帳號換了就是另一次發送，不能沿用同一把重試金鑰（否則 LINE 會當成同一筆而不發）
+function lineTestDrop(st) { st.test = ''; st.testMsg = ''; st.testToken = ''; st.go = 0; if (st.step > 3) st.step = 3; }   // 測試作廢：正式推播那一步不能再停著，退回測試推播
 function lineTestInvalidate() {   // 操作者或測試帳號換了：之前的測試推播不算數，要重新測試
-  Object.values(lineByMode).forEach(st => { if (st && st.goState !== 'ok' && st.goState !== 'busy') { st.test = ''; st.testMsg = ''; st.testToken = ''; st.go = 0; if (st.step > 3) st.step = 3; } });   // 測試作廢了：正式推播那一步不能再停著，退回測試推播
+  Object.values(lineByMode).forEach(st => { if (st && st.goState !== 'ok' && st.goState !== 'busy' && st.test !== 'busy') lineTestDrop(st); });   // 傳送中的測試不在這裡清：回應回來時會再比對操作者與名單，不符就丟棄   // 測試作廢了：正式推播那一步不能再停著，退回測試推播
   lineResetTestKeys();
 }
-function lineTestInvalidateIfOperator(name) { if (name === lineOp) lineTestInvalidate(); }   // 操作者本人被移出名單：之前的測試推播不算數
+function lineOpRevalidate() {   // 名單變動（新增、改名、移除）後：測試過的操作者已不在該帳號名單裡，那次測試就不算數
+  Object.values(lineByMode).forEach(st => { if (!st || st.test !== 'ok' || st.goState === 'ok') return; const w = lineWhoFor(lineTestCh(st)); if (w.loaded && !w.error && !lineOpTid(lineTestCh(st))) lineTestDrop(st); });
+}
+function lineTestAutoTarget(st) {   // 操作者只在其中一個帳號的名單裡：測試目標改到有他的那個（兩份名單都讀完才判斷，不在畫面重繪時改狀態）
+  if (!st || st.test === 'busy' || st.goState === 'ok' || !lineOpChannels().every(ch => lineWhoFor(ch).loaded && !lineWhoFor(ch).loading && !lineWhoFor(ch).error)) return;
+  const offOk = !!lineOpTid(mode), tstOk = !!lineOpTid('test');
+  const want = st.testOn === 'official' && !offOk && tstOk ? 'test' : (st.testOn === 'test' && !tstOk && offOk ? 'official' : '');
+  if (want) { st.testOn = want; lineTestDrop(st); lineResetTestKeys(); }
+}
 function lineOpSet(name) {
   if (name === lineOp) return;
   const st = lineSt(); if (st.goState === 'ok' || lineBusyNow()) return;
@@ -6131,7 +6145,7 @@ async function lineWhoLoad(ch) {
   if (tl.status === 'fulfilled') w.testers = tl.value.testers || []; else { w.testers = []; w.error = String((tl.reason && tl.reason.message) || tl.reason); }
   w.quota = sr.status === 'fulfilled' && sr.value.quota && sr.value.quota.type === 'limited' && Number.isFinite(sr.value.quota.value) && Number.isFinite(sr.value.used) ? { limit: sr.value.quota.value, used: sr.value.used } : null;
   w.loaded = true; w.loading = false;
-  lineOpRender(); lineTesterListRender(); lineUpdateSteps();
+  lineOpRender(); lineTesterListRender(); lineOpRevalidate(); lineTestAutoTarget(lineByMode[mode]); lineUpdateSteps();
 }
 const lineOpChannels = () => [mode, 'test'];
 function lineOpNames() {   // 目前版型的正式帳號名單在前，再接測試帳號名單裡沒重複的
@@ -6191,7 +6205,7 @@ function lineRenderWin() {
   w.hidden = !st.win.text; w.textContent = st.win.text; w.className = `line-win line-top${st.win.kind ? ' ' + st.win.kind : ''}`;
 }
 
-function lineResetFlow(st) { Object.assign(st, { step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
+function lineResetFlow(st) { Object.assign(st, { confirmVal: '', whenDate: '', whenTime: '', step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
 function lineInvalidateIfChanged() {
   const st = lineByMode[mode];
   if (st && st.prep && st.prep.sig !== lineSig() && !lineBusyNow()) { const done = st.goState === 'ok'; lineResetFlow(st); st.win = { text: done ? '內容有更動：上一則推播已完成並鎖定，這是新的一則，請從第 1 步重新「傳送資料」。' : '內容有更動，已作廢上傳的資料，請重新「傳送資料」。', kind: done ? '' : 'bad' }; }
@@ -6221,7 +6235,7 @@ function lineWhenFor(d, t) {
   return out;
 }
 const lineWhenValue = () => lineWhenFor($line('lineDate').value, $line('lineTime').value);
-function lineWhenTouched() { lineShowWhenText(); const st = lineSt(); if (st.goState === 'ok' || st.goState === 'busy') return; if (st.choice !== 'sched') { st.choice = 'sched'; } lineResetAfterChoice(st); lineUpdateSteps(); }
+function lineWhenTouched() { lineShowWhenText(); const st = lineSt(); st.whenDate = $line('lineDate').value; st.whenTime = $line('lineTime').value; if (st.goState === 'ok' || st.goState === 'busy') return; if (st.choice !== 'sched') { st.choice = 'sched'; } lineResetAfterChoice(st); lineUpdateSteps(); }
 function lineResetAfterChoice(st) {   // 重新選了方式或時間：要重新確認人數、重新滑動
   st.go = 0; if (st.goState !== 'ok') st.goState = ''; const cf = $line('lineConfirmTotal'); if (cf) cf.value = '';
 }
@@ -6279,10 +6293,12 @@ function lineStepWhy(st, n) {   // 這一步還沒完成的原因（「下一步
 function lineGoTo(n) {
   const st = lineSt(); if (n < 1 || n > 4) return;
   if (st.goState === 'ok' || lineBusyNow()) return;   // 正式推播完成後鎖定；傳送中不能換頁
-  if (n > st.step) { for (let i = st.step; i < n; i++) if (!lineStepDone(st, i)) return; }
+  if (n === st.step) return;
+  if (n > st.step) { if (n > st.step + 1 || !lineStepDone(st, st.step)) return; }
+  if (st.step === 4 && n < 4) st.go = 0;   // 離開正式推播：綠→黃→滑動要重來，不能帶著武裝狀態回來
   st.step = n; st.win = { text: '', kind: '' };   // 上一步留下的結果訊息換頁就清掉（正式推播的結果留在最後一步）
-  if (n === 2) lineOpChannels().forEach(ch => { const w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); });
-  if (n === 3) lineOpChannels().forEach(ch => { const w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); });
+  if (n === 2 || n === 3) lineOpChannels().forEach(ch => { const w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); });
+  if (n === 3) lineTestAutoTarget(st);
   if (n === 4 && !Number.isFinite(st.friends) && !st.friendsBusy) lineFetchFriends();
   lineUpdateSteps();
   const body = $line('composeBody'); if (body) body.scrollTop = 0;
@@ -6293,7 +6309,7 @@ $line('lineNextBtn').addEventListener('click', () => {
   lineGoTo(n + 1);
 });
 $line('linePrevBtn').addEventListener('click', () => lineGoTo(lineSt().step - 1));
-document.querySelectorAll('#lineStepbar .lsb').forEach(b => b.addEventListener('click', () => { const n = Number(b.dataset.n), st = lineSt(); if (n < st.step || (n === st.step + 1 && lineStepDone(st, st.step))) lineGoTo(n); }));
+document.querySelectorAll('#lineStepbar .lsb').forEach(b => b.addEventListener('click', () => lineGoTo(Number(b.dataset.n))));   // 能不能去由 lineGoTo 判斷（只能回頭，或前一步已完成才能往前一步）
 
 // ---- 手機 LINE 聊天室預覽（最後一步）：兩頁圖片訊息＋快速回覆按鈕，跟手機上看到的一樣排法 ----
 let lineChatSig = '';
@@ -6327,6 +6343,11 @@ function lineChatRender(st) {
 function lineUpdateSteps() {
   if (!$line('linePanel') || !s8State || (mode !== 'news' && mode !== 'ent')) return;   // 沒開「排入推播」視窗（例如在「訊息推播」裡改名單）、或拼圖版型：沒有推播流程要畫
   const st = lineSt();
+  if (lineUiMode !== mode) {   // 換了版型：把這個版型自己的人數與排程時間放回輸入框（不帶著另一個版型的內容）
+    lineUiMode = mode;
+    $line('lineConfirmTotal').value = st.confirmVal || '';
+    if (st.whenDate && st.whenTime) { $line('lineDate').value = st.whenDate; $line('lineTime').value = st.whenTime; lineShowWhenText(); } else lineSetWhen(s8DefaultWhenMs());
+  }
   if (st.step > 1 && !st.prep) st.step = 1;   // 上傳的資料作廢了：回到第 1 步
   const isLine = s8Md === 'line', cur = st.step, locked = st.goState === 'ok', busy = lineBusyNow();
   const setSt = (el, v) => { if (v) el.dataset.state = v; else delete el.dataset.state; };
@@ -6345,9 +6366,6 @@ function lineUpdateSteps() {
   // ③ 測試推播：只傳給操作者本人
   if (cur === 3) {
     const offOk = !!lineOpTid(mode), tstOk = !!lineOpTid('test');
-    const listsReady = lineOpChannels().every(ch => lineWhoFor(ch).loaded && !lineWhoFor(ch).loading && !lineWhoFor(ch).error);   // 名單還沒讀完（或讀失敗）不能亂切換測試目標
-    if (listsReady && st.testOn === 'official' && !offOk && tstOk && st.test !== 'busy') { st.testOn = 'test'; st.test = ''; st.testMsg = ''; st.testToken = ''; lineResetTestKeys(); }
-    else if (listsReady && st.testOn === 'test' && !tstOk && offOk && st.test !== 'busy') { st.testOn = 'official'; st.test = ''; st.testMsg = ''; st.testToken = ''; lineResetTestKeys(); }
     const ch = lineTestCh(st), w = lineWhoFor(ch), toOff = ch !== 'test';
     $line('lineDestOff').textContent = `${S8_ACCOUNT[mode]}（正式帳號）`;
     $line('lineDestTest').classList.toggle('on', !toOff); $line('lineDestOff').classList.toggle('on', toOff);
@@ -6392,6 +6410,7 @@ function lineUpdateSteps() {
     setSt(cl, st.friendsBusy ? 'busy' : (st.friendsErr ? 'bad' : (!raw || !known ? '' : (typedOk ? 'ok' : 'bad')))); cl.disabled = st.friendsBusy || locked;
     // 正式推播／正式排程：綠色 → 黃色「確定？」→ 滑動開關
     const gb = $line('lineGoBtn'), sl = $line('lineSlider'), verb = sched ? '排程' : '推播';
+    if (st.go > 0 && !confirmOk && st.goState !== 'ok' && st.goState !== 'busy') st.go = 0;   // 人數不對（或被改掉）：不能維持武裝狀態
     const showSlider = st.go === 2 && st.goState !== 'ok';
     $line('lineGoTrack').hidden = !(showConfirm && confirmOk) || showSlider; sl.hidden = !showSlider;
     sl.classList.toggle('locked', st.goState === 'busy');
@@ -6462,7 +6481,7 @@ $line('lineTestBtn').addEventListener('click', async () => {
   try {
     const r = toOfficial ? await lineSend(ch, { mode: 'test', testers: [tid] }) : await lineSend('test', { testers: [tid] });
     if (r.quota) lineWhoFor(ch).quota = { limit: r.quota.limit, used: r.quota.used + (r.friends || 0) };   // 先用「發送前用量＋收件人數」估計；稍後再向 LINE 查實際用量核對
-    if (lineOp !== opAt || lineTestCh(st) !== ch) { st.test = ''; st.testMsg = ''; st.testToken = ''; lineWin('測試推播的操作者或帳號在傳送途中換了，這次結果不算數，請重新測試推播。', 'bad'); lineUpdateSteps(); return; }
+    if (lineOp !== opAt || lineTestCh(st) !== ch || lineOpTid(ch) !== tid) { st.test = ''; st.testMsg = ''; st.testToken = ''; lineWin('測試推播的操作者或帳號在傳送途中換了，這次結果不算數，請重新測試推播。', 'bad'); lineUpdateSteps(); return; }
     const names = (r.recipients || [lineOp]).join('、');
     st.test = 'ok'; st.testToken = r.testToken || ''; st.testMsg = `✓ 已測試推播到${acct}（只有${names}），請到手機確認`;
     if (r.quota && Number.isFinite(r.quota.used)) lineVerifyUsage(r.quota.used, r.friends || 0, st, ch);
@@ -6493,7 +6512,7 @@ async function lineFetchFriends() {
   if (m === mode) lineUpdateSteps();
 }
 $line('lineConfirmLabel').addEventListener('click', () => { const st = lineSt(); if (st.step === 4 && st.friendsErr && !st.friendsBusy) lineFetchFriends(); });
-$line('lineConfirmTotal').addEventListener('input', () => { const st = lineSt(); if (st.goState !== 'ok') { st.go = 0; if (st.goState === 'bad') st.goState = ''; } lineUpdateSteps(); });
+$line('lineConfirmTotal').addEventListener('input', () => { const st = lineSt(); st.confirmVal = $line('lineConfirmTotal').value; if (st.goState !== 'ok') { st.go = 0; if (st.goState === 'bad') st.goState = ''; } lineUpdateSteps(); });
 // ④ 正式推播／正式排程：綠 → 黃「確定？」→ 滑動開關
 $line('lineGoBtn').addEventListener('click', () => {
   const st = lineSt(); if (st.step !== 4 || st.test !== 'ok' || st.goState === 'busy' || st.goState === 'ok') return;
@@ -6511,13 +6530,13 @@ async function lineFireOfficial() {
     if (sched) {
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
       const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: mode, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow() });
-      st.goState = 'ok'; editMarkClean(mode);
-      lineWin(`✓ 已排程\n發送時間：${when.text}（台北時間）\n帳號：${S8_ACCOUNT[mode]}（約 ${st.friends.toLocaleString()} 人）\n排程編號：${r.schedule.id}\n\n時間到時由 Worker 自動推播。可在下方「排程狀態」查看、變更時間或刪除，也可以到右上角「訊息推播 → 推播列表」查看。`, 'ok');
+      const msg = `✓ 已排程\n發送時間：${when.text}（台北時間）\n帳號：${S8_ACCOUNT[mode]}（約 ${Number.isFinite(st.friends) ? st.friends.toLocaleString() : '？'} 人）\n排程編號：${(r.schedule && r.schedule.id) || '（無）'}\n\n時間到時由 Worker 自動推播。可在下方「排程狀態」查看、變更時間或刪除，也可以到右上角「訊息推播 → 推播列表」查看。`;
+      st.goState = 'ok'; editMarkClean(mode); lineWin(msg, 'ok');   // 成功之後只做不會出錯的事：訊息先組好，避免「已經排好了卻顯示失敗」讓人重按而排兩次
       lineSchedLoad();
     } else {
       const r = await lineSend(mode, { confirmTotal: typed, testToken: st.testToken });
-      st.goState = 'ok'; editMarkClean(mode);
-      lineWin(`✓ 已正式推播到 ${S8_ACCOUNT[mode]}（約 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : st.friends.toLocaleString()} 人）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n點擊次數請到右上角「訊息推播 → 推播列表」查看（LINE 的統計要等一段時間才會有）。`, 'ok');
+      const msg = `✓ 已正式推播到 ${S8_ACCOUNT[mode]}（約 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : (Number.isFinite(st.friends) ? st.friends.toLocaleString() : '？')} 人）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n點擊次數請到右上角「訊息推播 → 推播列表」查看（LINE 的統計要等一段時間才會有）。`;
+      st.goState = 'ok'; editMarkClean(mode); lineWin(msg, 'ok');
     }
   } catch (e) {
     st.goState = 'bad'; st.go = 0;
@@ -6953,7 +6972,7 @@ function lineTesterListRender() {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = '移除';
     b.addEventListener('click', async () => {
       if (!window.confirm(`從「${lineWhoAcct(ch)}」的名單移除「${t.name}」嗎？\n\n移除後測試推播不會再發給他；${ch === 'test' ? '他可以再傳「登記」重新加入，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
-      try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; lineTestInvalidateIfOperator(t.name); }
+      try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; lineOpRevalidate(); }
       catch (e) { window.alert(`移除失敗：${e.message || e}`); }
       lineOpRender(); lineTesterListRender(); lineUpdateSteps();
     });
@@ -6985,7 +7004,7 @@ $line('lineAddOk').addEventListener('click', async () => {
   $line('lineAddOk').disabled = true;
   try {
     const r = await s8Api('/line/testers/add', { channel: ch, userId: uid, name });
-    const w = lineWhoFor(ch); w.testers = r.testers || []; w.loaded = true;
+    const w = lineWhoFor(ch); w.testers = r.testers || []; w.loaded = true; lineOpRevalidate();
     const added = (r.found && r.found.name) || name || '';
     $line('lineAddUid').value = ''; $line('lineAddName').value = ''; lineAddReset(`✓ 已加入「${added}」。`);
     lineOpRender(); lineTesterListRender(); lineUpdateSteps();

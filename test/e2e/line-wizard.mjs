@@ -29,7 +29,7 @@ page.on('dialog', async d => { dialogs.push(d.message()); await d.accept(); });
 const reqs = { status: [], prepare: [], validate: [], send: [], clicks: [] };
 let validateOk = true, sendFail = '', followers = 287091, sendDelay = 0, clicksUnavailable = false;
 const scheds = [];   // 假的排程資料庫
-let heartbeat = Date.now(), schedFail = '';
+let heartbeat = Date.now(), schedFail = '', schedOmit = false;
 const schedReqs = { create: [], update: [], cancel: [], list: 0 };
 const labAuthReqs = [];
 const T_A = 'a'.repeat(16), T_B = 'b'.repeat(16), T_C = 'c'.repeat(16);
@@ -60,7 +60,7 @@ await page.route(`${WORKER}/**`, async route => {
     schedReqs.create.push(body);
     if (schedFail) return json({ error: schedFail }, 409);
     const rec = { id: String(scheds.length + 1).padStart(24, 'a'), channel: body.channel, org: body.channel, testers: body.testers, recipientNames: (body.testers || []).map(t => (testers.find(x => x.tid === t) || {}).name), name: body.name, altText: '測試推播標題', runAt: Date.parse(body.runAt), runAtIso: body.runAt, status: 'scheduled', attempts: 0, lastError: '', requestId: '', sentAt: '', approvedFriends: followers, links: body.links, createdAt: Date.now() };
-    scheds.push(rec); return json({ ok: true, schedule: rec });
+    scheds.push(rec); return json(schedOmit ? { ok: true } : { ok: true, schedule: rec });
   }
   if (url.pathname === '/line/schedule/update') { schedReqs.update.push(body); const r = scheds.find(x => x.id === body.id); r.runAtIso = body.runAt; r.runAt = Date.parse(body.runAt); return json({ ok: true, schedule: r }); }
   if (url.pathname === '/line/schedule/cancel') { schedReqs.cancel.push(body); const r = scheds.find(x => x.id === body.id); r.status = 'cancelled'; return json({ ok: true, schedule: r }); }
@@ -337,6 +337,56 @@ await page.waitForFunction(() => /推播失敗/.test(document.getElementById('li
 check(await page.evaluate(() => document.getElementById('lineWin').classList.contains('bad') && lineSt().goState === 'bad') && (await txt('#lineGoBtn')).includes('重新推播') && (await stepNow()) === 4, '正式推播失敗：上方黃色狀態窗顯示原因、按鈕變「重新推播」，沒有鎖定（可回上一步）');
 check(!(await page.evaluate(() => document.getElementById('linePrevBtn').disabled)) , '失敗時還能回上一步');
 sendFail = '';
+
+// ===== 7b. 狀態機的細節 =====
+// 排程成功但 Worker 回應少了 schedule 欄位：仍然是成功（不能顯示失敗讓人重按，造成排兩次）
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await toStep(4);
+await page.click('#linePickSched'); await page.waitForTimeout(200);
+await page.evaluate(() => { const d = new Date(Date.now() + 3 * 3600e3 + 8 * 3600e3).toISOString(); document.getElementById('lineDate').value = d.slice(0, 10); document.getElementById('lineTime').value = d.slice(11, 16); document.getElementById('lineDate').dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('lineTime').dispatchEvent(new Event('input', { bubbles: true })); });
+await page.waitForFunction(() => Number.isFinite(lineSt().friends));
+await page.fill('#lineConfirmTotal', '287091');
+// 往回走再回來：綠→黃→滑動要重來
+await page.click('#lineGoBtn');
+check(await page.evaluate(() => lineSt().go === 1), '按了一次綠色：進入黃色確認');
+await page.click('#linePrevBtn');
+check((await stepNow()) === 3 && await page.evaluate(() => lineSt().go === 0), '離開第 4 步：黃色／滑動的武裝狀態歸零');
+await clickNext();
+check((await stepNow()) === 4 && !(await vis('#lineSlider')) && (await txt('#lineGoBtn')) === '正式排程', '回到第 4 步：要重新按綠色→黃色→滑動');
+// 人數被改成不對：已武裝的狀態自動解除
+await page.click('#lineGoBtn'); await page.click('#lineGoBtn');
+check(await vis('#lineSlider'), '人數正確：出現滑動開關');
+await page.fill('#lineConfirmTotal', '1');
+check(!(await vis('#lineSlider')) && await page.evaluate(() => lineSt().go === 0), '把人數改成不對的數字：滑動開關收起，不能用錯的人數送出');
+await page.fill('#lineConfirmTotal', '287091');
+schedOmit = true;
+await page.click('#lineGoBtn'); await page.click('#lineGoBtn');
+const kb5 = await page.locator('#lineKnob').boundingBox(), sb5 = await page.locator('#lineSlider').boundingBox();
+await page.mouse.move(kb5.x + kb5.width / 2, kb5.y + kb5.height / 2); await page.mouse.down();
+await page.mouse.move(kb5.x + sb5.width + 40, kb5.y + kb5.height / 2, { steps: 12 });
+await page.mouse.up();
+await page.waitForFunction(() => /已排程/.test(document.getElementById('lineWin').textContent), null, { timeout: 10000 });
+schedOmit = false;
+check(await page.evaluate(() => lineSt().goState === 'ok') && !(await txt('#lineWin')).includes('失敗'), '排程成功但回應缺欄位：仍顯示成功並鎖定（不會變成「失敗」讓人重複排程）');
+// 名單改名／移除：測試過的操作者不在名單了，測試作廢
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await toStep(4);
+await page.evaluate(() => { lineWhoFor('news').testers = lineWhoFor('news').testers.map(t => (t.name === '小編本人' ? { ...t, name: '小編改名' } : t)); lineOpRevalidate(); lineUpdateSteps(); });
+check((await stepNow()) === 3 && await page.evaluate(() => lineSt().test === ''), '權限管理把操作者改名（名單裡找不到原本的名字）：已測試的結果作廢並退回第 3 步');
+await page.evaluate(() => { lineWhoFor('news').testers = lineWhoFor('news').testers.map(t => (t.name === '小編改名' ? { ...t, name: '小編本人' } : t)); lineUpdateSteps(); });
+// 兩個版型各自的人數／排程時間
+const perMode = await page.evaluate(() => {
+  lineSt().confirmVal = '111'; const ent = (lineByMode.ent = lineByMode.ent || lineNewState()); ent.confirmVal = '222';
+  const before = document.getElementById('lineConfirmTotal').value;
+  mode = 'ent'; lineUiMode = ''; lineUpdateSteps(); const inEnt = document.getElementById('lineConfirmTotal').value;
+  mode = 'news'; lineUiMode = ''; lineUpdateSteps(); const back = document.getElementById('lineConfirmTotal').value;
+  return { before, inEnt, back };
+});
+check(perMode.inEnt === '222' && perMode.back === '111', `切換版型：確認人數輸入框放回各版型自己的內容（新聞 ${perMode.back}／娛樂 ${perMode.inEnt}），不會帶著另一邊的數字`);
+// 樣式還在（之前清舊 CSS 時誤刪）
+const css = await page.evaluate(() => { document.getElementById('lineOpNote').classList.add('bad'); return { row: getComputedStyle(document.getElementById('lineWhoDest')).display, bad: getComputedStyle(document.getElementById('lineOpNote')).color, role: document.getElementById('lineStepbar').getAttribute('role'), items: document.querySelectorAll('#lineStepbar [role="listitem"]').length }; });
+check(css.row === 'flex' && css.bad === 'rgb(185, 28, 28)', '「測試推播發到」那列的版面與「阻擋性錯誤紅字」樣式都在');
+check(css.role === 'group' && css.items === 0, '進度列用 group＋原生 button（螢幕閱讀器能念出按鈕與停用狀態）');
 
 // ===== 8. 名單是空的、讀不到 =====
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); Object.keys(lineWhoBy).forEach(k => { lineWhoBy[k] = { loaded: true, loading: false, testers: [], error: '', quota: null }; }); lineOp = ''; try { localStorage.removeItem('lineOp'); } catch (e) { /* */ } lineUpdateSteps(); });
