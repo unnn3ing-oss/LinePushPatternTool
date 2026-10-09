@@ -300,6 +300,43 @@
   .line-chip.sent { background: #dcfce7; color: #166534; }
   .line-chip.failed, .line-chip.missed { background: #fee2e2; color: #991b1b; }
   .line-chip.cancelled { background: rgba(0, 0, 0, .08); color: var(--muted); }
+  /* 訊息推播（推播列表／LINE推播設定／S8連結設定）：跟「排入推播」共用同一個視窗 */
+  #s8Modal .modal-body[hidden], #s8Modetabs[hidden], #hubTabs[hidden] { display: none; }
+  #s8Modal[data-view="hub"] #s8Modetabs, #s8Modal[data-view="hub"] #s8Title { display: none; }
+  .hub-acct { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+  .hub-acct[hidden], .hub-sec[hidden], #hubDetail[hidden], #hubListMain[hidden] { display: none; }
+  .hub-acct-lbl { font-weight: 600; }
+  .hub-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; }
+  .hub-bar .line-sub { margin: 0; }
+  .hub-bar button { padding: 4px 14px; font-size: 13px; }
+  .hub-head, .hub-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px 124px; gap: 10px; align-items: center; }
+  .hub-head { padding: 0 14px 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .hub-head span:nth-child(3), .hub-row .cnt { text-align: right; }
+  .hub-row { box-sizing: border-box; margin: 0 0 8px; padding: 10px 14px; border-radius: 14px; background: var(--card-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-size: 13px; line-height: 1.5; color: var(--text); cursor: pointer; }
+  .hub-row:hover, .hub-row:focus-visible { box-shadow: 0 2px 8px rgba(0, 0, 0, .2); outline: none; }
+  .hub-row .nm { font-weight: 800; font-size: 14px; overflow-wrap: anywhere; }
+  .hub-row .sub { margin-top: 2px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .hub-row .cnt b { font-size: 14px; font-variant-numeric: tabular-nums; }
+  .hub-row .test-tag, .hub-d-name .test-tag { margin-left: 6px; padding: 0 8px; border-radius: 99px; background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; vertical-align: 1px; }
+  .hub-back { padding: 4px 14px; font-size: 13px; margin: 0 0 10px; }
+  .hub-d-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; font-size: 17px; font-weight: 800; }
+  .hub-d-name input { width: 240px; max-width: 100%; font-size: 15px; }
+  .hub-d-name button { padding: 3px 12px; font-size: 13px; font-weight: 400; }
+  .hub-kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; padding: 12px 14px; border-radius: 14px; background: var(--track); font-size: 13px; line-height: 1.6; }
+  .hub-kv .k { color: var(--muted); font-weight: 600; }
+  .hub-kv .v { overflow-wrap: anywhere; }
+  .hub-kv .v.bad { color: #b91c1c; font-weight: 600; }
+  .hub-kv .v.ok { color: #166534; font-weight: 600; }
+  .hub-kv .line-note { grid-column: 1 / -1; margin: 0; }
+  .hub-bar2 { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .hub-bar2 button { padding: 4px 14px; font-size: 13px; }
+  .hub-bar2 button.danger { color: #b91c1c; }
+  .hub-tbl td.ttl { min-width: 160px; }
+  .hub-tbl td .lk { display: flex; gap: 6px; margin-top: 4px; }
+  .hub-tbl td .lk button { padding: 1px 10px; font-size: 12px; }
+  .line-tmem { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+  .line-tmem code { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); word-break: break-all; }
+  @media (max-width: 560px) { .hub-head { display: none; } .hub-row { grid-template-columns: minmax(0, 1fr) auto; } .hub-row .cnt { grid-column: 1 / -1; text-align: left; } }
   .line-srow .ttl { color: var(--text); word-break: break-all; }
   .line-srow .err { color: #991b1b; white-space: pre-wrap; }
   .line-srow .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -973,7 +1010,7 @@
   </nav>
   <p class="sub" id="modeSub" hidden></p>
   <div class="tb-right">
-    <button type="button" class="lab-toggle s8-link" id="s8Link" data-state="off" title="連結 SUPER 8 Studio（OAuth）">S8 未連結</button>
+    <button type="button" class="lab-toggle s8-link" id="s8Link" title="訊息推播：推播列表、LINE 推播設定、S8 連結設定">訊息推播</button>
     <button type="button" class="lab-toggle" id="labToggle" aria-pressed="false">試驗功能</button>
   </div>
 </header>
@@ -1329,39 +1366,24 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="s8ConnOverlay">
-  <div class="modal" style="max-width:460px" role="dialog" aria-labelledby="s8cTitle">
-    <div class="modal-head">
-      <h2 id="s8cTitle">連結 SUPER 8 Studio</h2>
-      <button type="button" id="s8cCloseBtn" class="modal-close" aria-label="關閉">✕</button>
-    </div>
-    <div class="modal-body">
-      <p class="s8c-state" id="s8cState">尚未連結</p>
-      <pre class="s8c-out" id="s8cOut" style="margin:0 0 14px"></pre>
-      <div class="btn-row" id="s8cCopyRow" hidden style="margin:-8px 0 14px"><button type="button" id="s8cCopyOut">複製這段內容</button></div>
-      <div class="btn-row" style="margin-top:0">
-        <button type="button" class="primary" id="s8cConnect">連結 S8</button>
-        <button type="button" id="s8cDisconnect">中斷連結</button>
-        <button type="button" id="s8cCheck">檢查連結狀態</button>
-        <button type="button" id="s8cTools">查看工具定義</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="gap-tip" id="uiTip" role="tooltip" hidden></div>
 
 <div class="modal-overlay" id="s8Overlay">
-  <div class="modal s8-modal" id="s8Modal" data-md="line" role="dialog" aria-labelledby="s8Title">
+  <div class="modal s8-modal" id="s8Modal" data-md="line" data-view="compose" role="dialog" aria-labelledby="s8Title">
     <div class="modal-head">
       <div class="page-tabs s8-ptabs s8-modetabs" id="s8Modetabs" role="tablist" aria-label="推播方式">
         <button type="button" class="s8-ptab active" id="s8ModeLine" data-md="line" role="tab">LINE原生推播</button>
         <button type="button" class="s8-ptab" id="s8ModeS8" data-md="s8" role="tab">S8推播</button>
       </div>
+      <div class="page-tabs s8-ptabs s8-modetabs" id="hubTabs" role="tablist" aria-label="訊息推播" hidden>
+        <button type="button" class="s8-ptab active" id="hubTabList" data-hub="list" role="tab">推播列表</button>
+        <button type="button" class="s8-ptab" id="hubTabSet" data-hub="set" role="tab">LINE推播設定</button>
+        <button type="button" class="s8-ptab" id="hubTabS8" data-hub="s8" role="tab">S8連結設定</button>
+      </div>
       <h2 id="s8Title">排入推播</h2>
       <button type="button" id="s8CloseBtn" class="modal-close" aria-label="關閉">✕</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" id="composeBody">
       <div class="s8-grid">
         <label for="s8Name" data-only="s8">群發名稱</label><input type="text" id="s8Name" autocomplete="off" data-only="s8">
         <label data-only="s8">組織／帳號</label><div class="s8-fixed" id="s8Account" data-only="s8"></div>
@@ -1545,41 +1567,57 @@
           <div class="line-sched-warn" id="lineSchedWarn" hidden></div>
           <div id="lineSchedList"><div class="line-note">讀取中…</div></div>
         </div>
-        <details class="line-box" id="lineBox">
-          <summary>帳號與額度、發送紀錄與點擊次數</summary>
-          <div class="line-row" role="radiogroup" aria-label="查詢的帳號">
-            <label><input type="radio" name="lineChannel" id="lineChTest" value="test" checked>測試帳號</label>
-            <label><input type="radio" name="lineChannel" id="lineChOfficial" value="official"><span id="lineChOfficialTxt">正式帳號</span></label>
-          </div>
-          <div class="btn-row"><button type="button" id="lineStatusBtn">檢查帳號與額度</button></div>
-          <div class="s8c-out" id="lineOut" hidden></div>
-        <div class="line-hist">
-          <div class="line-sub" id="lineTesterTitle">測試名單（傳「登記」給測試帳號就會加入）</div>
-          <div id="lineTesterList" class="line-note">讀取中…</div>
-          <div id="lineAddRow" hidden>
-            <div class="line-note">貼上對方在這個帳號的 LINE userId（U 開頭加 32 碼，可從 S8 客戶中心複製）。Worker 會先向 LINE 查他的暱稱，確認這個 ID 在這個帳號有效，才加入名單；LINE 查不到就不會加。</div>
-            <div class="line-row" style="gap:8px;flex-wrap:wrap">
-              <input type="text" id="lineAddUid" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="LINE userId" style="flex:1 1 260px;min-width:0">
-              <button type="button" id="lineAddFind">查詢</button>
-              <button type="button" id="lineAddOk" disabled>加入名單</button>
-            </div>
-            <div class="line-note" id="lineAddOut" style="margin-top:6px"></div>
-          </div>
-        </div>
-        <div class="line-hist">
-          <div class="line-sub">發送紀錄與點擊次數</div>
-          <div class="line-row"><select id="lineHist" aria-label="發送紀錄"></select></div>
-          <div class="btn-row">
-            <button type="button" id="lineClicksBtn" disabled>查詢點擊次數</button>
-            <button type="button" id="lineCopyBtn" disabled>複製成表格</button>
-          </div>
-          <div id="lineClicksOut"></div>
-          <div class="line-note">用發送時 LINE 回的 request id 查，每個連結一列。LINE 的規定：只保留發送後 14 天；數字小於 20（或實際人數小於 20）時 LINE 不提供，會顯示「—」；統計會隨時間更新，剛發完可能還是空的。每次查到的數字都會存成快照，超過 14 天還能看最後一次查到的。紀錄存在這台瀏覽器裡（最近 30 筆），換電腦或清除瀏覽資料就沒有了；排程自動發出去的，會在打開這個視窗時自動補進來。</div>
-        </div>
-        </details>
       </div>
       <div class="btn-row" style="justify-content:flex-end; margin-top:14px">
         <button type="button" id="s8CancelBtn">關閉</button>
+      </div>
+    </div>
+    <div class="modal-body hub" id="hubBody" hidden>
+      <div class="hub-acct" id="hubAcct" role="radiogroup" aria-label="帳號">
+        <span class="hub-acct-lbl">帳號</span>
+        <button type="button" class="line-tbtn" id="hubAcctNews" data-ch="news" role="radio">TVBS新聞</button>
+        <button type="button" class="line-tbtn" id="hubAcctEnt" data-ch="ent" role="radio">TVBS娛樂頭條</button>
+        <button type="button" class="line-tbtn" id="hubAcctTest" data-ch="test" role="radio">測試帳號</button>
+      </div>
+      <section class="hub-sec" id="hubList" data-hub="list">
+        <div id="hubListMain">
+          <div class="hub-bar"><span class="line-sub" id="hubListTitle">推播列表</span><button type="button" id="hubListRefresh">重新整理</button></div>
+          <div class="line-sched-warn" id="hubListWarn" hidden></div>
+          <div class="hub-head" aria-hidden="true"><span>訊息命名</span><span>發送狀態</span><span>推播人數</span></div>
+          <div id="hubListBox"><div class="line-note">讀取中…</div></div>
+        </div>
+        <div id="hubDetail" hidden></div>
+      </section>
+      <section class="hub-sec" id="hubSet" data-hub="set" hidden>
+        <div class="hub-bar"><span class="line-sub" id="hubStatusTitle">連線狀態</span><button type="button" id="hubStatusBtn">重新檢查</button></div>
+        <div id="hubStatusBox" class="hub-kv"><div class="line-note">讀取中…</div></div>
+        <div class="hub-bar" style="margin-top:20px"><span class="line-sub" id="lineTesterTitle">權限管理</span></div>
+        <div class="line-note" style="margin-top:0" id="lineTesterHint"></div>
+        <div id="lineTesterList" class="line-note">讀取中…</div>
+        <div id="lineAddRow">
+          <div class="line-note">新增成員：填名字（不填就用 LINE 上的暱稱）與對方在這個帳號的 LINE userId（U 開頭加 32 碼，可從 S8 客戶中心複製）。Worker 會先向 LINE 查他的暱稱，確認這個 ID 在這個帳號有效才加入；LINE 查不到就不會加。</div>
+          <div class="line-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input type="text" id="lineAddName" autocomplete="off" maxlength="40" placeholder="名字（選填）" aria-label="名字" style="flex:0 1 150px;min-width:0">
+            <input type="text" id="lineAddUid" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="LINE userId" style="flex:1 1 260px;min-width:0">
+            <button type="button" id="lineAddFind">查詢</button>
+            <button type="button" id="lineAddOk" disabled>加入名單</button>
+          </div>
+          <div class="line-note" id="lineAddOut" style="margin-top:6px"></div>
+        </div>
+      </section>
+      <section class="hub-sec" id="hubS8" data-hub="s8" hidden>
+        <p class="s8c-state" id="s8cState">尚未連結</p>
+        <pre class="s8c-out" id="s8cOut" style="margin:0 0 14px"></pre>
+        <div class="btn-row" id="s8cCopyRow" hidden style="margin:-8px 0 14px"><button type="button" id="s8cCopyOut">複製這段內容</button></div>
+        <div class="btn-row" style="margin-top:0">
+          <button type="button" class="primary" id="s8cConnect">連結 S8</button>
+          <button type="button" id="s8cDisconnect">中斷連結</button>
+          <button type="button" id="s8cCheck">檢查連結狀態</button>
+          <button type="button" id="s8cTools">查看工具定義</button>
+        </div>
+      </section>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:14px">
+        <button type="button" id="hubCloseBtn">關閉</button>
       </div>
     </div>
   </div>
@@ -5563,6 +5601,7 @@ async function openS8Dialog() {
     s8ResetCreate();
   }
   qrRender();   // 快速回覆列依目前版型（新聞／娛樂）重畫
+  hubSetView('compose');
   s8Overlay.classList.add('open');
   placeSegKnob(document.getElementById('s8Ptabs'));
   s8FitControls();
@@ -5627,6 +5666,7 @@ function s8Regenerate() {
   s8AttachRender(s8State);
 }
 function closeS8Dialog() {
+  if (hubModal.dataset.view === 'hub') { hubClose(); return; }
   if (s8Flow.createState === 'busy' || $s8('s8PrepBtn').disabled || lineBusyNow()) { statusEl.show('正在傳送，請等完成後再關閉視窗', 'error'); return; }   // 避免結果寫到別的版型
   const live = document.querySelectorAll('#s8SchedBanners .s8-banner[data-live="1"]').length;
   if (live && !window.confirm(`還有 ${live} 筆保留中的排程尚未暫停，關閉視窗後它們仍會照時間發送。\n\n確定要關閉嗎？`)) return;
@@ -5906,7 +5946,7 @@ $s8('s8PrepBtn').addEventListener('click', async () => {
   s8ResetCreate();
   if (errs.length) { s8PrepSet(`✗ 還不能傳送：${errs.join('；')}`, true); return; }
   if (d.target !== 'all') { s8PrepSet('✗ 傳送目前只支援「全部 LINE 顧客」，請選上面的「全部 LINE 顧客」。', true); return; }
-  if (!s8Get(S8_SESSION_KEY) || !s8CanWrite()) { s8PrepSet('✗ 需要先在右上角「S8」視窗按「連結 S8」完成授權（讀取＋寫入）。', true); return; }
+  if (!s8Get(S8_SESSION_KEY) || !s8CanWrite()) { s8PrepSet('✗ 需要先到右上角「訊息推播 → S8連結設定」按「連結 S8」完成授權（讀取＋寫入）。', true); return; }
   btn.disabled = true; s8PrepSet('傳送中…（約數秒）', false, false, true);
   try {
     const body = {
@@ -6148,56 +6188,6 @@ document.addEventListener('mousedown', e => { if (!$line('lineWhoPanel').hidden 
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$line('lineWhoPanel').hidden) { lineWhoOpen(false); $line('lineWhoBtn').focus(); e.stopPropagation(); } }, true);
 $line('lineWhoRefresh').addEventListener('click', () => lineWhoLoad(lineWhoCh()));
 // 折疊區「測試名單」：依下方選的帳號（測試帳號／正式帳號）顯示、移除；正式帳號可貼 userId 新增
-const lineBoxCh = () => ($line('lineChOfficial') && $line('lineChOfficial').checked ? mode : 'test');
-function lineTesterListRender() {
-  const ch = lineBoxCh(), w = lineWhoFor(ch), box = $line('lineTesterList'); box.textContent = '';
-  $line('lineTesterTitle').textContent = ch === 'test' ? '測試名單（傳「登記」給測試帳號就會加入）' : `${lineWhoAcct(ch)} 的測試名單（貼上 LINE userId 加入）`;
-  $line('lineAddRow').hidden = ch === 'test';
-  if (w.error) { box.textContent = `✗ ${w.error}`; return; }
-  if (!w.loaded) { box.textContent = '讀取中…'; return; }
-  if (!w.testers.length) { box.textContent = '名單是空的。'; return; }
-  w.testers.forEach(t => {
-    const row = document.createElement('div'); row.className = 'line-trow';
-    const nm = document.createElement('span'); nm.textContent = t.name;
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = '移除';
-    b.addEventListener('click', async () => {
-      if (!window.confirm(`從「${lineWhoAcct(ch)}」的測試名單移除「${t.name}」嗎？\n\n移除後測試推播不會再發給他；${ch === 'test' ? '他可以再傳「登記」重新加入。' : '要再加回來，貼上他的 LINE userId 即可。'}`)) return;
-      try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; w.sel = w.sel.filter(v => v !== t.tid); lineWhoSelStore(ch, w.sel); lineResetTestKeys(); }
-      catch (e) { window.alert(`移除失敗：${e.message || e}`); }
-      lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
-    });
-    row.append(nm, b); box.appendChild(row);
-  });
-}
-// 正式帳號測試名單：先「查詢」（向 LINE 驗證並顯示暱稱），確認是對的人再「加入名單」
-let lineAddFound = null;
-function lineAddReset(text, bad) { lineAddFound = null; $line('lineAddOk').disabled = true; const o = $line('lineAddOut'); o.textContent = text || ''; o.classList.toggle('bad', !!bad); }
-$line('lineAddUid').addEventListener('input', () => lineAddReset(''));
-$line('lineAddFind').addEventListener('click', async () => {
-  const ch = lineBoxCh(), uid = $line('lineAddUid').value.trim();
-  if (ch === 'test') return;
-  if (!/^U[0-9a-f]{32}$/.test(uid)) { lineAddReset('✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true); return; }
-  $line('lineAddFind').disabled = true; lineAddReset(`向 LINE（${lineWhoAcct(ch)}）查詢中…`);
-  try {
-    const r = await s8Api('/line/testers/lookup', { channel: ch, userId: uid });
-    lineAddFound = { ch, uid, name: r.found.name };
-    $line('lineAddOk').disabled = false;
-    const o = $line('lineAddOut'); o.classList.remove('bad');
-    o.textContent = r.found.already ? `✓ 查到「${r.found.name}」，已經在「${lineWhoAcct(ch)}」的名單裡。` : `✓ LINE 查到這個 ID 的暱稱是「${r.found.name}」。確認是對的人，再按「加入名單」。`;
-  } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
-  $line('lineAddFind').disabled = false;
-});
-$line('lineAddOk').addEventListener('click', async () => {
-  if (!lineAddFound || lineAddFound.ch !== lineBoxCh()) return;
-  const { ch, uid, name } = lineAddFound;
-  $line('lineAddOk').disabled = true;
-  try {
-    const r = await s8Api('/line/testers/add', { channel: ch, userId: uid });
-    const w = lineWhoFor(ch); w.testers = r.testers || []; w.loaded = true;
-    $line('lineAddUid').value = ''; lineAddReset(`✓ 已加入「${name}」。`);
-    lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
-  } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
-});
 const LINE_MIN_LEAD_MIN = 5, LINE_MAX_LEAD_DAYS = 14;   // 與 Worker 的限制一致（Worker 才是最後把關）
 const lineDigits = v => Number(String(v || '').replace(/[,\s]/g, ''));
 function lineSig() { const d = s8Collect(); return JSON.stringify([mode, d.alt, d.quick, d.pages.map(pg => pg.cells.map(c => [c.url, c.pct])), s8Signature()]); }
@@ -6274,7 +6264,7 @@ function lineFitControls() {
   lineUpdateSteps();
 }
 function lineUpdateSteps() {
-  if (!$line('lineSteps')) return;
+  if (!$line('lineSteps') || (mode !== 'news' && mode !== 'ent')) return;   // 拼圖版型沒有推播流程（「訊息推播」視窗在任何版型都能開）
   const st = lineSt(), prepared = !!st.prep, choice = st.choice, sched = choice === 'sched';
   const tsched = sched && !!st.tsched;   // 排給測試帳號：不需要「測試推播」與「確認人數」，直接到最後一步
   const when = sched ? lineWhenValue() : null;
@@ -6388,7 +6378,7 @@ $line('linePrepBtn').addEventListener('click', async () => {
 async function lineSend(channel, extra) {
   const st = lineSt(), key = channel === 'test' ? 'test' : (extra && extra.mode === 'test' ? 'otest' : 'official');
   if (!st.retryKey[key]) st.retryKey[key] = crypto.randomUUID();
-  return await s8Api('/line/send', { prepareToken: st.prep.prepareToken, channel, retryKey: st.retryKey[key], ...(extra || {}) });
+  return await s8Api('/line/send', { prepareToken: st.prep.prepareToken, channel, retryKey: st.retryKey[key], links: lineLinksNow(), ...(extra || {}) });   // links：每一格的標題與連結，讓「訊息推播 → 推播列表」能列出每則訊息並對上點擊數
 }
 $line('lineTestBtn').addEventListener('click', async () => {
   const st = lineSt(); if (!st.prep || st.test === 'busy' || st.test === 'ok') return;
@@ -6402,7 +6392,6 @@ $line('lineTestBtn').addEventListener('click', async () => {
     const names = (r.recipients || lineWhoNames(picked, ch)).join('、');
     st.test = 'ok'; st.testToken = r.testToken || ''; st.testMsg = toOfficial ? `✓ 已測試推播到${acct}（${names}），請到手機確認` : `✓ 已推播到測試帳號（${names}），請到手機確認`;
     if (r.quota && Number.isFinite(r.quota.used)) lineVerifyUsage(r.quota.used, r.friends || 0, st, ch);
-    lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: ch, test: toOfficial, mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
     lineWin(`✓ 已${toOfficial ? `測試推播到「${acct}」正式帳號（只發給名單內勾選的人，不是群發）` : '推播到測試帳號'}（收件人：${names}）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n請到手機的${toOfficial ? acct : '測試帳號'}確認版面與連結都正確，沒問題再按「測試完成」。`, 'ok');
   } catch (e) { st.test = 'bad'; st.testMsg = `✗ 推播失敗：${String(e.message || e).slice(0, 160)}`; lineWin(`測試推播失敗：${e.message || e}`, 'bad'); }
   lineUpdateSteps();
@@ -6439,20 +6428,19 @@ async function lineFireOfficial() {
     if (tsched) {   // 排給測試帳號：Worker 不要求測試推播與確認人數；到時間用 channel=test 發出
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
       const picked = lineWhoPicked(); if (!picked.length) throw new Error('請先選擇測試排程要發給誰');
-      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: 'test', testers: picked, runAt: when.iso, name: s8Collect().name, links: lineLinksNow() });
+      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: 'test', testers: picked, runAt: when.iso, links: lineLinksNow() });
       st.goState = 'ok';
       lineWin(`✓ 已排程到測試帳號（收件人：${(r.schedule.recipientNames || lineWhoNames(picked)).join('、')}）\n發送時間：${when.text}（台北時間）\n排程編號：${r.schedule.id}\n\n時間到時由 Worker 自動推播到測試帳號。可在下方「排程狀態」確認有沒有準時發出；這不會發給正式帳號的好友。`, 'ok');
       lineSchedLoad();
     } else if (sched) {
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
-      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: mode, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, name: s8Collect().name, links: lineLinksNow() });
+      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: mode, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow() });
       st.goState = 'ok'; editMarkClean(mode);
       lineWin(`✓ 已排程\n發送時間：${when.text}（台北時間）\n帳號：${S8_ACCOUNT[mode]}（約 ${st.friends.toLocaleString()} 人）\n排程編號：${r.schedule.id}\n\n時間到時由 Worker 自動推播。可在下方「排程狀態」查看、變更時間或刪除。`, 'ok');
       lineSchedLoad();
     } else {
       const r = await lineSend(mode, { confirmTotal: typed, testToken: st.testToken });
       st.goState = 'ok'; editMarkClean(mode);
-      lineSaveSend({ requestId: r.requestId, sentAt: r.sentAt, channel: mode, mode, alt: s8Collect().alt, name: s8Collect().name, links: lineLinksNow() });
       lineWin(`✓ 已正式推播到 ${S8_ACCOUNT[mode]}（約 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : st.friends.toLocaleString()} 人）\n時間：${r.sentAt}${r.alreadyAccepted ? '\n（LINE 回報這個發送序號先前已受理，沒有重複發送）' : ''}\nLINE request id：${r.requestId || '（無）'}\n\n發送後可在下方「帳號與額度、發送紀錄與點擊次數」查詢點擊次數。`, 'ok');
     }
   } catch (e) {
@@ -6526,15 +6514,10 @@ const lineAcctName = ch => (ch === 'test' ? '測試帳號' : (S8_ACCOUNT[ch] || 
 async function lineSchedLoad() {
   if (lineSchedLoading) return;
   lineSchedLoading = true;
-  try { lineSchedData = await s8Api('/line/schedule/list', {}); lineSchedMerge(); }
+  try { lineSchedData = await s8Api('/line/schedule/list', {}); }
   catch (e) { lineSchedData = { error: String(e.message || e) }; }
   lineSchedLoading = false;
   lineSchedRender();
-}
-function lineSchedMerge() {   // 排程到時間自動發出去的，頁面當時沒開著：把 request id 補進發送紀錄，才能查點擊次數
-  const have = new Set(lineHistLoad().map(r => r.requestId)); let add = [];
-  (lineSchedData.schedules || []).forEach(s => { if (s.status === 'sent' && s.requestId && !have.has(s.requestId)) add.push({ requestId: s.requestId, sentAt: s.sentAt, channel: s.channel, mode: s.org, alt: s.altText, name: s.name, links: s.links || [], fromSchedule: true }); });
-  if (add.length) { lineHistStore([...add, ...lineHistLoad()].sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)))); lineHistRender(); }
 }
 function lineSchedRender() {
   const list = $line('lineSchedList'), warn = $line('lineSchedWarn'), d = lineSchedData;
@@ -6557,7 +6540,7 @@ function lineSchedRender() {
     const stc = document.createElement('span'); stc.className = `line-chip ${s.status}`; stc.textContent = LINE_SCHED_STATUS[s.status] || s.status;
     top.append(when, acct, stc); row.appendChild(top);
     const ttl = document.createElement('div'); ttl.className = 'ttl'; ttl.textContent = `${s.altText}（${(s.links || []).length} 個連結）${s.channel === 'test' && (s.recipientNames || []).length ? `→ 給 ${s.recipientNames.join('、')}` : ''}`; row.appendChild(ttl);
-    if (s.status === 'sent') { const n = document.createElement('div'); n.className = 'line-note'; n.style.margin = '0'; n.textContent = `已於 ${String(s.sentAt).slice(0, 16).replace('T', ' ')} 發送（LINE request id：${s.requestId}）。點擊次數請到下方「發送紀錄與點擊次數」查。`; row.appendChild(n); }
+    if (s.status === 'sent') { const n = document.createElement('div'); n.className = 'line-note'; n.style.margin = '0'; n.textContent = `已於 ${String(s.sentAt).slice(0, 16).replace('T', ' ')} 發送（LINE request id：${s.requestId}）。點擊次數請到右上角「訊息推播 → 推播列表」查看。`; row.appendChild(n); }
     if (s.lastError && s.status !== 'sent') { const er = document.createElement('div'); er.className = 'err'; er.textContent = s.lastError; row.appendChild(er); }
     if (s.status === 'scheduled') {
       const acts = document.createElement('div'); acts.className = 'acts';
@@ -6597,123 +6580,365 @@ async function lineSchedDelete(s) {
 }
 $line('lineSchedRefresh').addEventListener('click', lineSchedLoad);
 
-// ---- 帳號與額度 ----
-const lineChannelNow = () => ($line('lineChOfficial').checked ? mode : 'test');
-const lineChName = r => lineAcctName(r.channel) + (r.test ? '（測試推播）' : '');
-$line('lineStatusBtn').addEventListener('click', async () => {
-  const out = $line('lineOut'); const show = (t, cls) => { out.hidden = !t; out.textContent = t || ''; out.className = `s8c-out${cls ? ' ' + cls : ''}`; };
-  $line('lineStatusBtn').disabled = true; show('向 LINE 查詢中…');
-  try {
-    const r = await s8Api('/line/status', { channel: lineChannelNow() });
-    const fol = r.followers ? r.followers.followers : null, q = r.quota, used = r.used;
-    const lines = [
-      `帳號：${r.bot ? `${r.bot.displayName}（${r.bot.basicId}）` : '（查不到名稱）'}`,
-      `好友數：${fol === null ? '查不到（LINE 的統計資料還沒好，正式帳號會因此不推播）' : `${fol.toLocaleString()} 人（LINE 昨日統計）`}`,
-      q ? `本月訊息額度：${q.type === 'limited' && q.value !== null ? `上限 ${q.value.toLocaleString()}，已用 ${used === null ? '？' : used.toLocaleString()}${used !== null ? `，剩 ${(q.value - used).toLocaleString()}` : ''}` : '無上限'}` : '本月訊息額度：查不到',
-      `圖片空間（R2）：${r.r2Ready ? '已綁定' : '尚未綁定，無法上傳圖片'}`,
-    ];
-    if (r.notes && r.notes.length) lines.push('', '備註：', ...r.notes);
-    show(lines.join('\n'), r.r2Ready ? 'ok' : 'bad');
-  } catch (e) { show(`✗ ${e.message || e}`, 'bad'); }
-  $line('lineStatusBtn').disabled = false;
-});
-$line('lineChOfficialTxt').textContent = '正式帳號';
-['lineChTest', 'lineChOfficial'].forEach(id => $line(id).addEventListener('change', () => { lineAddReset(''); lineTesterListRender(); const ch = lineBoxCh(), w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); }));
-$line('lineBox').addEventListener('toggle', () => { if ($line('lineBox').open) { const ch = lineBoxCh(), w = lineWhoFor(ch); if (!w.loaded && !w.loading) lineWhoLoad(ch); } });
-
-// ---- 發送紀錄與點擊次數 ----
-// 每次發送成功，把 LINE 回的 request id 和「哪一頁哪一格是哪個連結」記在這台瀏覽器（最近 30 筆）；之後用 request id 向 LINE 查每個連結的點擊次數。
-const LINE_HIST_KEY = 'lineSends';
-const lineHistLoad = () => { try { const a = JSON.parse(localStorage.getItem(LINE_HIST_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
-const lineHistStore = a => { try { localStorage.setItem(LINE_HIST_KEY, JSON.stringify(a.slice(0, 30))); } catch (e) { /* ok */ } };
-function lineLinksNow() {
+// ---- 訊息推播（推播列表／LINE推播設定／S8連結設定）：跟「排入推播」共用同一個視窗，只是換成另一組分頁 ----
+function lineLinksNow() {   // 每一格的「頁／位置／標題／完整連結」，發送時一起交給 Worker 記進推播列表
   const d = s8Collect(), out = [];
   d.pages.forEach(pg => pg.cells.forEach(c => out.push({ page: pg.page, label: c.label, title: c.title, url: c.url })));
   return out;
 }
-function lineSaveSend(rec) {
-  if (!rec.requestId) { const st = lineSt(); lineWin(`${st.win.text}\n\n⚠ LINE 沒有回 request id，這次發送沒辦法之後查點擊次數。`, st.win.kind); return; }
-  lineHistStore([rec, ...lineHistLoad().filter(x => x.requestId !== rec.requestId)]);
-  lineHistRender(rec.requestId);
+const hubModal = document.getElementById('s8Modal');
+const HUB_TABS = ['list', 'set', 's8'];
+let hubTab = 'list', hubCh = 'news';
+const hubIsOpen = () => hubModal.dataset.view === 'hub' && s8Overlay.classList.contains('open');
+const hubEl = id => document.getElementById(id);
+const hubAcctName = ch => (ch === 'test' ? '測試帳號' : (S8_ACCOUNT[ch] || ch));
+function hubSetView(view) {   // 'hub'：訊息推播｜'compose'：排入推播
+  hubModal.dataset.view = view;
+  hubEl('composeBody').hidden = view === 'hub';
+  hubEl('hubBody').hidden = view !== 'hub';
+  hubEl('hubTabs').hidden = view !== 'hub';
+  hubEl('s8Modetabs').hidden = view === 'hub';
 }
-function lineHistRender(selectId) {
-  const sel = $line('lineHist'), list = lineHistLoad();
-  const keep = selectId || sel.value;
-  sel.textContent = '';
-  if (!list.length) { const o = document.createElement('option'); o.textContent = '還沒有發送紀錄（發送成功後會出現在這裡）'; o.value = ''; sel.appendChild(o); }
-  list.forEach(r => { const o = document.createElement('option'); o.value = r.requestId; o.textContent = `${String(r.sentAt || '').slice(5, 16).replace('T', ' ')} · ${lineChName(r)} · ${String(r.alt || '').slice(0, 24)}${lineIsOld(r) ? `（已過 ${LINE_STATS_DAYS} 天${r.snap ? '，有快照' : ''}）` : ''}`; sel.appendChild(o); });
-  if (keep && list.some(r => r.requestId === keep)) sel.value = keep;
-  $line('lineClicksBtn').disabled = !list.length;
-  $line('lineCopyBtn').disabled = !lineLastTable;
+function hubAcctRender() {
+  document.querySelectorAll('#hubAcct .line-tbtn').forEach(b => { const on = b.dataset.ch === hubCh; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+  hubEl('hubAcct').hidden = hubTab === 's8';
 }
-let lineLastTable = null;   // { rows: string[][] } 目前顯示的表格，給「複製成表格」用
-const lineNum = v => (Number.isFinite(v) ? v.toLocaleString() : '—');
-const LINE_STATS_DAYS = 14;   // LINE 只保留發送後 14 天的統計
-const lineIsOld = rec => { const t = Date.parse(rec.sentAt); return Number.isFinite(t) && Date.now() - t > LINE_STATS_DAYS * 86400e3; };
-// 把某次發送的統計畫成表格。data＝{overview, messages, clicks}；note＝額外說明（例如「這是上次查到的快照」）
-function lineRenderClicks(rec, data, note) {
-  const box = $line('lineClicksOut'); box.textContent = ''; lineLastTable = null;
-  const byUrl = new Map((data.clicks || []).map(c => [c.url, c]));
-  const used = new Set();
-  const rows = [['頁／位置', '標題', '點擊次數', '點擊人數']];
-  rec.links.forEach(l => { const c = byUrl.get(l.url); if (c) used.add(l.url); rows.push([`第 ${l.page} 頁 ${l.label}`, l.title, c ? lineNum(c.click) : '—', c ? lineNum(c.uniqueClick) : '—']); });
-  (data.clicks || []).filter(c => !used.has(c.url)).forEach(c => rows.push(['（其他連結）', c.url, lineNum(c.click), lineNum(c.uniqueClick)]));
-  const ov = data.overview || {};
-  const sumRow = ['整則訊息', `發送 ${lineNum(ov.delivered)} 則、開啟 ${lineNum(ov.uniqueImpression)} 人`, '', lineNum(ov.uniqueClick)];
-  const imp = (data.messages || []).map(m => `第 ${m.seq} 頁顯示 ${lineNum(m.impression)} 次`).join('、');
-  const t = document.createElement('table'); t.className = 'line-tbl';
-  const head = document.createElement('tr'); rows[0].forEach((h, i) => { const th = document.createElement('th'); th.textContent = h; if (i >= 2) th.className = 'num'; head.appendChild(th); }); t.appendChild(head);
-  rows.slice(1).forEach(row => { const tr = document.createElement('tr'); row.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; if (v === '—') td.classList.add('dim'); tr.appendChild(td); }); t.appendChild(tr); });
-  const sum = document.createElement('tr'); sum.className = 'sum';
-  sumRow.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; sum.appendChild(td); });
-  t.appendChild(sum);
-  box.appendChild(t);
-  const n = document.createElement('div'); n.className = 'line-note'; n.style.whiteSpace = 'pre-wrap';
-  n.textContent = `${lineChName(rec)} · ${rec.sentAt} 發送 · ${rec.alt}${imp ? `\n${imp}` : ''}${note ? `\n${note}` : ''}\n「—」表示 LINE 沒提供（數字小於 20）、或這個連結目前沒有點擊。最後一列的點擊人數是「點了任何連結的不重複人數」。`;
-  box.appendChild(n);
-  lineLastTable = { rows: [...rows, sumRow] };
-  lineHistRender();
+function hubSetTab(tab) {
+  hubTab = HUB_TABS.includes(tab) ? tab : 'list';
+  document.querySelectorAll('#hubTabs .s8-ptab').forEach(b => { const on = b.dataset.hub === hubTab; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+  placeSegKnob(hubEl('hubTabs'));
+  document.querySelectorAll('#hubBody .hub-sec').forEach(sec => { sec.hidden = sec.dataset.hub !== hubTab; });
+  hubAcctRender();
+  if (hubTab === 'list') hubListShow();
+  else if (hubTab === 'set') hubSetShow();
+  else { s8UpdatePill(); s8ShowOut(''); if (s8Get(S8_SESSION_KEY) && !s8Get('s8Scope')) s8Check(); }   // 開分頁不自動呼叫 S8（省額度）；只有不知道授權範圍時才檢查一次
 }
-const lineBox = (text, cls) => { const box = $line('lineClicksOut'); box.textContent = ''; lineLastTable = null; const d = document.createElement('div'); d.className = `s8c-out${cls ? ' ' + cls : ''}`; d.textContent = text; box.appendChild(d); lineHistRender(); };
-const lineSnapNote = (snap, why) => `※ ${why}這是 ${String(snap.at).slice(0, 16).replace('T', ' ')} 最後一次查到的數字（快照）。`;
-// 查詢：超過 14 天 LINE 不再提供，就改顯示最後一次查到的快照；LINE 暫時沒資料時也一樣
-$line('lineClicksBtn').addEventListener('click', async () => {
-  const rec = lineHistLoad().find(r => r.requestId === $line('lineHist').value);
-  if (!rec) return;
-  if (lineIsOld(rec)) {
-    if (rec.snap) lineRenderClicks(rec, rec.snap, lineSnapNote(rec.snap, `這筆已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計。`));
-    else lineBox(`這筆發送已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計，而且當時沒有查過、沒有存快照，所以查不到了。\n下次請在發送後 ${LINE_STATS_DAYS} 天內查詢，每次查到的數字都會自動存下來。`, 'bad');
-    return;
-  }
-  lineBox('向 LINE 查詢中…');
-  $line('lineClicksBtn').disabled = true;
+function openHub(tab) {
+  if (!labOn) return;
+  if (s8Overlay.classList.contains('open') && hubModal.dataset.view !== 'hub') return;   // 正在編輯推播：不切換
+  if (mode === 'news' || mode === 'ent') hubCh = mode;
+  hubSetView('hub'); hubDetailId = '';
+  s8Overlay.classList.add('open');
+  hubSetTab(tab || hubTab);
+}
+function hubClose() { s8Overlay.classList.remove('open'); hubSetView('compose'); }
+document.querySelectorAll('#hubTabs .s8-ptab').forEach(b => b.addEventListener('click', () => { if (b.dataset.hub !== hubTab) hubSetTab(b.dataset.hub); }));
+document.querySelectorAll('#hubAcct .line-tbtn').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.ch === hubCh) return;
+  hubCh = b.dataset.ch; hubDetailId = ''; hubAcctRender();
+  if (hubTab === 'list') hubListShow(); else if (hubTab === 'set') hubSetShow();
+}));
+hubEl('hubCloseBtn').addEventListener('click', closeS8Dialog);
+
+// ---- 推播列表 ----
+const hubData = {};   // 帳號 → { loaded, loading, records, error, heartbeatAt, serverNow, auto }
+const hubFor = ch => (hubData[ch] = hubData[ch] || { loaded: false, loading: false, records: [], error: '', heartbeatAt: 0, serverNow: 0, auto: false });
+let hubDetailId = '', hubRenaming = false, hubLastTable = null;
+const hubStats = {};   // 推播 id → { busy, stats, message, error }
+const HUB_STATUS = { sent: '已發送', sending: '發送中', scheduled: '排程', failed: '發送失敗', missed: '逾時未發', cancelled: '已取消' };
+const HUB_STATS_DAYS = 14;   // LINE 只保留發送後 14 天的統計
+const hubFmt = iso => String(iso || '').slice(5, 16).replace('T', ' ').replace('-', '/');
+const hubNum = v => (Number.isFinite(v) ? v.toLocaleString() : '—');
+const hubLive = r => r.status === 'scheduled' || r.status === 'sending';
+const hubWhen = r => (r.status === 'sent' ? `發送 ${hubFmt(r.sentAt || r.runAtIso)}` : `排程 ${hubFmt(r.runAtIso)}`);
+function hubPeople(r) {   // 推播人數：{ main, sub }
+  const names = (r.recipientNames || []).join('、');
+  if (r.test) return { main: `${hubNum((r.recipientNames || []).length || r.friends)} 人`, sub: names || '測試推播' };
+  if (r.status === 'sent') {
+    if (Number.isFinite(r.delivered)) return { main: `${hubNum(r.delivered)} 人`, sub: '發送成功' };
+    if (Number.isFinite(r.friends)) return { main: `約 ${hubNum(r.friends)} 人`, sub: '發送時好友數' };
+  } else if (hubLive(r) && Number.isFinite(r.approvedFriends)) return { main: `約 ${hubNum(r.approvedFriends)} 人`, sub: '預計' };
+  return { main: '—', sub: '' };
+}
+function hubFindRec(id) { for (const ch of Object.keys(hubData)) { const r = hubData[ch].records.find(x => x.id === id); if (r) return r; } return null; }
+function hubReplaceRec(rec) { if (!rec) return; for (const ch of Object.keys(hubData)) { const a = hubData[ch].records, i = a.findIndex(x => x.id === rec.id); if (i >= 0) a[i] = rec; } }
+function hubListShow() {
+  hubEl('hubListTitle').textContent = `${hubAcctName(hubCh)} 的推播列表`;
+  hubListRender(); hubDetailRender();
+  hubListLoad(hubCh);
+}
+async function hubListLoad(ch) {
+  const d = hubFor(ch);
+  if (d.loading) return;
+  d.loading = true; d.error = ''; if (ch === hubCh && hubIsOpen()) hubListRender();
   try {
-    const r = await s8Api('/line/clicks', { channel: rec.channel, requestId: rec.requestId });
-    if (r.unavailable) {
-      if (rec.snap) lineRenderClicks(rec, rec.snap, lineSnapNote(rec.snap, 'LINE 目前沒有新的統計資料。'));
-      else lineBox(r.message, 'bad');
-    } else {
-      const snap = { at: taipeiIso(Date.now()), overview: r.overview, messages: r.messages, clicks: r.clicks };
-      lineHistStore(lineHistLoad().map(x => (x.requestId === rec.requestId ? { ...x, snap } : x)));
-      lineRenderClicks({ ...rec, snap }, snap, `LINE 數據查詢時間：${snap.at.slice(0, 16).replace('T', ' ')}（只保留 ${LINE_STATS_DAYS} 天；每次查到的都會存成快照，之後超過 ${LINE_STATS_DAYS} 天還能看）。`);
-    }
-  } catch (e) { lineBox(`✗ ${e.message || e}`, 'bad'); }
-  lineHistRender();
+    const r = await s8Api('/line/history/list', { channel: ch });
+    d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true;
+  } catch (e) { d.error = String(e.message || e); }
+  d.loading = false;
+  if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); hubAutoStats(ch); }
+}
+function hubListRender() {
+  const box = hubEl('hubListBox'), warn = hubEl('hubListWarn'), d = hubFor(hubCh);
+  box.textContent = ''; warn.hidden = true;
+  const note = t => { const n = document.createElement('div'); n.className = 'line-note'; n.textContent = t; box.appendChild(n); };
+  if (d.error) { note(`✗ ${d.error}`); return; }
+  if (!d.loaded) { note('讀取中…'); return; }
+  if (d.records.some(hubLive) && (!d.heartbeatAt || d.serverNow - d.heartbeatAt > 3 * 60 * 1000)) {
+    warn.hidden = false;
+    warn.textContent = `⚠ Worker 的 Cron Trigger 沒有在跑${d.heartbeatAt ? `（最後一次心跳：${taipeiIso(d.heartbeatAt).slice(5, 16).replace('T', ' ')}）` : '（從來沒有收到心跳）'}，排程不會自動發送！請到 Cloudflare → Workers → Settings → Triggers → Cron Triggers 新增 * * * * *。`;
+  }
+  if (!d.records.length) { note('還沒有推播紀錄。從「排入LINE推播」發送（或排程）之後，會出現在這裡。'); return; }
+  d.records.forEach(r => {
+    const row = document.createElement('div'); row.className = 'hub-row'; row.setAttribute('role', 'button'); row.tabIndex = 0; row.dataset.id = r.id;
+    const c1 = document.createElement('div');
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = r.name || r.altText;
+    if (r.test) { const t = document.createElement('span'); t.className = 'test-tag'; t.textContent = '測試'; nm.appendChild(t); }
+    const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = hubWhen(r);
+    c1.append(nm, sub);
+    const c2 = document.createElement('div'); const chip = document.createElement('span'); chip.className = `line-chip ${r.status}`; chip.textContent = HUB_STATUS[r.status] || r.status; c2.appendChild(chip);
+    const c3 = document.createElement('div'); c3.className = 'cnt'; const pp = hubPeople(r);
+    const b = document.createElement('b'); b.textContent = pp.main; c3.appendChild(b);
+    if (pp.sub) { const sb = document.createElement('div'); sb.className = 'sub'; sb.textContent = pp.sub; c3.appendChild(sb); }
+    row.append(c1, c2, c3);
+    const open = () => hubOpenDetail(r.id);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    box.appendChild(row);
+  });
+}
+hubEl('hubListRefresh').addEventListener('click', () => { if (hubDetailId) { hubStatsLoad(hubDetailId, true); return; } hubListLoad(hubCh); });
+// 打開列表時，最近幾筆「正式發送、還沒有人數」的順便向 LINE 查一次（最多 3 筆；查到的會存在 Worker，之後不用再查）
+async function hubAutoStats(ch) {
+  const d = hubFor(ch); if (d.auto) return; d.auto = true;
+  const todo = d.records.filter(r => r.status === 'sent' && !r.test && !Number.isFinite(r.delivered) && !r.statAt && Date.now() - Date.parse(r.sentAt) < HUB_STATS_DAYS * 86400e3).slice(0, 3);
+  for (const r of todo) { if (!hubIsOpen()) break; await hubStatsLoad(r.id, false, true); }
+  d.auto = false;
+}
+async function hubStatsLoad(id, force, quiet) {
+  const st = (hubStats[id] = hubStats[id] || {});
+  if (st.busy) return;
+  st.busy = true; st.error = ''; if (!quiet && hubDetailId === id) hubStatsRender();
+  try {
+    const r = await s8Api('/line/history/stats', { id, force: !!force });
+    st.stats = r.stats || null; st.message = r.unavailable ? (r.message || '') : ''; st.cached = !!r.cached;
+    hubReplaceRec(r.record);
+  } catch (e) { st.error = String(e.message || e); }
+  st.busy = false;
+  if (hubIsOpen()) { if (hubTab === 'list') { hubListRender(); if (hubDetailId === id) hubStatsRender(); } }
+}
+function hubOpenDetail(id) {
+  hubDetailId = id; hubRenaming = false;
+  hubDetailRender();
+  hubEl('hubBody').scrollIntoView({ block: 'nearest' });
+  const r = hubFindRec(id); if (r && r.status === 'sent') hubStatsLoad(id, false);
+}
+function hubCloseDetail() { hubDetailId = ''; hubRenaming = false; hubDetailRender(); }
+function hubKv(box, k, v, cls) { const a = document.createElement('div'); a.className = 'k'; a.textContent = k; const b = document.createElement('div'); b.className = `v${cls ? ' ' + cls : ''}`; b.textContent = v; box.append(a, b); }
+function hubDetailRender() {
+  const box = hubEl('hubDetail'), main = hubEl('hubListMain');
+  const rec = hubDetailId ? hubFindRec(hubDetailId) : null;
+  box.hidden = !rec; main.hidden = !!rec; hubEl('hubAcct').hidden = hubTab === 's8';
+  if (!rec) { hubLastTable = null; return; }
+  box.textContent = '';
+  const back = document.createElement('button'); back.type = 'button'; back.className = 'hub-back'; back.textContent = '← 返回列表'; back.addEventListener('click', hubCloseDetail);
+  const head = document.createElement('div'); head.className = 'hub-d-name';
+  if (hubRenaming) {
+    const inp = document.createElement('input'); inp.type = 'text'; inp.id = 'hubRenameInp'; inp.maxLength = 60; inp.value = rec.name || ''; inp.autocomplete = 'off';
+    const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'primary'; ok.textContent = '儲存';
+    const no = document.createElement('button'); no.type = 'button'; no.textContent = '取消';
+    const save = async () => {
+      const v = inp.value.trim(); if (!v) { inp.focus(); return; }
+      ok.disabled = true;
+      try { const r = await s8Api('/line/history/rename', { id: rec.id, name: v }); hubReplaceRec(r.record); hubRenaming = false; hubListRender(); hubDetailRender(); }
+      catch (e) { ok.disabled = false; window.alert(`改名失敗：${e.message || e}`); }
+    };
+    ok.addEventListener('click', save); no.addEventListener('click', () => { hubRenaming = false; hubDetailRender(); });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') { e.stopPropagation(); hubRenaming = false; hubDetailRender(); } });
+    head.append(inp, ok, no);
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  } else {
+    const nm = document.createElement('span'); nm.textContent = rec.name || rec.altText;
+    if (rec.test) { const t = document.createElement('span'); t.className = 'test-tag'; t.textContent = '測試'; nm.appendChild(t); }
+    const rn = document.createElement('button'); rn.type = 'button'; rn.id = 'hubRenameBtn'; rn.textContent = '改名';
+    rn.addEventListener('click', () => { hubRenaming = true; hubDetailRender(); });
+    head.append(nm, rn);
+  }
+  const kv = document.createElement('div'); kv.className = 'hub-kv';
+  hubKv(kv, '帳號', hubAcctName(rec.channel));
+  hubKv(kv, '發送狀態', HUB_STATUS[rec.status] || rec.status, rec.status === 'sent' ? 'ok' : (rec.status === 'failed' || rec.status === 'missed' ? 'bad' : ''));
+  hubKv(kv, rec.status === 'sent' ? '發送時間' : '排程時間', hubFmt(rec.status === 'sent' ? (rec.sentAt || rec.runAtIso) : rec.runAtIso) + '（台北時間）');
+  hubKv(kv, '推播標題', rec.altText);
+  const pp = hubPeople(rec); hubKv(kv, '推播人數', pp.sub ? `${pp.main}（${pp.sub}）` : pp.main);
+  if (rec.pageCount) hubKv(kv, '訊息則數', `${rec.pageCount} 則圖片訊息`);
+  if (rec.lastError && rec.status !== 'sent') hubKv(kv, '錯誤', rec.lastError, 'bad');
+  const stats = document.createElement('div'); stats.id = 'hubDStats';
+  box.append(back, head, kv, stats);
+  hubStatsRender();
+}
+// 點擊統計：每則訊息（每個連結）一列。LINE 規定：只保留發送後 14 天；數字小於 20 不提供（顯示「—」）；剛發完可能還是空的
+function hubStatsRender() {
+  const box = hubEl('hubDStats'); if (!box) return;
+  const rec = hubFindRec(hubDetailId); if (!rec) return;
+  box.textContent = ''; hubLastTable = null;
+  const st = hubStats[rec.id] || {}, data = st.stats || null;
+  const byUrl = new Map();
+  ((data && data.clicks) || []).forEach(c => { const o = byUrl.get(c.url); if (!o) byUrl.set(c.url, { click: c.click, uniqueClick: c.uniqueClick }); else { if (Number.isFinite(c.click)) o.click = (o.click || 0) + c.click; if (Number.isFinite(c.uniqueClick)) o.uniqueClick = Math.max(o.uniqueClick || 0, c.uniqueClick); } });
+  const used = new Set();
+  const title = document.createElement('div'); title.className = 'line-sub'; title.style.margin = '16px 0 4px'; title.textContent = '每則訊息的點擊'; box.appendChild(title);
+  const rows = [['位置', '訊息標題', '連結', '點擊次數', '點擊人數']];
+  const t = document.createElement('table'); t.className = 'line-tbl hub-tbl';
+  const hr = document.createElement('tr'); ['訊息標題', '點擊次數', '點擊人數'].forEach((h, i) => { const th = document.createElement('th'); th.textContent = h; if (i) th.className = 'num'; hr.appendChild(th); }); t.appendChild(hr);
+  const links = rec.links || [];
+  links.forEach(l => {
+    const c = byUrl.get(l.url); if (c) used.add(l.url);
+    const tr = document.createElement('tr');
+    const td = document.createElement('td'); td.className = 'ttl';
+    const tt = document.createElement('div'); tt.textContent = l.title || '（沒有標題）'; td.appendChild(tt);
+    const pos = document.createElement('div'); pos.className = 'line-note'; pos.style.margin = '0'; pos.textContent = `第 ${l.page} 頁 ${l.label}`; td.appendChild(pos);
+    const lk = document.createElement('div'); lk.className = 'lk';
+    const go = document.createElement('button'); go.type = 'button'; go.textContent = '打開連結'; go.title = l.url; go.addEventListener('click', () => { window.open(l.url, '_blank', 'noopener'); });
+    const cp = document.createElement('button'); cp.type = 'button'; cp.textContent = '複製';
+    cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(l.url); cp.textContent = '已複製'; setTimeout(() => { cp.textContent = '複製'; }, 1500); } catch (e) { statusEl.show('無法複製，請手動選取', 'error'); } });
+    lk.append(go, cp); td.appendChild(lk); tr.appendChild(td);
+    [c && c.click, c && c.uniqueClick].forEach(v => { const n = document.createElement('td'); n.className = `num${Number.isFinite(v) ? '' : ' dim'}`; n.textContent = hubNum(v); tr.appendChild(n); });
+    t.appendChild(tr);
+    rows.push([`第 ${l.page} 頁 ${l.label}`, l.title, l.url, hubNum(c && c.click), hubNum(c && c.uniqueClick)]);
+  });
+  ((data && data.clicks) || []).filter(c => !used.has(c.url)).forEach(c => {
+    if (used.has(`#${c.url}`)) return; used.add(`#${c.url}`);
+    const tr = document.createElement('tr'); const td = document.createElement('td'); td.className = 'ttl'; td.textContent = `（其他連結）${c.url}`; tr.appendChild(td);
+    const v = byUrl.get(c.url);
+    [v.click, v.uniqueClick].forEach(x => { const n = document.createElement('td'); n.className = 'num'; n.textContent = hubNum(x); tr.appendChild(n); });
+    t.appendChild(tr); rows.push(['（其他連結）', '', c.url, hubNum(v.click), hubNum(v.uniqueClick)]);
+  });
+  if (!links.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 3; td.className = 'dim'; td.textContent = '這筆沒有記下每則訊息的連結（早期排程沒有記錄）。'; tr.appendChild(td); t.appendChild(tr); }
+  if (data) {
+    const ov = data.overview || {}, sum = document.createElement('tr'); sum.className = 'sum';
+    [`整則推播：發送成功 ${hubNum(ov.delivered)}、開啟 ${hubNum(ov.uniqueImpression)} 人`, '', hubNum(ov.uniqueClick)].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i) td.className = 'num'; sum.appendChild(td); });
+    t.appendChild(sum); rows.push(['整則推播', `發送成功 ${hubNum(ov.delivered)}、開啟 ${hubNum(ov.uniqueImpression)} 人`, '', '', hubNum(ov.uniqueClick)]);
+  }
+  box.appendChild(t);
+  hubLastTable = rows;
+  const msg = document.createElement('div'); msg.className = 'line-note'; msg.style.whiteSpace = 'pre-wrap';
+  const lines = [];
+  if (rec.status !== 'sent') lines.push(rec.status === 'scheduled' ? '還沒發送，發送後才有點擊統計。' : '這筆沒有發送成功，沒有點擊統計。');
+  else if (st.busy) lines.push('向 LINE 查詢中…');
+  else if (st.error) lines.push(`✗ ${st.error}`);
+  else {
+    if (st.message) lines.push(st.message);
+    if (data) lines.push(`統計更新時間：${hubFmt(data.at)}${st.cached ? '（5 分鐘內查過，直接用上次的；按「重新整理統計」會再問 LINE）' : ''}`);
+    lines.push(`「—」表示 LINE 沒提供（數字小於 20，或認證帳號以外沒有統計）、或這個連結目前沒有點擊。統計只保留發送後 ${HUB_STATS_DAYS} 天，每次查到的數字都會存起來，超過後還能看最後一次的。`);
+  }
+  msg.textContent = lines.join('\n'); box.appendChild(msg);
+  const acts = document.createElement('div'); acts.className = 'hub-bar2';
+  if (rec.status === 'sent') {
+    const rf = document.createElement('button'); rf.type = 'button'; rf.id = 'hubStatsRefresh'; rf.textContent = '重新整理統計'; rf.disabled = !!st.busy; rf.addEventListener('click', () => hubStatsLoad(rec.id, true));
+    const cpy = document.createElement('button'); cpy.type = 'button'; cpy.id = 'hubStatsCopy'; cpy.textContent = '複製成表格';
+    cpy.addEventListener('click', async () => {
+      const tsv = hubLastTable.map(r => r.map(v => String(v).replace(/[\t\n]+/g, ' ')).join('\t')).join('\n');
+      try { await navigator.clipboard.writeText(tsv); cpy.textContent = '已複製'; setTimeout(() => { cpy.textContent = '複製成表格'; }, 1500); } catch (e) { statusEl.show('無法複製，請手動選取表格', 'error'); }
+    });
+    acts.append(rf, cpy);
+  }
+  if (rec.status === 'scheduled') {
+    const del = document.createElement('button'); del.type = 'button'; del.id = 'hubCancelSched'; del.className = 'danger'; del.textContent = '取消這筆排程';
+    del.addEventListener('click', async () => {
+      if (!window.confirm(`確定要取消這筆排程嗎？\n\n${hubFmt(rec.runAtIso)}　${hubAcctName(rec.channel)}\n${rec.name || rec.altText}\n\n取消後不會發送。要改時間請到「排入LINE推播」視窗的「排程狀態」。`)) return;
+      try { await s8Api('/line/schedule/cancel', { id: rec.id }); await hubListLoad(rec.channel); hubCloseDetail(); lineSchedLoad(); }
+      catch (e) { window.alert(`取消失敗：${e.message || e}`); hubListLoad(rec.channel); }
+    });
+    acts.appendChild(del);
+  }
+  if (acts.children.length) box.appendChild(acts);
+}
+
+// ---- LINE推播設定：連線狀態＋權限管理 ----
+const hubStatusBy = {};   // 帳號 → { busy, data, error }
+function hubSetShow() {
+  hubEl('hubStatusTitle').textContent = `連線狀態（${hubAcctName(hubCh)}）`;
+  hubStatusRender(); hubStatusLoad(hubCh);
+  const w = lineWhoFor(hubCh); lineAddReset(''); lineTesterListRender();
+  if (!w.loaded && !w.loading) lineWhoLoad(hubCh);
+}
+async function hubStatusLoad(ch, force) {
+  const s = (hubStatusBy[ch] = hubStatusBy[ch] || {});
+  if (s.busy || (s.data && !force)) return;
+  s.busy = true; s.error = ''; if (ch === hubCh) hubStatusRender();
+  try { s.data = await s8Api('/line/status', { channel: ch }); }
+  catch (e) { s.data = null; s.error = String(e.message || e); }
+  s.busy = false;
+  if (ch === hubCh && hubIsOpen() && hubTab === 'set') hubStatusRender();
+}
+function hubStatusRender() {
+  const box = hubEl('hubStatusBox'), s = hubStatusBy[hubCh] || {}; box.textContent = '';
+  const note = t => { const n = document.createElement('div'); n.className = 'line-note'; n.textContent = t; box.appendChild(n); };
+  hubEl('hubStatusBtn').disabled = !!s.busy;
+  if (s.busy && !s.data) { note('向 LINE 查詢中…'); return; }
+  if (s.error) { hubKv(box, 'LINE 連線', '✗ 連不上', 'bad'); note(s.error); return; }
+  const r = s.data; if (!r) { note('尚未查詢。'); return; }
+  hubKv(box, 'LINE 連線', r.bot ? '✓ 已連線（憑證有效）' : '✗ 查不到帳號資料', r.bot ? 'ok' : 'bad');
+  if (r.bot) hubKv(box, '帳號', `${r.bot.displayName}（${r.bot.basicId}）`);
+  const fol = r.followers ? r.followers.followers : null;
+  hubKv(box, '好友數', fol === null ? '查不到（LINE 的統計資料還沒好；認證帳號才有）' : `${fol.toLocaleString()} 人（LINE 昨日統計）`);
+  const q = r.quota, used = r.used;
+  if (!q) hubKv(box, '本月訊息額度', '查不到');
+  else if (q.type === 'limited' && Number.isFinite(q.value)) hubKv(box, '本月訊息額度', `上限 ${q.value.toLocaleString()}　已用 ${Number.isFinite(used) ? used.toLocaleString() : '？'}　剩 ${Number.isFinite(used) ? (q.value - used).toLocaleString() : '？'}`);
+  else hubKv(box, '本月訊息額度', `無上限${Number.isFinite(used) ? `（本月已用 ${used.toLocaleString()}）` : ''}`);
+  hubKv(box, '圖片空間（R2）', r.r2Ready ? '✓ 已綁定' : '✗ 尚未綁定，無法上傳圖片', r.r2Ready ? 'ok' : 'bad');
+  const fresh = r.heartbeatAt && r.serverNow - r.heartbeatAt <= 3 * 60 * 1000;
+  hubKv(box, '排程引擎（Cron）', r.heartbeatAt ? `${fresh ? '✓ 運作中' : '⚠ 停了'}（上次回報 ${taipeiIso(r.heartbeatAt).slice(5, 19).replace('T', ' ')}）` : '⚠ 還沒有回報過（排程不會發送）', fresh ? 'ok' : 'bad');
+  if (hubCh !== 'test') hubKv(box, '正式群發', r.officialAllowed ? '已開啟（LINE_ALLOW_OFFICIAL=1）' : '關閉中（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1，正式帳號只能做測試推播）');
+  if (r.notes && r.notes.length) note(`備註：\n${r.notes.join('\n')}`);
+}
+hubEl('hubStatusBtn').addEventListener('click', () => { hubStatusLoad(hubCh, true); const w = lineWhoFor(hubCh); if (!w.loading) lineWhoLoad(hubCh); });
+
+// 權限管理：這個帳號「可以被選為測試推播收件人」的成員（名字＋對應的 LINE userId）
+const lineBoxCh = () => hubCh;
+function lineTesterListRender() {
+  const ch = lineBoxCh(), w = lineWhoFor(ch), box = $line('lineTesterList'); box.textContent = '';
+  $line('lineTesterTitle').textContent = `權限管理（${lineWhoAcct(ch)}）`;
+  hubEl('lineTesterHint').textContent = ch === 'test' ? '名單內的成員可以被選為測試推播的收件人（每次最多 2 位）。對方傳「登記」給測試帳號會自動加入，也可以在下面直接貼 userId 新增。' : '名單內的成員可以被選為測試推播的收件人（每次最多 2 位），正式群發不受名單影響。';
+  if (w.error) { box.textContent = `✗ ${w.error}`; return; }
+  if (!w.loaded) { box.textContent = '讀取中…'; return; }
+  if (!w.testers.length) { box.textContent = '名單是空的。'; return; }
+  w.testers.forEach(t => {
+    const row = document.createElement('div'); row.className = 'line-trow';
+    const mem = document.createElement('span'); mem.className = 'line-tmem';
+    const nm = document.createElement('span'); nm.textContent = t.name;
+    const code = document.createElement('code'); code.textContent = t.userId || '';
+    mem.append(nm, code);
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = '移除';
+    b.addEventListener('click', async () => {
+      if (!window.confirm(`從「${lineWhoAcct(ch)}」的名單移除「${t.name}」嗎？\n\n移除後測試推播不會再發給他；${ch === 'test' ? '他可以再傳「登記」重新加入，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
+      try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; w.sel = w.sel.filter(v => v !== t.tid); lineWhoSelStore(ch, w.sel); lineResetTestKeys(); }
+      catch (e) { window.alert(`移除失敗：${e.message || e}`); }
+      lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
+    });
+    row.append(mem, b); box.appendChild(row);
+  });
+}
+// 新增成員：先「查詢」（向 LINE 驗證並顯示暱稱），確認是對的人再「加入名單」
+let lineAddFound = null;
+function lineAddReset(text, bad) { lineAddFound = null; $line('lineAddOk').disabled = true; const o = $line('lineAddOut'); o.textContent = text || ''; o.classList.toggle('bad', !!bad); }
+$line('lineAddUid').addEventListener('input', () => lineAddReset(''));
+$line('lineAddName').addEventListener('input', () => { if (lineAddFound) lineAddReset(''); });
+$line('lineAddFind').addEventListener('click', async () => {
+  const ch = lineBoxCh(), uid = $line('lineAddUid').value.trim(), name = $line('lineAddName').value.trim();
+  if (!/^U[0-9a-f]{32}$/.test(uid)) { lineAddReset('✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true); return; }
+  $line('lineAddFind').disabled = true; lineAddReset(`向 LINE（${lineWhoAcct(ch)}）查詢中…`);
+  try {
+    const r = await s8Api('/line/testers/lookup', { channel: ch, userId: uid, name });
+    lineAddFound = { ch, uid, name };
+    $line('lineAddOk').disabled = false;
+    const o = $line('lineAddOut'); o.classList.remove('bad');
+    const f = r.found, shown = f.name === f.lineName ? `「${f.name}」` : `「${f.name}」（LINE 暱稱：${f.lineName}）`;
+    o.textContent = f.already ? `✓ 查到${shown}，已經在「${lineWhoAcct(ch)}」的名單裡（再按「加入名單」會更新名字）。` : `✓ LINE 查到這個 ID 的暱稱是「${f.lineName}」，會用${shown}加入。確認是對的人，再按「加入名單」。`;
+  } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
+  $line('lineAddFind').disabled = false;
 });
-$line('lineCopyBtn').addEventListener('click', async () => {
-  if (!lineLastTable) return;
-  const tsv = lineLastTable.rows.map(r => r.map(v => String(v).replace(/[\t\n]+/g, ' ')).join('\t')).join('\n');
-  try { await navigator.clipboard.writeText(tsv); $line('lineCopyBtn').textContent = '已複製'; setTimeout(() => { $line('lineCopyBtn').textContent = '複製成表格'; }, 1500); }
-  catch (e) { statusEl.show('無法複製，請手動選取表格', 'error'); }
+$line('lineAddOk').addEventListener('click', async () => {
+  if (!lineAddFound || lineAddFound.ch !== lineBoxCh()) return;
+  const { ch, uid, name } = lineAddFound;
+  $line('lineAddOk').disabled = true;
+  try {
+    const r = await s8Api('/line/testers/add', { channel: ch, userId: uid, name });
+    const w = lineWhoFor(ch); w.testers = r.testers || []; w.loaded = true;
+    const added = (r.found && r.found.name) || name || '';
+    $line('lineAddUid').value = ''; $line('lineAddName').value = ''; lineAddReset(`✓ 已加入「${added}」。`);
+    lineWhoRender(); lineTesterListRender(); lineUpdateSteps();
+  } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
 });
-// 換一筆紀錄：有存過快照就直接顯示（不用再問 LINE）
-$line('lineHist').addEventListener('change', () => {
-  lineLastTable = null; $line('lineClicksOut').textContent = '';
-  const rec = lineHistLoad().find(r => r.requestId === $line('lineHist').value);
-  if (rec && rec.snap) lineRenderClicks(rec, rec.snap, lineSnapNote(rec.snap, lineIsOld(rec) ? `這筆已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計。` : '按「查詢點擊次數」可更新。'));
-  else lineHistRender();
-});
-lineHistRender();
 
 
 // ---- 「排入推播」視窗左上的切換：LINE原生推播／S8推播 ----
@@ -6758,7 +6983,6 @@ function hideUiTip() {
 // The Worker does the OAuth work and keeps the S8 credentials sealed; this page only holds an opaque string
 // (sessionStorage) and asks the Worker to use it. Only read access is requested at this stage.
 const s8Link = document.getElementById('s8Link');
-const s8cOverlay = document.getElementById('s8ConnOverlay');
 const workerBase = () => imageProxyUrl();
 const S8_SESSION_KEY = 's8Session';
 const s8ClientKey = () => `s8ClientW:${workerBase()}`;   // 「W」＝帶 write 範圍的用戶端（舊版唯讀用戶端的 `s8Client:` 不再沿用）
@@ -6769,8 +6993,6 @@ const s8ClientSet = v => { try { if (v) localStorage.setItem(s8ClientKey(), v); 
 const s8CanWrite = () => /insightark-mcp:write/.test(s8Get('s8Scope'));
 function s8UpdatePill(extra) {
   const on = !!s8Get(S8_SESSION_KEY);
-  s8Link.dataset.state = on ? 'on' : 'off';
-  s8Link.textContent = on ? 'S8 已連結' : 'S8 未連結';
   document.getElementById('s8cState').textContent = extra || (on ? (s8CanWrite() ? '已連結' : '已連結，但只有唯讀權限（請按「連結 S8」重新授權一次）') : '尚未連結');
 }
 // 提示窗的預設文字（沒有其他訊息時顯示）
@@ -6860,8 +7082,7 @@ window.addEventListener('message', ev => {
     s8Check();
   } else if (ev.data.type === 's8-error') { s8UpdatePill('連結失敗'); s8ShowOut(String(ev.data.error || '').slice(0, 300)); }
 });
-function openS8Conn() { s8cOverlay.classList.add('open'); s8UpdatePill(); s8ShowOut(''); if (s8Get(S8_SESSION_KEY) && !s8Get('s8Scope')) s8Check(); }   // 開視窗不再自動呼叫 S8（省額度）；只有不知道授權範圍時才檢查一次，其餘按「檢查連結狀態」
-s8Link.addEventListener('click', openS8Conn);
+s8Link.addEventListener('click', () => openHub());
 document.getElementById('s8cConnect').addEventListener('click', () => s8Connect());
 document.getElementById('s8cCheck').addEventListener('click', s8Check);
 document.getElementById('s8cTools').addEventListener('click', async () => {
@@ -6881,9 +7102,6 @@ document.getElementById('s8cDisconnect').addEventListener('click', () => {
   if (!window.confirm('確定要中斷 S8 連結嗎？\n\n中斷後，這個分頁就不能傳送資料給 S8，要再使用必須重新按「連結 S8」授權。\n（這只會清掉這個分頁保存的連結資料；S8 端的授權要撤銷請到 S8 Console → 使用者資訊 → Connected Apps。）')) return;
   s8Set(S8_SESSION_KEY, ''); s8Set('s8Scope', ''); s8ShowOut(''); s8UpdatePill();
 });
-document.getElementById('s8cCloseBtn').addEventListener('click', () => s8cOverlay.classList.remove('open'));
-s8cOverlay.addEventListener('mousedown', e => { if (e.target === s8cOverlay) s8cOverlay.classList.remove('open'); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') s8cOverlay.classList.remove('open'); });
 // Popup lost its opener (some sign-in pages cut it): the Worker then sends the whole tab back with the result in the #hash.
 (function s8ReadHash() {
   const h = location.hash;
@@ -6899,7 +7117,7 @@ chromeReady = true;
 applyModeChrome();
 try { if (sessionStorage.getItem('labOn') === '1' && readLabAuth()) setLab(true); } catch (e) { /* no storage */ }
 s8UpdatePill();
-if (window.__s8Pending && labOn) { openS8Conn(); if (window.__s8Pending.error) { s8UpdatePill('連結失敗'); s8ShowOut(window.__s8Pending.error); } }
+if (window.__s8Pending && labOn) { openHub('s8'); if (window.__s8Pending.error) { s8UpdatePill('連結失敗'); s8ShowOut(window.__s8Pending.error); } }
 if (imageProxyUrl()) {
   document.getElementById('tipAutoImg').hidden = false;
   document.querySelectorAll('.tip-ent-auto').forEach(e => { e.hidden = false; });
