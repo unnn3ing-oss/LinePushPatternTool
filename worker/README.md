@@ -36,7 +36,7 @@
 
 ## 連結 SUPER 8 Studio（OAuth，階段一：只讀）
 
-試驗版右上角的「S8 未連結／已連結」按鈕，會跳到 S8 的登入與授權頁，讓這個 Worker 取得**唯讀**權限。更新 Worker 程式後即可使用，**不需要新增任何變數或儲存空間**（沿用 `LAB_PASSWORD` 衍生的金鑰加密）。
+試驗版右上角「訊息推播」→「S8連結設定」分頁的「連結 S8」按鈕，會跳到 S8 的登入與授權頁，讓這個 Worker 取得**唯讀**權限。更新 Worker 程式後即可使用，**不需要新增任何變數或儲存空間**（沿用 `LAB_PASSWORD` 衍生的金鑰加密）。
 
 | 項目 | 說明 |
 |---|---|
@@ -84,10 +84,13 @@
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
 | `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給測試名單裡勾選的人（每次最多 2 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
 | `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
-| `POST /line/testers/list`｜`remove` | 查看／移除測試名單（網頁只拿到 tid 與暱稱，看不到 LINE userId）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
-| `POST /line/testers/lookup`｜`add` | **只有 news／ent**：貼上對方的 LINE userId → Worker 用該正式帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效並取得暱稱；`add` 驗證通過才存（每個帳號上限 20 人） |
+| `POST /line/testers/list`｜`remove` | 查看／移除成員名單（回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 權限管理」列表用，需要試驗功能憑證）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
+| `POST /line/testers/lookup`｜`add` | 貼上對方的 LINE userId（`name` 可自己填，不填就用 LINE 暱稱）→ Worker 用該帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效；`add` 驗證通過才存（正式帳號上限 20 人、測試帳號 50 人）。測試帳號也能這樣加，不一定要傳「登記」 |
 | `POST /line/schedule/*` | 排程推播：建立、查看、變更時間、刪除（見下一節） |
 | `POST /line/clicks` | 用發送時 LINE 回的 request id，查這次群發每個連結的點擊次數與人數（`GET /v2/bot/insight/message/event`，唯讀） |
+| `POST /line/history/list` | 「訊息推播 → 推播列表」：某個帳號（`channel`）的推播紀錄（立即推播＋排程合併，新到舊，最多 60 筆）。不回圖片資料 |
+| `POST /line/history/stats` | 某一筆的點擊統計：用該筆的 request id 向 LINE 查，查到存成快照（`stat`）寫回紀錄；5 分鐘內不重查（`force:true` 才查）；超過 14 天不問 LINE，只給最後的快照 |
+| `POST /line/history/rename` | 改某一筆的訊息命名（預設 `{日期}{新聞/娛樂}`，例如 `10/09新聞`） |
 
 發送的安全規則（`POST /line/send`）：
 
@@ -110,7 +113,7 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 新聞／娛樂正式帳號的 webhook 屬於 S8，無法改，所以**不靠 webhook 取得 userId**：S8 客戶中心裡每位 LINE 客戶的客戶 ID 就是該帳號下的 LINE userId（`U` 加 32 碼）。
 
 1. **設定（一次性）**：Worker Secret 設 `LINE_CHANNEL_ID_NEWS`／`LINE_CHANNEL_SECRET_NEWS`（娛樂同理 `_ENT`）。**`LINE_ALLOW_OFFICIAL` 照樣不設**——這個功能不需要它，正式 broadcast 仍然鎖死。
-2. **建立名單**：網頁「排入LINE推播」→ 折疊區「帳號與額度…」→ 選「正式帳號」→ 貼上 userId →「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
+2. **建立名單**：網頁右上角「訊息推播」→「LINE推播設定」→ 上方選「TVBS新聞」→「權限管理」→ 填名字（可不填）、貼上 userId →「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
 3. **測試推播**：第 3 步「測試推播發到」選「TVBS新聞（正式帳號）」，勾選收件人（最多 2 位）→ `POST /line/send` 帶 `mode:"test"`＋`testers`，Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內勾選的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
 4. **安全**：`lineCall` 內強制正式帳號的 multicast 最多 2 位、每個都是合法 userId；reply 仍只有測試帳號能用；沒有 push／narrowcast；正式 broadcast 的所有閘門（旗標、先測試、輸入好友數、版型）完全沒變。測試排程仍然只能排給測試帳號。
 
@@ -129,11 +132,13 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 到時間時（`scheduled()`，每分鐘一次）Worker 會：先檢查格式（validate）、重新查好友數與額度、好友數和建立排程時確認的差距要在 10% 內（否則不發）、正式帳號的 `LINE_ALLOW_OFFICIAL` 還要是 1，才用建立排程時產生的 `retryKey` 發出（LINE 24 小時內同一個 key 不會重複發，所以重試或 Cron 重疊都不會發兩次）。LINE 暫時失敗（5xx／429／網路）會每分鐘重試；格式或額度問題直接標成「發送失敗」；**超過預定時間 30 分鐘還沒發出去就放棄**（標成「逾時未發送」，避免新聞過時才推）。狀態有：待發送、發送中、已發送、發送失敗、已取消、逾時未發送。
 
-排程自動發出去的，網頁在你下次打開視窗時會把 request id 補進「發送紀錄」，才能用來查點擊次數。
+### 推播列表與發送後查點擊次數
 
-### 發送後查點擊次數
+每次發送成功，Worker 會留一筆紀錄：立即推播存在 R2 的 `hist/<id>.json`（`id` 由這次發送的 `retryKey` 決定，同一次重試不會多一筆），排程沿用 `sched/<id>.json`（Cron 每分鐘只掃 `sched/`，不會因為紀錄變多而變慢）。紀錄內有：訊息命名、推播標題、每一格的頁／位置／標題／連結、LINE 回的 request id、發送時間、推播人數、收件人。網頁「訊息推播 → 推播列表」讀這些，換電腦也看得到。**只有這個工具的「LINE原生推播」發出的會有紀錄**；走 S8 的不在這裡。
 
-每次發送成功，網頁會把 LINE 回的 request id 與「第幾頁哪一格是哪個連結」記在這台瀏覽器（最近 30 筆）。在「發送紀錄與點擊次數」選一筆按「查詢點擊次數」，會列出每個連結的點擊次數、點擊人數，最後一列是整則訊息的發送數、開啟人數與點了任何連結的人數，可「複製成表格」貼到試算表。LINE 的限制（官方文件）：**統計只在發送後 14 天內更新**；**數字小於 20（或實際人數小於 20）時 LINE 不提供**，會顯示「—」（測試帳號好友很少，所以幾乎都是「—」）；每小時最多查 60 次。網頁每次查到的數字都會存成快照，超過 14 天 LINE 不再提供時還能看最後一次查到的；試驗功能憑證只有 8 小時，過期時查詢會自動跳出密碼視窗，輸入後繼續。
+點進某一筆會用 request id 向 LINE 查每個連結的點擊次數、點擊人數，最後一列是整則推播的發送成功數、開啟人數與點了任何連結的人數，可「複製成表格」貼到試算表。LINE 的限制（官方文件）：**統計只在發送後 14 天內更新**；**數字小於 20（或實際人數小於 20）時 LINE 不提供**，會顯示「—」；統計會隨時間更新，剛發完可能還是空的；只有認證帳號有；每小時最多查 60 次。每次查到的數字都會存成快照，超過 14 天 LINE 不再提供時，還能看最後一次查到的。列表本身不會向 LINE 查統計，只有點進單筆才查。注意 `overview.delivered` 官方定義是「送達的訊息**則數**」（不是人數；每人收到 2 頁會算 2 則），所以列表的「推播人數」用發送當下的好友數，不用 `delivered`。
+
+> 以前存在瀏覽器（`localStorage` 的 `lineSends`）的「發送紀錄」已移除，不會搬到新的列表。
 
 ### 絕對不要做的事（會讓 S8 的串接中斷）
 

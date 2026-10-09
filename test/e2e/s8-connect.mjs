@@ -49,7 +49,11 @@ page.on('dialog', async d => { dialogs.push(d.message()); await (dialogAnswer ? 
 const vis = async sel => !(await page.locator(sel).isHidden());
 
 // ===== 未連結 =====
+check((await page.textContent('#s8Link')) === '訊息推播', '右上角按鈕叫「訊息推播」（不再是「S8 未連結」）');
 await page.click('#s8Link');
+check((await page.$$eval('#hubTabs .s8-ptab', b => b.map(x => x.textContent).join('｜'))) === '推播列表｜LINE推播設定｜S8連結設定' && (await page.textContent('#hubTabs .active')) === '推播列表', '視窗上方三個分頁：推播列表｜LINE推播設定｜S8連結設定（預設停在推播列表）');
+await page.click('#hubTabS8');
+check(await vis('#hubS8') && !(await vis('#hubList')) && !(await vis('#hubAcct')), '「S8連結設定」：顯示 S8 連結內容，帳號切換列收起');
 check((await page.textContent('#s8cState')) === '尚未連結', '未連結：狀態顯示「尚未連結」');
 check((await page.textContent('#s8cOut')).includes('讀取＋寫入') && (await page.textContent('#s8cOut')).includes('不用再重複授權'), '提示窗說明一次授予讀取＋寫入權限');
 check(await page.locator('#s8cUpgrade').count() === 0, '「升級為可建立草稿」按鈕已移除');

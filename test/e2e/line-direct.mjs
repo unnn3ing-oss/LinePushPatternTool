@@ -237,50 +237,7 @@ check((await txt('#lineWin')).includes('287,091') && await page.evaluate(() => d
 check((await go('lineGoBtn')) === '已正式推播' && (await bgOf('lineGoBtn')) === GREEN && await page.isDisabled('#lineGoBtn'), '完成後按鈕顯示「已正式推播」，不能重複推播');
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-5-done.png') });
 
-// ===== 8. 發送紀錄與點擊次數（折疊區）=====
-await page.evaluate(() => { document.getElementById('lineBox').open = true; });
-const hist = await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends')));
-check(hist.length === 2 && hist[0].channel === 'news' && hist[1].channel === 'test' && hist[0].links.length === 12, '測試與正式推播都記下 request id 與每格連結');
-await page.click('#lineClicksBtn');
-await page.waitForSelector('#lineClicksOut table');
-const rows = await page.$$eval('#lineClicksOut table tr', trs => trs.map(tr => [...tr.children].map(c => c.textContent)));
-check(reqs.clicks[0].requestId === '22222222-2222-4222-8222-222222222222' && rows[1][2] === '1,234' && rows[2][2] === '—' && rows.some(r => r[0] === '（其他連結）'), '查詢點擊次數：每個連結一列、不足 20 顯示「—」、其他連結另列');
-const snap = await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends'))[0].snap);
-check(snap && snap.clicks.length === 3 && /\+08:00$/.test(snap.at), '每次查到的數字自動存成快照');
-check((await txt('#lineClicksOut .line-note')).includes('LINE 數據查詢時間'), '表格下方註明查詢時間');
-
-// ---- 時間太久：超過 14 天 LINE 不再提供 → 顯示最後一次的快照，不再問 LINE ----
-await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('lineSends')); a[0].sentAt = '2026-09-01T10:00:00+08:00'; localStorage.setItem('lineSends', JSON.stringify(a)); lineHistRender(); });
-const clicksBefore = reqs.clicks.length;
-await page.click('#lineClicksBtn');
-await page.waitForFunction(() => /快照/.test(document.getElementById('lineClicksOut').textContent));
-check(reqs.clicks.length === clicksBefore && (await txt('#lineClicksOut')).includes('已超過 14 天') && (await page.$$eval('#lineClicksOut table tr', t => t.length)) > 3, '超過 14 天：不再問 LINE，直接顯示最後一次查到的快照，並說明');
-check((await page.$$eval('#lineHist option', os => os[0].textContent)).includes('已過 14 天，有快照'), '下拉選單標出「已過 14 天，有快照」');
-await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('lineSends')); delete a[0].snap; localStorage.setItem('lineSends', JSON.stringify(a)); lineHistRender(); });
-await page.click('#lineClicksBtn');
-await page.waitForFunction(() => /沒有存快照/.test(document.getElementById('lineClicksOut').textContent));
-check((await txt('#lineClicksOut')).includes('下次請在發送後 14 天內查詢'), '超過 14 天又沒有快照：說明查不到的原因與下次怎麼做');
-await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('lineSends')); a[0].sentAt = '2026-10-07T12:00:00+08:00'; localStorage.setItem('lineSends', JSON.stringify(a)); lineHistRender(); });
-
-// ---- 憑證過期：跳出密碼視窗，輸入後自動繼續 ----
-await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'old', expiresAt: Date.now() - 1000 })); });
-const c0 = reqs.clicks.length;
-await page.click('#lineClicksBtn');
-await page.waitForSelector('#labOverlay.open');
-check((await txt('#labMsg')).includes('憑證已過期') && await page.evaluate(() => Number(getComputedStyle(document.getElementById('labOverlay')).zIndex) > Number(getComputedStyle(document.getElementById('s8Overlay')).zIndex)), '憑證過期：自動跳出密碼視窗（蓋在排入推播視窗之上），說明輸入後會繼續');
-check(await page.evaluate(() => document.getElementById('s8Overlay').classList.contains('open')), '排入推播視窗還開著，沒有被關掉或重畫');
-await page.screenshot({ path: path.join(SHOTS, 'line-ui-10-relogin.png') });
-await page.fill('#labPass', 'pw'); await page.click('#labEnterBtn');
-await page.waitForFunction(() => document.querySelector('#lineClicksOut table') && /LINE 數據查詢時間/.test(document.getElementById('lineClicksOut').textContent));
-check(labAuthReqs.length === 1 && reqs.clicks.length === c0 + 1 && !(await page.evaluate(() => document.getElementById('labOverlay').classList.contains('open'))), '輸入密碼後剛剛的查詢自動繼續完成（不用重按）');
-// 取消 → 說明憑證過期，不會把視窗關掉
-await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'old', expiresAt: Date.now() - 1000 })); });
-await page.click('#lineClicksBtn');
-await page.waitForSelector('#labOverlay.open');
-await page.click('#labCancelBtn');
-await page.waitForFunction(() => /憑證已過期/.test(document.getElementById('lineClicksOut').textContent));
-check(await page.evaluate(() => document.getElementById('s8Overlay').classList.contains('open')), '取消輸入密碼：顯示憑證過期說明，視窗仍開著');
-await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token-2', expiresAt: Date.now() + 3600e3 })); });
+// （第 8 節「發送紀錄與點擊次數」已搬到 test/e2e/message-hub.mjs：現在是「訊息推播 → 推播列表」，資料存在 Worker）
 
 // ===== 9. 排程推播流程 + 排程狀態（查看、變更、刪除）=====
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
@@ -345,7 +302,6 @@ heartbeat = Date.now();
 scheds.push({ id: 'c'.repeat(24), channel: 'ent', org: 'ent', name: 'y', altText: '自動發出的', runAt: Date.now() - 3600e3, runAtIso: '2026-10-07T10:00:00+08:00', status: 'sent', requestId: '33333333-3333-4333-8333-333333333333', sentAt: '2026-10-07T10:00:05+08:00', links: [{ page: 1, label: '左上', title: '★標題', url: 'https://example.com/auto' }] });
 await page.click('#lineSchedRefresh');
 await page.waitForFunction(() => !document.getElementById('lineSchedWarn').hidden === false && /自動發出的/.test(document.getElementById('lineSchedList').textContent));
-check((await page.evaluate(() => JSON.parse(localStorage.getItem('lineSends')).some(r => r.requestId === '33333333-3333-4333-8333-333333333333' && r.fromSchedule))), '排程自動發出去的，request id 自動補進發送紀錄（才能查點擊次數）');
 await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-9b-sched-list2.png') });
 
 // ===== 10. 推播失敗 → 下方狀態窗（黃）=====
@@ -646,14 +602,6 @@ const tc17 = schedReqs.create.at(-1);
 check(tc17.channel === 'test' && JSON.stringify(tc17.testers) === JSON.stringify([T_A]) && (await txt('#lineWin')).includes('收件人：王小明'), '建立測試排程：帶 testers=[王小明]，結果寫明收件人');
 await page.waitForFunction(() => [...document.querySelectorAll('#lineSchedList .ttl')].some(t => t.textContent.includes('→ 給 王小明')));
 await page.locator('#lineSched').screenshot({ path: path.join(SHOTS, 'line-ui-17e-sched-recipients.png') });
-// 名單管理（折疊區）
-await page.evaluate(() => { document.getElementById('lineBox').open = true; lineTesterListRender(); });
-check((await page.$$eval('#lineTesterList .line-trow span', r => r.map(x => x.textContent).join())) === '王小明,李小華,陳小美', '折疊區「測試名單」列出所有登記的人');
-await page.evaluate(() => { lineWhoFor('test').sel = ['a'.repeat(16), 'b'.repeat(16)]; lineWhoSelStore('test', lineWhoFor('test').sel); });
-await page.click('#lineTesterList .line-trow:first-child button');
-await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
-check(testerReqs.remove.at(-1).tid === T_A && JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho')))) === JSON.stringify({ test: [T_B] }), '移除王小明：送出移除，名單少一位；他若在你記住的選擇裡就一併拿掉');
-await page.locator('#lineBox').screenshot({ path: path.join(SHOTS, 'line-ui-17f-tester-list.png') });
 await page.click('#s8CloseBtn');
 
 // ===== 18. 正式帳號的測試推播：只發給「該帳號測試名單」裡勾選的人（名單由管理者貼 userId，LINE 驗證後加入）=====
@@ -680,7 +628,6 @@ const o18 = offReqs.send.at(-1);
 check(o18.channel === 'news' && o18.mode === 'test' && JSON.stringify(o18.testers) === JSON.stringify([T_N1]) && /^[0-9a-f-]{36}$/.test(o18.retryKey) && o18.confirmTotal === undefined, '送出：channel=news、mode=test、只帶勾選的人；沒有人數確認（這不是正式群發）');
 check((await txt('#lineTestMsg')).includes('小編本人') && (await txt('#lineWin')).includes('不是群發') && (await txt('#lineWin')).includes('請到手機的TVBS新聞確認'), '結果寫明發到哪個正式帳號、只給誰、不是群發');
 await page.locator('#linePanel').screenshot({ path: path.join(SHOTS, 'line-ui-18c-official-sent.png') });
-check(await page.evaluate(() => { const r = JSON.parse(localStorage.getItem('lineSends'))[0]; return r.channel === 'news' && r.test === true; }) && (await page.$$eval('#lineHist option', o => o[0].textContent)).includes('（測試推播）'), '發送紀錄標示「（測試推播）」，不會被當成正式群發');
 await page.click('#lineDoneBtn');
 check(await page.evaluate(() => lineSt().testToken) === 'ttok-off' && await vis('#lineStep4'), '「測試完成」後照常進入第 4 步確認人數；測試憑證帶到後面的正式推播閘門');
 // 測試排程固定測試帳號
@@ -693,29 +640,6 @@ check(await vis('#lineWhoDest') && await page.evaluate(() => lineWhoCh() === 'ne
 await page.click('#lineTgtTest'); await page.waitForTimeout(400);
 check(await page.evaluate(() => lineWhoCh() === 'test') && await page.isHidden('#lineWhoDest'), '改選「排程對象：測試帳號」：測試排程固定發到測試帳號，不顯示「發到哪個帳號」');
 await page.click('#lineTgtOfficial'); await page.waitForTimeout(300);
-// 折疊區：管理正式帳號測試名單
-await page.evaluate(() => { document.getElementById('lineBox').open = true; });
-await page.click('#lineChOfficial'); await page.waitForTimeout(300);
-check((await txt('#lineTesterTitle')).includes('TVBS新聞 的測試名單') && await vis('#lineAddRow') && (await page.$$eval('#lineTesterList .line-trow span', r => r.map(x => x.textContent).join())) === '小編本人', '選「正式帳號」：顯示 TVBS新聞 的測試名單與「貼上 userId」新增列');
-await page.fill('#lineAddUid', 'abc'); await page.click('#lineAddFind');
-check((await txt('#lineAddOut')).includes('格式不對') && offReqs.lookup.length === 0, '貼了格式不對的 ID：直接擋掉，不會去問 LINE');
-await page.fill('#lineAddUid', UID_OK); await page.click('#lineAddFind');
-await page.waitForFunction(() => /LINE 查到這個 ID 的暱稱是「新同仁」/.test(document.getElementById('lineAddOut').textContent));
-check(offReqs.lookup.at(-1).channel === 'news' && offReqs.lookup.at(-1).userId === UID_OK && !(await page.evaluate(() => document.getElementById('lineAddOk').disabled)) && (await page.$$eval('#lineTesterList .line-trow', r => r.length)) === 1, '「查詢」：向 LINE 驗證並顯示暱稱「新同仁」，還沒加入名單，要你確認後才能按「加入名單」');
-await page.locator('#lineBox').screenshot({ path: path.join(SHOTS, 'line-ui-18d-add-tester.png') });
-await page.click('#lineAddOk');
-await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
-check(offReqs.add.at(-1).userId === UID_OK && (await page.inputValue('#lineAddUid')) === '' && (await txt('#lineAddOut')).includes('已加入「新同仁」'), '「加入名單」：名單多一位，輸入框清空（不留著 userId）');
-lookupFail = 'LINE 查不到這個 ID：他可能不是「TVBS新聞」的好友，或這個 ID 屬於別的 Provider。沒有加入名單。';
-await page.fill('#lineAddUid', 'U' + 'c'.repeat(32)); await page.click('#lineAddFind');
-await page.waitForFunction(() => /Provider/.test(document.getElementById('lineAddOut').textContent));
-check((await page.getAttribute('#lineAddOut', 'class')).includes('bad') && await page.evaluate(() => document.getElementById('lineAddOk').disabled), 'LINE 查不到：顯示原因（不是好友／別的 Provider），不能加入');
-lookupFail = '';
-await page.click('#lineTesterList .line-trow:first-child button');
-await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
-check(offReqs.remove.at(-1).channel === 'news' && offReqs.remove.at(-1).tid === T_N1 && JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('lineWho') || '{}').news || [])) === '[]', '移除：只動 TVBS新聞 的名單，並把他從記住的勾選拿掉');
-await page.click('#lineChTest'); await page.waitForTimeout(300);
-check(await page.isHidden('#lineAddRow') && (await txt('#lineTesterTitle')).includes('傳「登記」給測試帳號'), '切回「測試帳號」：新增列收起，名單回到用「登記」加入的那一份');
 await page.evaluate(() => { try { localStorage.removeItem('lineTestOn'); } catch (e) { /* */ } const st = lineSt(); st.testOn = 'test'; });
 await page.click('#s8CloseBtn');
 

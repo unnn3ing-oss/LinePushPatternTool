@@ -782,6 +782,7 @@ async function handleS8Status(request, env) {
 //   POST /line/prepare   → 把每頁 1040 寬的圖片存進 R2（綁定名稱 LINE_IMG），封存要用的內容（30 分鐘有效）
 //   POST /line/validate  → 把準備好的內容交給 LINE 的 validate/broadcast 檢查格式（只檢查，不會發送）
 //   POST /line/clicks    → 用發送時的 request id 查這次群發每個連結的點擊次數／人數（唯讀）
+//   POST /line/history/list｜stats｜rename → 「訊息推播 → 推播列表」：發送紀錄（立即推播 hist/、排程 sched/）、點擊統計快照、改名
 //   POST /line/schedule/create｜list｜update｜cancel → 排程推播（Worker 自己排，需 R2 與 Cron Trigger，見下方「排程推播」）
 //   POST /line/send      → validate 通過後發送。測試帳號：multicast 給「測試名單」勾選的人（每次最多 2 位，不 broadcast）；正式帳號：broadcast 給全部好友，要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
 //   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
@@ -893,7 +894,10 @@ async function handleLineStatus(request, env) {
   const { body, error } = await lineReadBody(request, env); if (error) return error;
   try {
     const info = await lineAccountInfo(env, body.channel);
-    return jsonOk({ ok: true, channel: body.channel, r2Ready: !!(env && env.LINE_IMG && typeof env.LINE_IMG.put === 'function'), ...info }, request, env);
+    const r2Ready = !!(env && env.LINE_IMG && typeof env.LINE_IMG.put === 'function');
+    let heartbeatAt = 0;
+    if (r2Ready && typeof env.LINE_IMG.get === 'function') { try { const hb = await env.LINE_IMG.get('meta/heartbeat.json'); if (hb) heartbeatAt = Number(JSON.parse(typeof hb.text === 'function' ? await hb.text() : textDecoder.decode(hb.body)).at) || 0; } catch { /* ignore */ } }
+    return jsonOk({ ok: true, channel: body.channel, r2Ready, heartbeatAt, serverNow: Date.now(), officialAllowed: !!(env && env.LINE_ALLOW_OFFICIAL === '1'), ...info }, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '無法呼叫 LINE', request, env); }
 }
 
@@ -1023,7 +1027,7 @@ async function lineTesterAll(env, ch = 'test') {
   }
   return out.sort((a, b) => (a.registeredAt || 0) - (b.registeredAt || 0));
 }
-const lineTesterPublic = r => ({ tid: r.tid, name: r.name || '（沒有暱稱）', registeredAt: r.registeredAt || 0 });
+const lineTesterPublic = r => ({ tid: r.tid, name: r.name || '（沒有暱稱）', userId: r.userId || '', registeredAt: r.registeredAt || 0 });   // 「LINE推播設定 → 權限管理」要列出名字與對應的 userId（試驗功能密碼後面才看得到）
 async function lineResolveTesters(env, tids, ch = 'test') {
   if (!Array.isArray(tids) || !tids.length) throw badInput('請先選擇測試推播要給誰（至少 1 位）。沒有發送任何東西。');
   if (tids.length > 10) throw badInput('收件人格式不正確。沒有發送任何東西。');
@@ -1068,6 +1072,18 @@ async function lineOpenPrep(env, token, what = '發送') {
   if (!prep || prep.t !== 'line-prepare' || !prep.x || prep.x < Date.now()) throw badInput(`準備好的內容已過期或無效，請重新「傳送資料」。沒有${what}任何東西。`);
   return prep;
 }
+// 推播的預設命名：{日期}{新聞／娛樂}，例如「10/09新聞」；之後可以在「訊息推播 → 推播列表」改名
+const lineDefaultName = (org, ms) => `${taipeiIso(ms).slice(5, 10).replace('-', '/')}${org === 'ent' ? '娛樂' : '新聞'}`;
+const lineCleanName = (v, org, ms) => { const n = typeof v === 'string' ? v.trim().slice(0, 60) : ''; return n || lineDefaultName(org, ms); };
+// 立即推播成功後留一筆紀錄（id 由 retryKey 決定：同一次發送被重試只會有一筆）。紀錄寫失敗不能讓「已經發出去」變成錯誤。
+async function lineHistorySave(env, { key, prep, body, r, out }) {
+  try {
+    const id = body.retryKey.replace(/-/g, '').slice(0, 24), now = Date.now();
+    if (await lineRecGet(env, id)) return true;   // 同一把 retryKey ＝ 同一次發送，不覆蓋（可能已被改名或有統計快照）
+    await lineSchedPut(env, { v: 1, id, kind: 'now', channel: key, org: prep.org, name: lineCleanName(body.name, prep.org, now), altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), runAt: now, createdAt: now, status: 'sent', attempts: 1, requestId: r.requestId || '', sentAt: out.sentAt, friends: Number.isFinite(r.friends) ? r.friends : null, test: !out.official, recipientNames: Array.isArray(r.recipients) ? r.recipients.map(x => String(x || '').slice(0, 40)) : [] });
+    return true;
+  } catch (e) { console.error('line history save failed', e && e.message); return false; }
+}
 async function handleLineSend(request, env) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
@@ -1088,6 +1104,7 @@ async function handleLineSend(request, env) {
     const out = { ok: true, channel: key, official: official && !officialTest, testOnly: !official || officialTest, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
     if (!out.official) { out.recipients = r.recipients; out.quota = r.quota; }
     if (!out.official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
+    out.historySaved = await lineHistorySave(env, { key, prep, body, r, out });
     return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
 }
@@ -1158,18 +1175,20 @@ async function handleLineTesters(request, env, action) {
       if (!rec) throw Object.assign(new Error('名單裡找不到這位'), { status: 404 });
       await lineR2(env).delete(`${lineTesterDir(ch)}${rec.tid}.json`);
     } else if (action === 'lookup' || action === 'add') {
-      // 正式帳號的測試名單：管理者貼上 LINE userId（可從 S8 客戶中心複製），Worker 先向 LINE 查暱稱驗證「這個 ID 在這個帳號有效」才存。測試帳號用 webhook 登記，不走這裡。
-      if (!LINE_OFFICIAL.has(ch)) throw badInput('測試帳號的名單由同事傳「登記」自動加入，這裡只能管理新聞／娛樂正式帳號的測試名單');
+      // 管理者手動貼上 LINE userId（正式帳號可從 S8 客戶中心複製；測試帳號也可以不用傳「登記」直接貼），名字可自己填；Worker 先向 LINE 查 profile 驗證「這個 ID 在這個帳號有效」才存。
       const userId = String(body.userId || '').trim();
       if (!LINE_USER_ID.test(userId)) throw badInput('LINE userId 格式不對，應該是 U 開頭加 32 個英數字（小寫 a–f 與數字）');
       lineChannelCreds(env, ch);
       const pr = await lineCall(env, ch, 'GET', `/v2/bot/profile/${userId}`);
       if (pr.status === 404) throw Object.assign(new Error(`LINE 查不到這個 ID：他可能不是「${lineAcctLabel(ch)}」的好友（或已封鎖），或這個 ID 屬於別的 Provider（不同 Provider 的 userId 不通用）。沒有加入名單。`), { status: 404 });
       if (pr.status !== 200 || !pr.data || !pr.data.displayName) throw Object.assign(new Error(`${lineErrText(pr)}。沒有加入名單。`), { status: 502 });
-      const tid = await lineTid(userId), name = String(pr.data.displayName).slice(0, 40), old = await lineTesterGet(env, tid, ch);
-      out.found = { tid, name, already: !!old };
+      const tid = await lineTid(userId), lineName = String(pr.data.displayName).slice(0, 40), old = await lineTesterGet(env, tid, ch);
+      const custom = typeof body.name === 'string' ? body.name.trim().slice(0, 40) : '';
+      const name = custom || lineName;
+      out.found = { tid, name, lineName, already: !!old };
       if (action === 'add') {
-        if (!old && (await lineTesterAll(env, ch)).length >= LINE_TESTER_MAX_OFFICIAL) throw Object.assign(new Error(`${lineAcctLabel(ch)}的測試名單已滿（${LINE_TESTER_MAX_OFFICIAL} 人），請先移除不需要的。`), { status: 409 });
+        const cap = LINE_OFFICIAL.has(ch) ? LINE_TESTER_MAX_OFFICIAL : LINE_TESTER_MAX_TOTAL;
+        if (!old && (await lineTesterAll(env, ch)).length >= cap) throw Object.assign(new Error(`${lineAcctLabel(ch)}的名單已滿（${cap} 人），請先移除不需要的。`), { status: 409 });
         const rec = { tid, userId, name, channel: ch, registeredAt: old ? old.registeredAt : Date.now(), updatedAt: Date.now() };
         await lineR2(env).put(`${lineTesterDir(ch)}${tid}.json`, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
       }
@@ -1208,16 +1227,25 @@ function lineR2(env) {
   return env.LINE_IMG;
 }
 const lineSchedKey = id => `${LINE_SCHED_PREFIX}${id}.json`;
+const LINE_HIST_PREFIX = 'hist/';   // 立即推播的發送紀錄（hist/<id>.json）；排程另放 sched/，Cron 每分鐘只掃 sched/，不會因為紀錄變多而變慢
+const lineRecKey = rec => `${rec.kind === 'now' ? LINE_HIST_PREFIX : LINE_SCHED_PREFIX}${rec.id}.json`;
 async function lineSchedPut(env, rec) {
   rec.updatedAt = Date.now();
-  await lineR2(env).put(lineSchedKey(rec.id), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' }, customMetadata: { status: rec.status, runAt: String(rec.runAt) } });
+  await lineR2(env).put(lineRecKey(rec), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' }, customMetadata: { status: rec.status, runAt: String(rec.runAt), channel: rec.channel || '' } });
   return rec;
+}
+async function lineR2Json(env, key) {
+  const o = await lineR2(env).get(key);
+  if (!o) return null;
+  try { return JSON.parse(typeof o.text === 'function' ? await o.text() : textDecoder.decode(o.body)); } catch { return null; }
 }
 async function lineSchedGet(env, id) {
   if (!/^[0-9a-f]{24}$/.test(String(id || ''))) throw badInput('排程編號格式不正確');
-  const o = await lineR2(env).get(lineSchedKey(id));
-  if (!o) return null;
-  try { return JSON.parse(typeof o.text === 'function' ? await o.text() : textDecoder.decode(o.body)); } catch { return null; }
+  return lineR2Json(env, lineSchedKey(id));
+}
+async function lineRecGet(env, id) {   // 推播紀錄（立即推播 hist/ 或排程 sched/）
+  if (!/^[0-9a-f]{24}$/.test(String(id || ''))) throw badInput('紀錄編號格式不正確');
+  return (await lineR2Json(env, `${LINE_HIST_PREFIX}${id}.json`)) || (await lineR2Json(env, lineSchedKey(id)));
 }
 async function lineSchedList(env) {
   const r2 = lineR2(env), out = []; let cursor;
@@ -1228,7 +1256,7 @@ async function lineSchedList(env) {
   } while (cursor);
   return out;
 }
-const lineSchedPublic = r => ({ id: r.id, channel: r.channel, org: r.org, name: r.name || '', altText: r.altText, runAt: r.runAt, runAtIso: taipeiIso(r.runAt), status: r.status, attempts: r.attempts || 0, lastError: r.lastError || '', requestId: r.requestId || '', sentAt: r.sentAt || '', approvedFriends: r.approvedFriends || null, recipientNames: r.recipientNames || [], links: r.links || [], createdAt: r.createdAt });
+const lineSchedPublic = r => ({ kind: r.kind === 'now' ? 'now' : 'sched', test: !!r.test, pageCount: Array.isArray(r.pages) ? r.pages.length : 0, friends: Number.isFinite(r.friends) ? r.friends : null, delivered: r.stat && r.stat.overview && Number.isFinite(r.stat.overview.delivered) ? r.stat.overview.delivered : null, statAt: r.stat ? r.stat.at : '', id: r.id, channel: r.channel, org: r.org, name: r.name || '', altText: r.altText, runAt: r.runAt, runAtIso: taipeiIso(r.runAt), status: r.status, attempts: r.attempts || 0, lastError: r.lastError || '', requestId: r.requestId || '', sentAt: r.sentAt || '', approvedFriends: r.approvedFriends || null, recipientNames: r.recipientNames || [], links: r.links || [], createdAt: r.createdAt });
 const lineSanitizeLinks = links => (Array.isArray(links) ? links : []).slice(0, 24).map(l => ({ page: Number(l && l.page) || 0, label: String((l && l.label) || '').slice(0, 20), title: String((l && l.title) || '').slice(0, 120), url: String((l && l.url) || '').slice(0, 2000) }));
 
 async function handleLineScheduleCreate(request, env) {
@@ -1259,7 +1287,7 @@ async function handleLineScheduleCreate(request, env) {
       lineTypedApprove(body.confirmTotal)(friends);
     }
     const id = lineHex(12), now = Date.now();
-    const rec = { v: 1, id, channel: key, org: prep.org, name: typeof body.name === 'string' ? body.name.slice(0, 60) : '', altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
+    const rec = { v: 1, id, channel: key, org: prep.org, name: lineCleanName(body.name, prep.org, Date.parse(body.runAt)), test: !official, altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
     if (recs) { rec.testerTids = recs.map(r => r.tid); rec.recipientNames = recs.map(r => r.name || '（沒有暱稱）'); }
     await lineSchedPut(env, rec);
     return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
@@ -1340,6 +1368,88 @@ async function lineRunDue(env, now = Date.now()) {
   return results;
 }
 
+// ===========================================================================
+// 訊息推播 → 推播列表
+//   POST /line/history/list    某個帳號（channel）的推播列表：立即推播（hist/）＋排程（sched/）合併，新到舊，最多 60 筆
+//   POST /line/history/stats   某一筆的點擊統計（唯讀；用發送時 LINE 回的 request id 查）。查到會存成快照（stat）寫回紀錄，
+//                              超過 14 天 LINE 不再提供時改回最後一次的快照。body.force=true 才會在 5 分鐘內重查
+//   POST /line/history/rename  改這一筆的訊息命名
+// ===========================================================================
+const LINE_HIST_LIST_MAX = 60;
+const LINE_STATS_DAYS = 14;
+const LINE_STATS_FRESH_MS = 5 * 60 * 1000;
+async function lineHistMeta(env) {
+  const r2 = lineR2(env), out = [];
+  for (const prefix of [LINE_HIST_PREFIX, LINE_SCHED_PREFIX]) {
+    let cursor;
+    do {
+      const r = await r2.list({ prefix, limit: 500, cursor, include: ['customMetadata'] });
+      for (const o of r.objects || []) { const m = o.customMetadata || {}; out.push({ key: o.key, runAt: Number(m.runAt) || 0, channel: m.channel || '' }); }
+      cursor = r.truncated ? r.cursor : undefined;
+    } while (cursor);
+  }
+  return out;
+}
+async function handleLineHistoryList(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const ch = body.channel;
+    if (!LINE_CHANNEL_SUFFIX[ch]) throw badInput('channel 只能是 test、news 或 ent');
+    const cand = (await lineHistMeta(env)).filter(x => !x.channel || x.channel === ch).sort((a, b) => b.runAt - a.runAt).slice(0, 150);
+    const recs = [];
+    for (let i = 0; i < cand.length && recs.length < LINE_HIST_LIST_MAX; i += 20) {
+      const got = await Promise.all(cand.slice(i, i + 20).map(x => lineR2Json(env, x.key)));
+      got.forEach(r => { if (r && r.channel === ch && recs.length < LINE_HIST_LIST_MAX) recs.push(r); });
+    }
+    recs.sort((a, b) => b.runAt - a.runAt);
+    const hb = await lineR2Json(env, 'meta/heartbeat.json');
+    return jsonOk({ ok: true, channel: ch, records: recs.map(lineSchedPublic), heartbeatAt: hb ? Number(hb.at) || 0 : 0, serverNow: Date.now() }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '查詢推播列表失敗', request, env); }
+}
+const lineStatPublic = st => (st ? { at: st.at, overview: st.overview || null, messages: st.messages || [], clicks: st.clicks || [] } : null);
+async function handleLineHistoryStats(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const rec = await lineRecGet(env, body.id);
+    if (!rec) throw Object.assign(new Error('找不到這筆推播紀錄'), { status: 404 });
+    const reply = (extra) => jsonOk({ ok: true, record: lineSchedPublic(rec), stats: lineStatPublic(rec.stat), ...extra }, request, env);
+    if (rec.status !== 'sent' || !rec.requestId) return reply({ fresh: false, unavailable: true, message: rec.status === 'sent' ? 'LINE 沒有回這次發送的 request id，查不到統計。' : '這筆還沒有發送，沒有統計。' });
+    const sentMs = Date.parse(rec.sentAt);
+    const old = Number.isFinite(sentMs) && Date.now() - sentMs > LINE_STATS_DAYS * 86400e3;
+    if (old) return reply({ fresh: false, unavailable: true, message: rec.stat ? `已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計；以下是最後一次查到的數字（快照）。` : `已超過 ${LINE_STATS_DAYS} 天，LINE 不再提供統計，而且之前沒有查過、沒有快照。` });
+    const statMs = rec.stat ? Date.parse(rec.stat.at) : 0;
+    if (rec.stat && body.force !== true && Number.isFinite(statMs) && Date.now() - statMs < LINE_STATS_FRESH_MS) return reply({ fresh: false, cached: true });
+    const r = await lineCall(env, rec.channel, 'GET', `/v2/bot/insight/message/event?requestId=${encodeURIComponent(rec.requestId)}`);
+    if (r.status === 200) {
+      const d = r.data || {};
+      rec.stat = { at: taipeiIso(Date.now()), overview: d.overview || null, messages: Array.isArray(d.messages) ? d.messages : [], clicks: Array.isArray(d.clicks) ? d.clicks : [] };
+      await lineSchedPut(env, rec);
+      return reply({ fresh: true });
+    }
+    if (r.status >= 400 && r.status < 500) return reply({ fresh: false, unavailable: true, message: `LINE 目前沒有這次發送的統計（${lineErrText(r)}）。統計通常要等一段時間，只有認證帳號有，且只保留發送後約 ${LINE_STATS_DAYS} 天。${rec.stat ? '以下是最後一次查到的數字（快照）。' : ''}` });
+    throw Object.assign(new Error(lineErrText(r)), { status: 502 });
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '查詢統計失敗', request, env); }
+}
+async function handleLineHistoryRename(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  const { body, error } = await lineReadBody(request, env); if (error) return error;
+  try {
+    const rec = await lineRecGet(env, body.id);
+    if (!rec) throw Object.assign(new Error('找不到這筆推播紀錄'), { status: 404 });
+    if (rec.status === 'sending') throw Object.assign(new Error('這筆正在發送中，等發送完再改名'), { status: 409 });
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : '';
+    if (!name) throw badInput('名稱不能是空的');
+    rec.name = name;
+    await lineSchedPut(env, rec);
+    return jsonOk({ ok: true, record: lineSchedPublic(rec) }, request, env);
+  } catch (e) { return jsonError(lineStatusCode(e), e.message || '改名失敗', request, env); }
+}
+
 // 查某次群發的互動統計（每個連結的點擊次數／點擊人數）。唯讀；requestId 是發送時 LINE 回的 x-line-request-id。
 // LINE 規定：統計只在發送後 14 天內更新；數值小於 20（或實際人數小於 20）會顯示 null；每小時最多 60 次查詢。
 async function handleLineClicks(request, env) {
@@ -1382,6 +1492,9 @@ export default {
     if (path === '/line/validate') return handleLineValidate(request, env);
     if (path === '/line/send') return handleLineSend(request, env);
     if (path === '/line/clicks') return handleLineClicks(request, env);
+    if (path === '/line/history/list') return handleLineHistoryList(request, env);
+    if (path === '/line/history/stats') return handleLineHistoryStats(request, env);
+    if (path === '/line/history/rename') return handleLineHistoryRename(request, env);
     if (path === '/line/webhook') return handleLineWebhook(request, env);
     if (path === '/line/testers/list') return handleLineTesters(request, env, 'list');
     if (path === '/line/testers/remove') return handleLineTesters(request, env, 'remove');

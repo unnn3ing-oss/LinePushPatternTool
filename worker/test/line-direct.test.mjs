@@ -403,7 +403,7 @@ test('排程：建立（測試帳號）→ 存進 R2，狀態待發送，帶出�
     assert.equal(s.status, 'scheduled'); assert.equal(s.channel, 'test'); assert.equal(s.links.length, 2); assert.equal(s.altText, '測試推播');
     const stored = recOf(r2, s.id);
     assert.equal(stored.origin, 'https://worker.test'); assert.match(stored.retryKey, /^[0-9a-f-]{36}$/);
-    assert.deepEqual(r2.store.get(`sched/${s.id}.json`).customMetadata, { status: 'scheduled', runAt: String(stored.runAt) });
+    assert.deepEqual(r2.store.get(`sched/${s.id}.json`).customMetadata, { status: 'scheduled', runAt: String(stored.runAt), channel: 'test' });
     assert.equal(line.count('POST /v2/bot/message/multicast') + line.count('POST /v2/bot/message/broadcast'), 0, '建立排程不會發送');
     assert.equal(line.count('POST /v2/bot/message/validate/multicast'), 1, '建立當下先請 LINE 檢查格式');
     assert.deepEqual(s.recipientNames, ['王小明']); assert.deepEqual(stored.testerTids, [TID]);
@@ -630,7 +630,7 @@ test('webhook：傳「登記」→ 記下 userId＋暱稱並回覆；重複登�
     assert.equal(rep.headers.Authorization, 'Bearer tok-111', '用測試帳號的 token');
     const l = await testersOf(env);
     assert.deepEqual(l.testers.map(t => [t.tid, t.name]), [[TID, '王小明']]); assert.equal(l.maxPerSend, 2);
-    assert.ok(!JSON.stringify(l).includes(TESTER_UID), '不把 LINE userId 給網頁');
+    assert.equal(l.testers[0].userId, TESTER_UID, '權限管理要列出名字對應的 userId');
     await hook(env, [msgEv(TESTER_UID, '登記', 'rt-2')]);
     assert.equal((await testersOf(env)).testers.length, 1);
     assert.match(JSON.parse(line.calls.filter(c => c.path === '/v2/bot/message/reply').at(-1).body).messages[0].text, /已更新測試名單/);
@@ -759,13 +759,13 @@ test('正式帳號測試名單：lookup 只向 LINE 查 profile 驗證、不存�
     seedTester(env);   // 測試帳號名單裡已有一位
     let r = await tReq(env, '/line/testers/lookup', { channel: 'news', userId: OFFICIAL_UID });
     assert.equal(r.status, 200, JSON.stringify(r.json));
-    assert.deepEqual(r.json.found, { tid: OTID, name: '王小明', already: false }); assert.deepEqual(r.json.testers, []);
+    assert.deepEqual(r.json.found, { tid: OTID, name: '王小明', lineName: '王小明', already: false }); assert.deepEqual(r.json.testers, []);
     assert.equal([...r2.store.keys()].filter(k => k.startsWith('testers/news/')).length, 0, 'lookup 不存');
     const prof = line.calls.find(c => c.path.startsWith('/v2/bot/profile/'));
     assert.equal(prof.path, `/v2/bot/profile/${OFFICIAL_UID}`); assert.equal(prof.headers.Authorization, 'Bearer tok-222', '用新聞帳號的 token 查');
     r = await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID });
     assert.equal(r.status, 200); assert.deepEqual(r.json.testers.map(t => [t.tid, t.name]), [[OTID, '王小明']]);
-    assert.ok(r2.store.has(`testers/news/${OTID}.json`)); assert.ok(!JSON.stringify(r.json).includes(OFFICIAL_UID), '不把 userId 給網頁');
+    assert.ok(r2.store.has(`testers/news/${OTID}.json`)); assert.equal(r.json.testers[0].userId, OFFICIAL_UID);
     // 各帳號的名單互相獨立
     assert.deepEqual((await tReq(env, '/line/testers/list', { channel: 'ent' })).json.testers, []);
     assert.deepEqual((await tReq(env, '/line/testers/list', {})).json.testers.map(t => t.tid), [TID], '測試帳號名單不受影響，也不會混進 news 子目錄');
@@ -778,12 +778,11 @@ test('正式帳號測試名單：lookup 只向 LINE 查 profile 驗證、不存�
   } finally { line.restore(); }
 });
 
-test('正式帳號測試名單：壞格式、測試帳號、LINE 查不到（不是好友／別的 Provider）、沒設憑證、名單滿了 → 都不會加入', async () => {
+test('正式帳號測試名單：壞格式、LINE 查不到（不是好友／別的 Provider）、沒設憑證、名單滿了 → 都不會加入', async () => {
   const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   let line = installFakeLine();
   try {
     for (const userId of ['', 'abc', 'U' + 'a'.repeat(31), 'u' + 'a'.repeat(32), 'U' + 'A'.repeat(32), OFFICIAL_UID + 'x', '../x', undefined]) assert.equal((await tReq(env, '/line/testers/add', { channel: 'news', userId })).status, 400, String(userId));
-    assert.equal((await tReq(env, '/line/testers/add', { channel: 'test', userId: OFFICIAL_UID })).status, 400, '測試帳號用 webhook 登記');
     assert.equal((await tReq(env, '/line/testers/add', { channel: 'prod', userId: OFFICIAL_UID })).status, 400);
     assert.equal(line.calls.filter(c => c.path.startsWith('/v2/bot/profile')).length, 0, '格式不對根本不會問 LINE');
     assert.equal((await tReq({ ...env, LINE_CHANNEL_ID_ENT: undefined }, '/line/testers/add', { channel: 'ent', userId: OFFICIAL_UID })).status, 503, '娛樂帳號沒設憑證');
@@ -872,5 +871,143 @@ test('reply 仍只有測試帳號能用；正式帳號的 multicast 每次最多
     for (const c of line.calls.filter(c => c.path === '/v2/bot/message/reply')) assert.equal(c.headers.Authorization, 'Bearer tok-111', 'reply 只用測試帳號');
     for (const c of line.calls.filter(c => c.path === '/v2/bot/message/multicast' && c.headers.Authorization === 'Bearer tok-222')) { const to = JSON.parse(c.body).to; assert.ok(to.length >= 1 && to.length <= 2 && to.every(u => /^U[0-9a-f]{32}$/.test(u))); }
     assert.equal(line.calls.filter(c => c.path === '/v2/bot/message/broadcast' && c.headers.Authorization === 'Bearer tok-111').length, 0, '測試帳號從不 broadcast');
+  } finally { line.restore(); }
+});
+
+// ===== 訊息推播 → 推播列表（發送紀錄／統計／改名）=====
+const histKeys = r2 => [...r2.store.keys()].filter(k => k.startsWith('hist/'));
+const histRec = (r2, k) => JSON.parse(r2.store.get(k).bytes);
+const listOf = async (env, channel) => (await req(env, '/line/history/list', { channel })).json;
+const UUID2 = '223e4567-e89b-12d3-a456-426614174111';
+
+test('推播列表：立即推播成功就留一筆紀錄（預設命名「日期＋新聞」），同一次重試不會多一筆，失敗不留', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    const prep = await prepared(env);
+    const r = await req(env, '/line/send', sendBody(prep, { links: LINKS }));
+    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.historySaved, true);
+    assert.equal(histKeys(r2).length, 1);
+    const rec = histRec(r2, histKeys(r2)[0]);
+    assert.equal(rec.id, UUID.replace(/-/g, '').slice(0, 24)); assert.equal(rec.kind, 'now'); assert.equal(rec.channel, 'test'); assert.equal(rec.status, 'sent'); assert.equal(rec.test, true);
+    assert.match(rec.name, /^\d{2}\/\d{2}新聞$/); assert.equal(rec.altText, '測試推播'); assert.equal(rec.requestId, 'req-1'); assert.equal(rec.links.length, 2); assert.deepEqual(rec.recipientNames, ['王小明']);
+    assert.deepEqual(r2.store.get(histKeys(r2)[0]).customMetadata, { status: 'sent', runAt: String(rec.runAt), channel: 'test' });
+    // 同一個 retryKey 再送一次（LINE 回 409 代表已受理）→ 不新增、不覆蓋
+    await req(env, '/line/history/rename', { id: rec.id, name: '我改的名字' });
+    const again = await req(env, '/line/send', sendBody(prep, { links: LINKS }));
+    assert.equal(again.status, 200);
+    assert.equal(histKeys(r2).length, 1); assert.equal(histRec(r2, histKeys(r2)[0]).name, '我改的名字');
+    // 自訂名稱、娛樂版型
+    const prepEnt = await prepared(env, { org: 'ent' });
+    await req(env, '/line/send', sendBody(prepEnt, { retryKey: UUID2, name: '  晚間重點  ' }));
+    const ent = histKeys(r2).map(k => histRec(r2, k)).find(x => x.org === 'ent');
+    assert.equal(ent.name, '晚間重點');
+  } finally { line.restore(); }
+  const bad = installFakeLine({ broadcastStatus: 500 }); const r2b = fakeR2(); const envb = { ...BASE_ENV, LINE_IMG: r2b };
+  try {
+    const prep = await prepared(envb);
+    const r = await req(envb, '/line/send', sendBody(prep));
+    assert.notEqual(r.status, 200); assert.equal(histKeys(r2b).length, 0, '沒發出去就不留紀錄');
+  } finally { bad.restore(); }
+});
+
+test('推播列表：依帳號切換、立即推播＋排程合併、新到舊；需要憑證；channel 要合法', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    const prep = await prepared(env);
+    await req(env, '/line/send', sendBody(prep, { links: LINKS }));                       // 測試帳號・立即
+    await createSched(env, prep, { runAt: inMin(60), name: '排程一' });                    // 測試帳號・排程
+    await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID });
+    await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'test', testers: [OTID], retryKey: UUID2 }));   // 新聞帳號・測試推播
+    const t = await listOf(env, 'test'), n = await listOf(env, 'news'), e = await listOf(env, 'ent');
+    assert.equal(t.records.length, 2); assert.deepEqual(t.records.map(x => x.kind), ['sched', 'now'], '排程時間在後面，排前面');
+    assert.equal(t.records[0].name, '排程一'); assert.equal(t.records[0].status, 'scheduled');
+    assert.equal(n.records.length, 1); assert.equal(n.records[0].channel, 'news'); assert.equal(n.records[0].test, true); assert.equal(e.records.length, 0);
+    assert.ok(Number.isFinite(t.serverNow)); assert.ok(t.records.every(x => !('pages' in x) && !('quick' in x)), '不把圖片資料給網頁');
+    assert.equal((await req(env, '/line/history/list', { channel: 'test' }, { auth: false })).status, 401);
+    assert.equal((await req(env, '/line/history/list', { channel: 'prod' })).status, 400);
+    // 舊排程（metadata 沒有 channel）也能用 body 判斷歸屬
+    const old = [...r2.store.keys()].find(k => k.startsWith('sched/')); const m = r2.store.get(old).customMetadata; delete m.channel;
+    assert.equal((await listOf(env, 'test')).records.length, 2); assert.equal((await listOf(env, 'news')).records.length, 1);
+  } finally { line.restore(); }
+});
+
+test('推播列表：點擊統計——查到就存成快照、5 分鐘內不重查、force 才重查、超過 14 天用快照、LINE 沒資料回快照', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    const prep = await prepared(env);
+    await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID });
+    await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'test', testers: [OTID], links: LINKS }));
+    const id = (await listOf(env, 'news')).records[0].id;
+    const calls = () => line.count('GET /v2/bot/insight/message/event');
+    let r = await req(env, '/line/history/stats', { id });
+    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.fresh, true); assert.equal(calls(), 1);
+    assert.equal(r.json.stats.overview.delivered, 287091); assert.equal(r.json.stats.clicks[0].click, 1234); assert.equal(r.json.record.delivered, 287091);
+    const q = line.calls.find(c => c.path === '/v2/bot/insight/message/event'); assert.equal(q.search, '?requestId=req-1'); assert.equal(q.headers.Authorization, 'Bearer tok-222', '用該筆自己的帳號查');
+    r = await req(env, '/line/history/stats', { id }); assert.equal(r.json.cached, true); assert.equal(calls(), 1, '5 分鐘內不重查');
+    r = await req(env, '/line/history/stats', { id, force: true }); assert.equal(r.json.fresh, true); assert.equal(calls(), 2);
+    assert.equal((await listOf(env, 'news')).records[0].delivered, 287091, '列表顯示發送成功人數');
+    // LINE 暫時沒資料 → 回最後的快照＋說明
+    line.restore(); const none = installFakeLine({ clicks: 'none' });
+    try {
+      r = await req(env, '/line/history/stats', { id, force: true });
+      assert.equal(r.status, 200); assert.equal(r.json.unavailable, true); assert.match(r.json.message, /快照/); assert.equal(r.json.stats.overview.delivered, 287091);
+    } finally { none.restore(); }
+    // 超過 14 天：不問 LINE，只給快照
+    const key = histKeys(r2)[0]; const rec = histRec(r2, key); rec.sentAt = '2020-01-01T10:00:00+08:00'; r2.store.set(key, { ...r2.store.get(key), bytes: JSON.stringify(rec) });
+    const again = installFakeLine();
+    try {
+      r = await req(env, '/line/history/stats', { id, force: true });
+      assert.equal(again.count('GET /v2/bot/insight/message/event'), 0); assert.equal(r.json.unavailable, true); assert.match(r.json.message, /14 天/); assert.ok(r.json.stats);
+    } finally { again.restore(); }
+    assert.equal((await req(env, '/line/history/stats', { id: 'f'.repeat(24) })).status, 404);
+    assert.equal((await req(env, '/line/history/stats', { id: 'zz' })).status, 400);
+    assert.equal((await req(env, '/line/history/stats', { id }, { auth: false })).status, 401);
+  } finally { line.restore(); }
+});
+
+test('推播列表：排程還沒發送時沒有統計；改名有限制', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    const prep = await prepared(env);
+    const s = (await createSched(env, prep)).json.schedule;
+    let r = await req(env, '/line/history/stats', { id: s.id });
+    assert.equal(r.json.unavailable, true); assert.equal(line.count('GET /v2/bot/insight/message/event'), 0);
+    r = await req(env, '/line/history/rename', { id: s.id, name: ' 早場排程 ' });
+    assert.equal(r.status, 200); assert.equal(r.json.record.name, '早場排程'); assert.equal(recOf(r2, s.id).name, '早場排程'); assert.equal(recOf(r2, s.id).status, 'scheduled', '改名不動狀態');
+    for (const name of ['', '   ', undefined, 5]) assert.equal((await req(env, '/line/history/rename', { id: s.id, name })).status, 400, String(name));
+    const rec = recOf(r2, s.id); rec.status = 'sending'; r2.store.set(`sched/${s.id}.json`, { ...r2.store.get(`sched/${s.id}.json`), bytes: JSON.stringify(rec) });
+    assert.equal((await req(env, '/line/history/rename', { id: s.id, name: 'x' })).status, 409);
+    assert.equal((await req(env, '/line/history/rename', { id: 'a'.repeat(24), name: 'x' })).status, 404);
+    assert.equal((await req(env, '/line/history/rename', { id: s.id, name: 'x' }, { auth: false })).status, 401);
+  } finally { line.restore(); }
+});
+
+test('權限管理：名字可以自己填（空白就用 LINE 暱稱），測試帳號也能直接貼 userId 加入', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    let r = await tReq(env, '/line/testers/lookup', { channel: 'test', userId: OFFICIAL_UID2, name: '小編A' });
+    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.deepEqual(r.json.found, { tid: OTID2, name: '小編A', lineName: '王小明', already: false });
+    assert.equal(r2.store.has(`testers/${OTID2}.json`), false, 'lookup 不存');
+    r = await tReq(env, '/line/testers/add', { channel: 'test', userId: OFFICIAL_UID2, name: '小編A' });
+    assert.deepEqual(r.json.testers.map(t => [t.name, t.userId]), [['小編A', OFFICIAL_UID2]]);
+    assert.equal(line.calls.find(c => c.path.startsWith('/v2/bot/profile/')).headers.Authorization, 'Bearer tok-111', '測試帳號用測試帳號的 token 驗證');
+    r = await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID });
+    assert.equal(r.json.testers[0].name, '王小明', '沒填名字就用 LINE 暱稱');
+    r = await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID, name: 'x'.repeat(80) });
+    assert.equal(r.json.testers[0].name.length, 40);
+    // 填的名字之後可以再用同一個 userId 更新
+    r = await tReq(env, '/line/testers/add', { channel: 'test', userId: OFFICIAL_UID2, name: '小編B' });
+    assert.equal(r.json.testers[0].name, '小編B'); assert.equal(r.json.testers.length, 1);
+  } finally { line.restore(); }
+});
+
+test('連線狀態：/line/status 多回 Cron 心跳與正式帳號開關', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    let r = await req(env, '/line/status', { channel: 'news' });
+    assert.equal(r.json.heartbeatAt, 0); assert.equal(r.json.officialAllowed, false); assert.equal(r.json.r2Ready, true);
+    r2.store.set('meta/heartbeat.json', { bytes: JSON.stringify({ at: 1234567 }) });
+    r = await req({ ...env, LINE_ALLOW_OFFICIAL: '1' }, '/line/status', { channel: 'news' });
+    assert.equal(r.json.heartbeatAt, 1234567); assert.equal(r.json.officialAllowed, true);
   } finally { line.restore(); }
 });
