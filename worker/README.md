@@ -82,7 +82,7 @@
 | `POST /line/status` | 用 Channel ID＋secret 現場換一個 15 分鐘的 stateless token，唯讀查帳號名稱、好友數（LINE 昨日統計）、本月訊息額度與已用 |
 | `POST /line/prepare` | 檢查內容、把每頁 1040 寬的圖片存進 R2、封存要發的內容（30 分鐘有效） |
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
-| `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給測試名單裡勾選的人（每次最多 2 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
+| `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給操作者一位（每次最多 1 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
 | `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
 | `POST /line/testers/list`｜`remove` | 查看／移除成員名單（回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 權限管理」列表用，需要試驗功能憑證）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
 | `POST /line/testers/lookup`｜`add` | 貼上對方的 LINE userId（`name` 可自己填，不填就用 LINE 暱稱）→ Worker 用該帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效；`add` 驗證通過才存（正式帳號上限 20 人、測試帳號 50 人）。測試帳號也能這樣加，不一定要傳「登記」 |
@@ -105,8 +105,8 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 1. **一次性設定（只動測試帳號，新聞／娛樂帳號的 webhook 屬於 S8，完全不碰）**：LINE Developers Console → 測試帳號頻道 → Messaging API → **Webhook URL** 填 `https://<你的 Worker 網址>/line/webhook`，開啟 **Use webhook**，按 **Verify**（要顯示 Success）。LINE Official Account Manager → 回應設定：建議關掉「加入好友的歡迎訊息」與「自動回應訊息」，避免和 Worker 的回覆重複。
 2. **登記**：用 LINE 傳送「登記」給測試帳號（也可傳「加入測試名單」）→ Worker 記下 userId 與暱稱（存在 R2 的 `testers/`），並回覆「已加入測試名單」。傳別的字或剛加好友只會收到提示；封鎖測試帳號會自動從名單移除；名單上限 50 人。
-3. **使用**：網頁測試推播前在「測試推播給」多選下拉勾選收件人（最多 2 位，選滿後其他人不能再勾；選擇記在這個瀏覽器）；Worker 強制每次最多 2 位、只能選名單內的人。收件人換了會換一把重試金鑰。
-4. 測試排程（排程對象選「測試帳號」）建立時也要選收件人，時間到只發給他們。
+3. **使用**：網頁「排入LINE推播」第 2 步「推播方式」選**操作者**（名單內的人，用名字對應不同帳號的同一個人），第 3 步「測試推播」只傳給操作者**一位**；Worker 強制每次最多 1 位、只能是名單內的人。操作者或帳號換了，會換一把重試金鑰。
+4. （已移除）網頁不再提供「測試帳號排程」；Worker 的 `POST /line/schedule/create` 仍然接受 `channel:"test"`＋`testers`，只是沒有畫面使用。
 
 ### 正式帳號的測試推播（不需要同事加測試帳號）
 
@@ -114,8 +114,8 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 1. **設定（一次性）**：Worker Secret 設 `LINE_CHANNEL_ID_NEWS`／`LINE_CHANNEL_SECRET_NEWS`（娛樂同理 `_ENT`）。**`LINE_ALLOW_OFFICIAL` 照樣不設**——這個功能不需要它，正式 broadcast 仍然鎖死。
 2. **建立名單**：網頁右上角「訊息推播」→「LINE推播設定」→ 上方選「TVBS新聞」→「權限管理」→ 填名字（可不填）、貼上 userId →「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
-3. **測試推播**：第 3 步「測試推播發到」選「TVBS新聞（正式帳號）」，勾選收件人（最多 2 位）→ `POST /line/send` 帶 `mode:"test"`＋`testers`，Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內勾選的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
-4. **安全**：`lineCall` 內強制正式帳號的 multicast 最多 2 位、每個都是合法 userId；reply 仍只有測試帳號能用；沒有 push／narrowcast；正式 broadcast 的所有閘門（旗標、先測試、輸入好友數、版型）完全沒變。測試排程仍然只能排給測試帳號。
+3. **測試推播**：第 3 步「測試推播」發到「TVBS新聞（正式帳號）」，只傳給操作者一位 → `POST /line/send` 帶 `mode:"test"`＋`testers`（1 位），Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
+4. **安全**：`lineCall` 內強制正式帳號的 multicast 最多 1 位、每個都是合法 userId；reply 仍只有測試帳號能用；沒有 push／narrowcast；正式 broadcast 的所有閘門（旗標、先測試、輸入好友數、版型）完全沒變。
 
 ### 排程推播（LINE 本身沒有排程，所以由 Worker 自己排）
 
