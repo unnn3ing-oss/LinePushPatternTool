@@ -94,6 +94,7 @@ await page.route(`${WORKER}/**`, async route => {
 await page.addInitScript(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token', expiresAt: Date.now() + 3600e3 })); try { if (!sessionStorage.getItem('__noMe')) localStorage.setItem('lineMe', 'a'.repeat(16)); } catch (e) { /* */ } });
 await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
+const setTpl = v => page.evaluate(v => { const e = document.getElementById('qrTpl'); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, v);   // 搜尋網站網址搬到「訊息推播 → LINE推播設定」，不在這個視窗裡
 const txt = id => page.textContent(id);
 const bgOf = async id => { await page.waitForTimeout(380); return page.evaluate(i => getComputedStyle(document.getElementById(i)).backgroundColor, id); };
 const vis = async id => !(await page.locator(id).isHidden());
@@ -123,7 +124,7 @@ await openDialog();
 check((await txt('#s8Title')) === '排入推播', '彈窗改名為「排入推播」');
 const head = await page.evaluate(() => { const t = document.getElementById('s8Modetabs').getBoundingClientRect(), h = document.getElementById('s8Title').getBoundingClientRect(), c = document.getElementById('s8CloseBtn').getBoundingClientRect(), m = document.querySelector('#s8Modal').getBoundingClientRect(); return { left: t.left - m.left, beforeTitle: t.right <= h.left, closeRight: m.right - c.right, texts: [...document.querySelectorAll('#s8Modetabs .s8-ptab')].map(b => b.textContent), active: document.querySelector('#s8Modetabs .s8-ptab.active').dataset.md }; });
 check(head.texts.join('｜') === 'LINE原生推播｜S8推播' && head.active === 'line' && head.left < 40 && head.beforeTitle, `左上有切換「${head.texts.join('｜')}」，預設是 LINE原生推播`);
-check(await page.evaluate(() => getComputedStyle(document.getElementById('s8Panel')).display === 'none') && await vis('#lineFoot') && await vis('#lineP1'), 'LINE原生推播分頁只顯示 LINE 的步驟（底部進度列、傳送資料），不顯示 S8 的組織／發送對象／步驟');
+check(await page.evaluate(() => getComputedStyle(document.getElementById('s8Panel')).display === 'none') && await vis('#lineFoot') && await vis('#contentBlock'), 'LINE原生推播分頁只顯示 LINE 的步驟（底部進度列、推播內容），不顯示 S8 的組織／發送對象／步驟');
 check(await page.evaluate(() => ['s8Name', 's8Account', 's8TargetAll'].every(i => document.getElementById(i).offsetParent === null)) && await vis('#s8Alt'), 'LINE 不需要的欄位（群發名稱、組織、對象）隱藏，「推播通知」與連結預覽保留');
 await page.hover('#s8ModeS8');
 await page.waitForTimeout(450);
@@ -264,14 +265,14 @@ check(!(await guard()).prevented, '標記完成後恢復');
 await page.evaluate(() => { s8Md = 'line'; try { localStorage.removeItem('qrSearchTpl'); } catch (e) { /* */ } Object.keys(qrByMode).forEach(k => { qrByMode[k] = []; }); document.getElementById('qrTpl').value = ''; });
 await openDialog();
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
-check(await vis('#qrSec') && (await txt('.qr-title')).includes('最多 13 顆') && (await page.$$eval('#qrRows .qr-row', r => r.length)) === 0 && await page.isHidden('#qrPrev') && await page.isHidden('#qrTplRow'), '「推播通知」下面有「快速回覆按鈕（選填，最多 13 顆）」：一開始是空的（每次推播都不同，不帶上次的）');
+check(await vis('#qrSec') && (await txt('.qr-title')).includes('最多 13 顆') && (await page.$$eval('#qrRows .qr-row', r => r.length)) === 0 && await page.isHidden('#qrPrev'), '連結預覽下面有「快速回覆按鈕（選填，最多 13 顆）」：一開始是空的（每次推播都不同，不帶上次的）');
 for (let i = 0; i < 3; i++) await page.click('#qrAdd');
 const labs = ['蔣萬安', '少康獨家專訪六都', '民調'];
 for (let i = 0; i < 3; i++) await page.locator('#qrRows .qr-lab input').nth(i).fill(labs[i]);
 await page.locator('#qrRows .qr-url input').nth(1).fill('https://news.example.com/interview/six-cities');
 check((await page.$$eval('#qrRows .qr-row', r => r.length)) === 3 && (await page.$$eval('#qrRows .qr-cnt', c => c.map(x => x.textContent).join())) === '3/20,8/20,2/20', '可以手動新增；每顆有「顯示文字」（字數 n/20）與「連結（選填）」');
-check(await vis('#qrTplRow') && (await page.$$eval('#s8Errs li', l => l.map(x => x.textContent))).some(t => t.includes('快速回覆第 1 顆沒有連結') && t.includes('搜尋網站網址')), '有按鈕沒填連結 → 出現「搜尋網站網址」欄，沒填前會提示不能傳送');
-await page.fill('#qrTpl', 'https://example.com/search?q={keyword}');
+check((await page.$$eval('#s8Errs li', l => l.map(x => x.textContent))).some(t => t.includes('快速回覆第 1 顆沒有連結') && t.includes('LINE推播設定') && t.includes('搜尋網站網址')), '有按鈕沒填連結、搜尋網站網址又沒設定：提示不能傳送，並說明到「LINE推播設定」填');
+await setTpl('https://example.com/search?q={keyword}');
 const enc1 = 'https://example.com/search?q=' + encodeURIComponent('蔣萬安');
 check((await page.locator('#qrRows .qr-hint').nth(0).textContent()).includes(enc1) && await page.locator('#qrRows .qr-hint').nth(1).isHidden(), `連結留空的那顆：提示實際會開啟的搜尋網址（${enc1}）；有填連結的那顆不用`);
 check((await page.$$eval('#s8Errs li', l => l.map(x => x.textContent))).every(t => !t.includes('快速回覆')) && (await page.getAttribute('#qrPrev', 'class')) !== null && (await page.$$eval('#qrPrev .qr-pill', p => p.map(x => x.textContent).join())) === '蔣萬安,少康獨家專訪六都,民調' && await page.evaluate(() => getComputedStyle(document.querySelector('#qrPrev .qr-pill')).backgroundColor) === 'rgb(31, 42, 74)', '下方即時預覽成深藍圓角按鈕（跟 LINE 上的樣子一樣），錯誤消失');
@@ -287,11 +288,11 @@ await page.locator('#qrRows .qr-url input').nth(1).fill('https://news.example.co
 await page.locator('#qrRows .qr-lab input').nth(1).fill('');
 check((await page.$$eval('#s8Errs li', l => l.map(x => x.textContent))).some(t => t.includes('缺少顯示文字')), '有連結但沒填顯示文字：擋下');
 await page.locator('#qrRows .qr-lab input').nth(1).fill('少康獨家專訪六都');
-await page.fill('#qrTpl', 'https://example.com/search');
+await setTpl('https://example.com/search');
 check((await page.$$eval('#s8Errs li', l => l.map(x => x.textContent))).some(t => t.includes('搜尋網站網址') && t.includes('{keyword}')), '搜尋網站網址沒有 {keyword}：擋下');
-await page.fill('#qrTpl', 'http://example.com/search?q={keyword}');
+await setTpl('http://example.com/search?q={keyword}');
 check((await page.$$eval('#s8Errs li', l => l.map(x => x.textContent))).some(t => t.includes('https://')), '搜尋網站網址不是 https：擋下');
-await page.fill('#qrTpl', 'https://example.com/search?q={關鍵字}');
+await setTpl('https://example.com/search?q={關鍵字}');
 check((await page.$$eval('#s8Errs li', l => l.every(x => !x.textContent.includes('快速回覆') && !x.textContent.includes('搜尋網站')))) && (await page.locator('#qrRows .qr-hint').nth(0).textContent()).includes(encodeURIComponent('蔣萬安')), '{關鍵字} 也能當佔位符');
 // 排序、刪除、上限
 await page.locator('#qrRows .qr-row').nth(0).locator('.qr-acts button').nth(1).click();
@@ -299,11 +300,10 @@ check((await page.$$eval('#qrRows .qr-lab input', i => i.map(x => x.value).join(
 await page.locator('#qrRows .qr-row').nth(2).locator('.qr-acts button').nth(2).click();
 check((await page.$$eval('#qrRows .qr-row', r => r.length)) === 2 && (await page.$$eval('#qrPrev .qr-pill', p => p.map(x => x.textContent).join())) === '少康獨家專訪六都,蔣萬安', '✕ 刪除這顆');
 for (let i = 0; i < 11; i++) await page.click('#qrAdd');
-check(await page.isDisabled('#qrAdd') && (await txt('#qrAdd')).includes('已達上限 13 顆') && (await page.$$eval('#qrRows .qr-row', r => r.length)) === 13, '最多 13 顆：滿了「新增」變成「已達上限 13 顆」且不能按');
+check(await page.isDisabled('#qrAdd') && (await txt('#qrAdd')) === '已達上限' && (await page.getAttribute('#qrAdd', 'title')) === '最多 13 顆' && (await page.$$eval('#qrRows .qr-row', r => r.length)) === 13, '最多 13 顆：滿了「新增」變成「已達上限」且不能按');
 await page.evaluate(() => { qrByMode.news.length = 2; qrRender(); qrChanged(); });
 // 傳送資料：快速回覆帶進 prepare；之後再改就作廢
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await page.evaluate(async () => { const st = lineSt(); await linePrepare(st); });   // 傳送資料已併入「推播測試」；這裡直接呼叫同一個函式驗證送出的內容
 const pq = reqs.prepare.at(-1).quick;
 check(JSON.stringify(pq) === JSON.stringify([{ label: '少康獨家專訪六都', kind: 'url', value: 'https://news.example.com/interview/six-cities' }, { label: '蔣萬安', kind: 'url', value: 'https://example.com/search?q=' + encodeURIComponent('蔣萬安') }]), '傳送資料：快速回覆依順序送出，連結留空的已換成搜尋網址（文字已 URL 編碼）');
 await page.locator('#qrRows .qr-lab input').nth(1).fill('蔣萬安 民調');
@@ -311,8 +311,7 @@ check(await page.evaluate(() => lineSt().prep === null) && (await txt('#lineWin'
 await page.locator('.qr-sec').screenshot({ path: path.join(SHOTS, 'line-ui-19b-quick-reply-2.png') });
 // 沒設快速回覆 → 不帶
 await page.evaluate(() => { qrByMode.news = []; qrRender(); qrChanged(); const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await page.evaluate(async () => { const st = lineSt(); await linePrepare(st); });   // 傳送資料已併入「推播測試」；這裡直接呼叫同一個函式驗證送出的內容
 check(JSON.stringify(reqs.prepare.at(-1).quick) === '[]', '沒設快速回覆：送出空陣列，行為跟以前一樣');
 check(await page.evaluate(() => qrByMode.ent.length === 0), '娛樂版型的快速回覆是獨立的一份');
 await page.click('#s8CloseBtn');

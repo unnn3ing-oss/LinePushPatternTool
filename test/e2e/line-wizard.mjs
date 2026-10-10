@@ -94,11 +94,12 @@ await page.addInitScript(() => { sessionStorage.setItem('labAuth', JSON.stringif
 await ctx.route('https://example.com/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }));
 await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
+const setTpl = v => page.evaluate(v => { const e = document.getElementById('qrTpl'); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, v);   // 搜尋網站網址搬到「訊息推播 → LINE推播設定」，不在這個視窗裡
 const txt = id => page.textContent(id);
 const vis = async sel => !(await page.locator(sel).isHidden());
 const bgOf = async id => { await page.waitForTimeout(380); return page.evaluate(i => getComputedStyle(document.getElementById(i)).backgroundColor, id); };
 const stepNow = () => page.evaluate(() => lineSt().step);
-const paneVis = async () => (await Promise.all(['lineP1', 'lineP2', 'lineP3', 'lineP4'].map(i => vis('#' + i)))).map((v, i) => v ? i + 1 : 0).filter(Boolean).join();
+const paneVis = async () => (await Promise.all(['contentBlock', 'lineP2', 'lineP3', 'lineP4'].map(i => vis('#' + i)))).map((v, i) => v ? i + 1 : 0).filter(Boolean).join();
 const nextState = () => page.evaluate(() => { const b = document.getElementById('lineNextBtn'); return { dis: b.classList.contains('is-disabled'), aria: b.getAttribute('aria-disabled'), tip: b.dataset.tip, hidden: b.hidden }; });
 async function openDialog() {
   await page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; openS8Dialog(); });
@@ -108,7 +109,6 @@ async function openDialog() {
 }
 const clickNext = async () => { await page.click('#lineNextBtn'); await page.waitForTimeout(150); };
 async function toStep(n) {   // 從第 1 步一路按到第 n 步（用「推播」操作者小編本人）
-  if ((await stepNow()) === 1 && !(await page.evaluate(() => !!lineSt().prep))) { await page.click('#linePrepBtn'); await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 }); }
   while ((await stepNow()) < n) {
     const s = await stepNow();
     if (s === 2 && !(await page.evaluate(() => !!lineOp))) { await page.waitForSelector('#lineOpList .lw-op'); await page.locator('#lineOpList .lw-op', { hasText: '小編本人' }).click(); }
@@ -127,31 +127,33 @@ check(lay.footAtBottom && lay.labels === '推播內容｜推播方式｜測試�
 check(lay.nextRight && lay.footBorder === lay.headBorder, '右側是「下一步」按鈕；底部列的樣式與上方標題／切換列一致（同樣的分隔線）');
 check(lay.titleGone && lay.hStepperGone && lay.headTabs === 'LINE原生推播S8推播', '「LINE原生推播」標題與舊的水平步驟列已拿掉（切換列的分頁保留）');
 check(lay.qrBelowPreview, '快速回覆按鈕區移到連結預覽下方');
-check((await paneVis()) === '1' && await vis('#contentBlock') && await vis('#lineP1'), '第 1 步只顯示「推播內容」：推播通知、連結預覽、快速回覆、傳送資料');
+check((await paneVis()) === '1' && await vis('#contentBlock') && (await page.locator('#linePrepBtn').count()) === 0, '第 1 步只顯示「推播內容」（推播通知、連結預覽、快速回覆）；沒有「傳送資料」按鈕了');
 await page.locator('#s8Modal').screenshot({ path: path.join(SHOTS, 'wiz-1-content.png') });
 
 // ===== 2. 下一步反灰＋上方泡泡說明哪個步驟未完成 =====
 let ns = await nextState();
-check(ns.dis && ns.aria === 'true' && ns.tip.includes('第 1 步「推播內容」還沒完成') && ns.tip.includes('還沒按「傳送資料」'), `第 1 步沒按「傳送資料」：下一步反灰，說明「${ns.tip}」`);
+check(!ns.dis && ns.aria === 'false', '內容都填好、預覽圖也產生好：第 1 步的「下一步」直接可按（不用再按「傳送資料」）');
+// 內容有缺：下一步反灰，泡泡說明缺什麼
+await page.evaluate(() => { document.getElementById('s8Alt').value = ''; document.getElementById('s8Alt').dispatchEvent(new Event('input', { bubbles: true })); });
+ns = await nextState();
+check(ns.dis && ns.aria === 'true' && ns.tip.includes('第 1 步「推播內容」還沒完成') && ns.tip.includes('推播通知'), `沒填推播通知：下一步反灰，泡泡說明「${ns.tip}」`);
 await page.hover('#lineNextBtn'); await page.waitForTimeout(200);
-const bub = await page.evaluate(() => { const b = document.getElementById('lineNextBtn'), cs = getComputedStyle(b, '::after'); return { content: cs.content, display: cs.display, bottom: cs.bottom, pos: cs.position, bg: cs.backgroundColor, btnBg: getComputedStyle(b).backgroundColor }; });
+const bub = await page.evaluate(() => { const b = document.getElementById('lineNextBtn'), cs = getComputedStyle(b, '::after'); return { content: cs.content, display: cs.display, bottom: cs.bottom, pos: cs.position, btnBg: getComputedStyle(b).backgroundColor }; });
 check(bub.display === 'block' && bub.content.includes('推播內容') && bub.pos === 'absolute' && parseFloat(bub.bottom) > 20, '游標移到反灰的「下一步」：上方彈出泡泡（在按鈕上方）');
 check(bub.btnBg === 'rgb(207, 211, 217)', `反灰的「下一步」是灰色（${bub.btnBg}）`);
 await page.locator('#s8Modal').screenshot({ path: path.join(SHOTS, 'wiz-2-next-disabled.png') });
 await page.mouse.move(5, 5);
 await page.click('#lineNextBtn', { force: true }); await page.waitForTimeout(100);
 check((await stepNow()) === 1, '反灰時按「下一步」不會換頁（泡泡會顯示一下）');
-// 內容有缺：說明第一個缺的東西
-await page.evaluate(() => { document.getElementById('s8Alt').value = ''; document.getElementById('s8Alt').dispatchEvent(new Event('input', { bubbles: true })); });
-ns = await nextState();
-check(ns.tip.includes('推播通知') || ns.tip.length > 20, `內容沒填完整：泡泡改說明缺什麼（${ns.tip}）`);
 await page.evaluate(() => { document.getElementById('s8Alt').value = '測試推播標題'; document.getElementById('s8Alt').dispatchEvent(new Event('input', { bubbles: true })); });
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
-check(reqs.prepare.length === 1 && reqs.prepare[0].altText === '測試推播標題' && reqs.validate.length === 1 && reqs.send.length === 0, '傳送資料：上傳＋請 LINE 檢查格式，沒有發送任何東西');
+// 預覽圖還在產生：也要擋
+await page.evaluate(() => { window.__imgs = s8State.images; s8State.images = []; lineUpdateSteps(); });
 ns = await nextState();
-check(!ns.dis && ns.aria === 'false', '傳送完成：「下一步」變成可按（藍色）');
-check(await page.evaluate(() => document.querySelector('#lineStepbar .lsb.on b').textContent === '推播內容' && !document.getElementById('lineSb1').classList.contains('done')), '目前這步（推播內容）亮藍色');
+check(ns.dis && ns.tip.includes('還在產生中'), `預覽圖還沒產生好：下一步反灰，說明「還在產生中」（${ns.tip}）`);
+await page.evaluate(() => { s8State.images = window.__imgs; lineUpdateSteps(); });
+check(reqs.prepare.length === 0 && reqs.validate.length === 0 && reqs.send.length === 0, '到這裡完全沒有上傳資料給 Worker（上傳與格式檢查改到「推播測試」時才做）');
+ns = await nextState();
+check(!ns.dis && await page.evaluate(() => document.querySelector('#lineStepbar .lsb.on b').textContent === '推播內容' && !document.getElementById('lineSb1').classList.contains('done')), '內容完整：「下一步」可按；目前這步（推播內容）亮藍色');
 
 // ===== 3. 第 2 步：推播方式（選擇操作者）=====
 await clickNext();
@@ -182,6 +184,7 @@ await page.click('#lineTestBtn');
 await page.waitForFunction(() => lineSt().test === 'ok');
 const t1 = offReqs.send.at(-1);
 check(t1.channel === 'news' && t1.mode === 'test' && JSON.stringify(t1.testers) === JSON.stringify([T_N1]) && t1.testers.length === 1 && /^[0-9a-f-]{36}$/.test(t1.retryKey) && t1.confirmTotal === undefined && Array.isArray(t1.links) && t1.links.length === 12, '測試推播：只帶操作者一位（新聞帳號名單裡的小編本人）、沒有人數確認、帶每格連結');
+check(reqs.prepare.length === 1 && reqs.prepare[0].altText === '測試推播標題' && reqs.prepare[0].org === 'news' && reqs.prepare[0].pages.length === 2 && reqs.validate.length === 1 && reqs.validate[0].channel === 'test', '按「推播測試」時才一起傳送資料：先上傳（版型、推播標題、兩頁圖）、請 LINE 檢查格式，再發測試推播');
 check((await txt('#lineWin')).includes('只發給操作者') && (await txt('#lineWin')).includes('請到手機的「TVBS新聞」確認') && await page.evaluate(() => document.getElementById('lineWin').classList.contains('ok')), '結果寫明發到哪、只給誰');
 const winTop = await page.evaluate(() => { const w = document.getElementById('lineWin').getBoundingClientRect(), b = document.getElementById('composeBody').getBoundingClientRect(), p = document.getElementById('lineP3').getBoundingClientRect(); return { onTop: w.top - b.top >= 0 && w.top - b.top < 24, above: w.bottom <= p.top, dbg: [w.top, b.top, w.bottom, p.top] }; });
 check(winTop.onTop && winTop.above, `推播狀態顯示在彈窗內容最上方（在各步驟內容之上）${winTop.dbg}`);
@@ -190,7 +193,7 @@ await page.locator('#s8Modal').screenshot({ path: path.join(SHOTS, 'wiz-4-test.p
 await page.click('#lineTestBtn');
 await page.waitForFunction(() => lineSt().test === 'ok' && offReqs.send.length === 2 || true);
 await page.waitForTimeout(300);
-check(offReqs.send.length === 2 && offReqs.send[1].retryKey !== offReqs.send[0].retryKey, '「再推一次」換一把重試金鑰（才會真的再發一次）');
+check(offReqs.send.length === 2 && offReqs.send[1].retryKey !== offReqs.send[0].retryKey && reqs.prepare.length === 1, '「再推一次」換一把重試金鑰（才會真的再發一次），而且不會重複上傳資料');
 // 換操作者：只在測試帳號名單的「王小明」→ 正式帳號不能測
 await page.click('#lineSb2'); await page.waitForTimeout(150);
 check((await stepNow()) === 2 && await page.evaluate(() => lineSt().test === 'ok'), '點進度列的「2」可以回上一步，測試結果還在');
@@ -226,7 +229,12 @@ check((await stepNow()) === 1 && await vis('#qrSec'), '回到第 1 步');
 for (let i = 0; i < 3; i++) await page.click('#qrAdd');
 const labs = ['蔣萬安', '少康獨家專訪六都', '民調'];
 for (let i = 0; i < 3; i++) await page.locator('#qrRows .qr-lab input').nth(i).fill(labs[i]);
-await page.fill('#qrTpl', 'https://news.example.com/search?q={keyword}');
+await setTpl('https://news.example.com/search?q={keyword}');
+const qrLay = await page.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(), link = document.querySelector('.s8-linkrow').getBoundingClientRect(), pills = r('qrPrev'), title = document.querySelector('.qr-title').getBoundingClientRect(), add = r('qrAdd'), seg = r('qrAddTrack'); return { pillsBelowPreview: pills.top >= link.bottom - 1, pillsAboveTitle: pills.bottom <= title.top + 1, n: document.querySelectorAll('#qrPrev .qr-pill').length, note: !!document.querySelector('.qr-note'), tplInSec: !!document.querySelector('#qrSec #qrTpl'), addBelowTitle: add.top >= title.bottom - 1, segH: seg.height, prepSegH: 46, addTxt: document.getElementById('qrAdd').textContent, rowsBelowAdd: document.querySelector('#qrRows').getBoundingClientRect().top >= seg.bottom - 1, tplInHub: !!document.querySelector('#hubSet #qrTpl') }; });
+check(qrLay.pillsBelowPreview && qrLay.pillsAboveTitle && qrLay.n === 3, `快速回覆按鈕（深色圓角）顯示在連結預覽下方、「快速回覆按鈕」標題上方（${qrLay.n} 顆）`);
+check(!qrLay.note && !qrLay.tplInSec && qrLay.tplInHub, '標題下的說明文字已移除；「搜尋網站網址」不在這個視窗，改放在「LINE推播設定」');
+check(qrLay.addTxt === '新增快速回覆' && qrLay.addBelowTitle && qrLay.rowsBelowAdd && Math.abs(qrLay.segH - qrLay.prepSegH) < 1.5, `說明的位置換成與介面按鈕相同樣式的「${qrLay.addTxt}」（高度 ${Math.round(qrLay.segH)}px，同「傳送資料」）`);
+await page.locator('#contentBlock').screenshot({ path: path.join(SHOTS, 'wiz-1b-quick-reply.png') });
 await page.waitForFunction(() => /內容有更動/.test(document.getElementById('lineWin').textContent) || !lineSt().prep);
 check(!(await page.evaluate(() => !!lineSt().prep)) && (await txt('#lineWin')).includes('內容有更動'), '在第 1 步改了內容（加快速回覆）：已上傳的資料作廢，要重新傳送資料');
 await toStep(4);
@@ -294,8 +302,6 @@ check((await stepNow()) === 3 && await page.evaluate(() => lineSt().test === '' 
 await page.evaluate(() => { lineOpSet('小編本人'); });
 // 名單還沒讀完：不能自動改測試目標
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
 await page.evaluate(() => { lineOpSet('小編本人'); lineWhoFor('news').loaded = false; lineWhoFor('news').testers = []; lineSt().testOn = 'official'; lineSt().step = 3; lineWhoLoad = async () => {}; lineUpdateSteps(); });
 check(await page.evaluate(() => lineSt().testOn === 'official'), '正式帳號名單還沒讀完時，不會偷偷把測試目標改成測試帳號');
 await page.reload();
@@ -388,10 +394,22 @@ const css = await page.evaluate(() => { document.getElementById('lineOpNote').cl
 check(css.row === 'flex' && css.bad === 'rgb(185, 28, 28)', '「測試推播發到」那列的版面與「阻擋性錯誤紅字」樣式都在');
 check(css.role === 'group' && css.items === 0, '進度列用 group＋原生 button（螢幕閱讀器能念出按鈕與停用狀態）');
 
+// 傳送資料（上傳／格式檢查）失敗：測試推播失敗、不會發送、可修好後重試
+await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
+await toStep(3);
+validateOk = false;
+const sendsBefore = reqs.send.length + offReqs.send.length;
+await page.click('#lineTestBtn');
+await page.waitForFunction(() => lineSt().test === 'bad');
+check((await txt('#lineTestMsg')).includes('LINE 說格式不對') && reqs.send.length + offReqs.send.length === sendsBefore && (await nextState()).dis, '傳送資料時 LINE 說格式不對：測試推播失敗、沒有發送任何東西、下一步維持反灰');
+check(await page.evaluate(() => !lineSt().prep), '失敗的那次不留下半套資料');
+validateOk = true;
+await page.click('#lineTestBtn');
+await page.waitForFunction(() => lineSt().test === 'ok');
+check(await page.evaluate(() => !!lineSt().prep) && !(await nextState()).dis, '修好後再按：重新傳送並測試成功');
+
 // ===== 8. 名單是空的、讀不到 =====
 await page.evaluate(() => { const st = lineSt(); lineResetFlow(st); Object.keys(lineWhoBy).forEach(k => { lineWhoBy[k] = { loaded: true, loading: false, testers: [], error: '', quota: null }; }); lineOp = ''; try { localStorage.removeItem('lineOp'); } catch (e) { /* */ } lineUpdateSteps(); });
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
 await clickNext();
 check((await txt('#lineOpNote')).includes('名單是空的') && (await txt('#lineOpNote')).includes('權限管理') && (await nextState()).dis, '名單是空的：說明去哪裡新增自己，下一步反灰');
 
