@@ -247,13 +247,11 @@
   .line-srow .when { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
   .line-tbtn { padding: 3px 12px; border-radius: 99px; border: 1px solid rgba(0, 0, 0, .18); background: #fff; font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
   .line-tbtn.on { background: #dbeafe; border-color: #93c5fd; color: #1e40af; font-weight: 700; }
-  .qr-sec { grid-column: 1 / -1; margin-top: 6px; font-size: 13px; }   /* 外層是「標籤｜欄位」兩欄的格線，這一塊要橫跨整列 */
+  .qr-sec { margin-top: 12px; font-size: 13px; }
   .qr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .qr-title { font-weight: 700; font-size: 14px; }
-  .qr-head button { padding: 3px 12px; font-size: 13px; }
-  .qr-note { margin: 4px 0 8px; color: var(--muted); line-height: 1.6; }
+  .qr-add { margin: 8px 0 10px; }
   .qr-tpl { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-  .qr-tpl[hidden] { display: none; }
   .qr-tpl label { margin: 0; font-weight: 600; color: var(--muted); white-space: nowrap; }
   .qr-tpl input { flex: 1 1 auto; min-width: 0; }
   .qr-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(160px, 1.6fr) auto; gap: 6px; align-items: start; margin-bottom: 6px; }
@@ -266,7 +264,7 @@
   .qr-row .bad { border-color: #dc2626; }
   .qr-hint { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: -2px; word-break: break-all; }
   .qr-hint.bad { color: #b91c1c; font-weight: 600; }
-  .qr-prev { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 4px; }
+  .qr-prev { display: flex; gap: 8px; overflow-x: auto; max-width: 520px; margin: 8px auto 0; padding: 4px 2px; }
   .qr-prev[hidden] { display: none; }
   .qr-pill { flex: none; padding: 7px 16px; border-radius: 99px; background: #1f2a4a; color: #fff; font-size: 14px; white-space: nowrap; }
   .line-trow span { font-size: 14px; color: var(--text); }
@@ -1462,12 +1460,11 @@
           </div>
         </div>
       </div>
+      <div class="qr-prev" id="qrPrev" hidden aria-label="快速回覆預覽"></div>
       <div class="qr-sec" id="qrSec">
-        <div class="qr-head"><span class="qr-title">快速回覆按鈕（選填，最多 13 顆）</span><button type="button" id="qrAdd">＋ 新增快速回覆按鈕</button></div>
-        <div class="qr-note">訊息下方那排圓角按鈕（只出現在最後一則，點了或收到新訊息就消失）。每次推播都不同，所以不會保留上次的內容。連結留空＝用「顯示文字」當關鍵字，到下面的搜尋網站搜尋。</div>
-        <div class="qr-tpl" id="qrTplRow" hidden><label for="qrTpl">搜尋網站網址</label><input type="text" id="qrTpl" autocomplete="off" spellcheck="false" placeholder="https://example.com/search?q={keyword}（{keyword} 會換成按鈕文字）"></div>
+        <div class="qr-head"><span class="qr-title">快速回覆按鈕（選填，最多 13 顆）</span></div>
+        <div class="s8-steps qr-add"><div class="s8-seg hug" id="qrAddTrack"><button type="button" class="s8-segbtn col1" id="qrAdd">新增快速回覆</button></div></div>
         <div id="qrRows"></div>
-        <div class="qr-prev" id="qrPrev" hidden aria-label="快速回覆預覽"></div>
       </div>
 
       <ul class="s8-errs" id="s8Errs"></ul>
@@ -1631,6 +1628,9 @@
           </div>
           <div class="line-note" id="lineAddOut" style="margin-top:6px"></div>
         </div>
+        <div class="hub-bar" style="margin-top:20px"><span class="line-sub">快速回覆設定</span></div>
+        <div class="line-note" style="margin-top:0">快速回覆按鈕每次推播都不同，在「排入LINE推播」第 1 步新增。連結留空的按鈕，會把「顯示文字」當關鍵字，到這裡設定的搜尋網站去搜尋。這個網址所有推播共用，記在這個瀏覽器。</div>
+        <div class="qr-tpl"><label for="qrTpl">搜尋網站網址</label><input type="text" id="qrTpl" autocomplete="off" spellcheck="false" placeholder="https://example.com/search?q={keyword}（{keyword} 會換成按鈕文字）"></div>
       </section>
       <section class="hub-sec" id="hubS8" data-hub="s8" hidden>
         <p class="s8c-state" id="s8cState">尚未連結</p>
@@ -5422,7 +5422,7 @@ function qrErrors() {
     if (!label) { errs.push(`${n}缺少顯示文字`); return; }
     if ([...label].length > QR_LABEL_MAX) errs.push(`${n}的顯示文字最多 ${QR_LABEL_MAX} 字`);
     if (url) { if (!/^https:\/\/\S+$/.test(url) || url.length > 1000) errs.push(`${n}的連結要以 https:// 開頭`); }
-    else if (!tpl) errs.push(`${n}沒有連結：請填連結，或在上方填「搜尋網站網址」`);
+    else if (!tpl) errs.push(`${n}沒有連結：請填連結，或到「訊息推播 → LINE推播設定」填「搜尋網站網址」`);
     else if (!/^https:\/\/\S+$/.test(tpl.replace(/\{(keyword|關鍵字)\}/g, 'x')) || !/\{(keyword|關鍵字)\}/.test(tpl)) errs.push('「搜尋網站網址」要以 https:// 開頭，並包含 {keyword}');
     else if (qrFinalUrl(r).length > 1000) errs.push(`${n}的搜尋網址太長`);
   });
@@ -5432,7 +5432,6 @@ function qrRenderPreview() {
   const prev = document.getElementById('qrPrev'), rows = qrRowsNow().filter(r => String(r.label || '').trim());
   prev.textContent = ''; prev.hidden = !rows.length;
   rows.forEach(r => { const b = document.createElement('span'); b.className = 'qr-pill'; b.textContent = String(r.label).trim(); b.title = qrFinalUrl(r) || '（還沒有連結）'; prev.appendChild(b); });
-  document.getElementById('qrTplRow').hidden = !qrRowsNow().some(r => qrRowUsed(r) && !String(r.url || '').trim());
 }
 function qrChanged() { qrRenderPreview(); qrMarkRows(); if (typeof s8Refresh === 'function' && s8State) s8Refresh(); }
 function qrMarkRows() {   // 每列的提示：連結留空時顯示實際會開的搜尋網址
@@ -5446,7 +5445,7 @@ function qrMarkRows() {   // 每列的提示：連結留空時顯示實際會開
     el.querySelector('.qr-url input').classList.toggle('bad', bad);
     const fin = qrFinalUrl(r);
     hint.classList.toggle('bad', bad);
-    hint.textContent = bad ? '連結要以 https:// 開頭' : (url ? '' : (label ? (fin ? `沒填連結：會開啟搜尋 ${fin}` : '沒填連結：請在上方填「搜尋網站網址」') : ''));
+    hint.textContent = bad ? '連結要以 https:// 開頭' : (url ? '' : (label ? (fin ? `沒填連結：會開啟搜尋 ${fin}` : '沒填連結：請到「訊息推播 → LINE推播設定」填「搜尋網站網址」') : ''));
     hint.hidden = !hint.textContent;
   });
 }
@@ -5469,7 +5468,8 @@ function qrRender() {
     ui.addEventListener('input', () => { r.url = ui.value; qrChanged(); });
   });
   document.getElementById('qrAdd').disabled = rows.length >= QR_MAX;
-  document.getElementById('qrAdd').textContent = rows.length >= QR_MAX ? `已達上限 ${QR_MAX} 顆` : '＋ 新增快速回覆按鈕';
+  document.getElementById('qrAdd').textContent = rows.length >= QR_MAX ? '已達上限' : '新增快速回覆';
+  document.getElementById('qrAdd').title = rows.length >= QR_MAX ? `最多 ${QR_MAX} 顆` : '';
   qrRenderPreview(); qrMarkRows();
 }
 document.getElementById('qrAdd').addEventListener('click', () => { const rows = qrRowsNow(); if (rows.length >= QR_MAX) return; rows.push({ label: '', url: '' }); qrRender(); qrChanged(); const ins = document.querySelectorAll('#qrRows .qr-lab input'); if (ins.length) ins[ins.length - 1].focus(); });

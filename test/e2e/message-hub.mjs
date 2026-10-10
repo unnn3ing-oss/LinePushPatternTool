@@ -192,6 +192,10 @@ check(reqs.add.at(-1).name === '主播小美' && (await txt('#lineTesterList')).
 await page.click('#lineTesterList .line-trow:last-child button');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
 check(reqs.remove.at(-1).channel === 'news' && reqs.remove.at(-1).tid === '2'.repeat(16) && dialogs.at(-1).includes('主播小美'), '移除成員：先確認，只動這個帳號的名單');
+// 快速回覆的「搜尋網站網址」在這個分頁設定（所有推播共用，記在瀏覽器）
+check(await vis('#qrTpl') && (await txt('#hubSet')).includes('快速回覆設定'), '「LINE推播設定」有「快速回覆設定 → 搜尋網站網址」');
+await page.fill('#qrTpl', 'https://news.example.com/search?q={keyword}');
+check(await page.evaluate(() => localStorage.getItem('qrSearchTpl')) === 'https://news.example.com/search?q={keyword}', '輸入後記在這個瀏覽器');
 // 切到娛樂：Worker 沒設憑證
 await page.click('#hubAcctEnt');
 await page.waitForFunction(() => /連不上/.test(document.getElementById('hubStatusBox').textContent));

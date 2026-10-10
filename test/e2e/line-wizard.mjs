@@ -94,6 +94,7 @@ await page.addInitScript(() => { sessionStorage.setItem('labAuth', JSON.stringif
 await ctx.route('https://example.com/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }));
 await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
+const setTpl = v => page.evaluate(v => { const e = document.getElementById('qrTpl'); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, v);   // 搜尋網站網址搬到「訊息推播 → LINE推播設定」，不在這個視窗裡
 const txt = id => page.textContent(id);
 const vis = async sel => !(await page.locator(sel).isHidden());
 const bgOf = async id => { await page.waitForTimeout(380); return page.evaluate(i => getComputedStyle(document.getElementById(i)).backgroundColor, id); };
@@ -226,7 +227,12 @@ check((await stepNow()) === 1 && await vis('#qrSec'), '回到第 1 步');
 for (let i = 0; i < 3; i++) await page.click('#qrAdd');
 const labs = ['蔣萬安', '少康獨家專訪六都', '民調'];
 for (let i = 0; i < 3; i++) await page.locator('#qrRows .qr-lab input').nth(i).fill(labs[i]);
-await page.fill('#qrTpl', 'https://news.example.com/search?q={keyword}');
+await setTpl('https://news.example.com/search?q={keyword}');
+const qrLay = await page.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(), link = document.querySelector('.s8-linkrow').getBoundingClientRect(), pills = r('qrPrev'), title = document.querySelector('.qr-title').getBoundingClientRect(), add = r('qrAdd'), seg = r('qrAddTrack'), prep = r('linePrepBtn'); return { pillsBelowPreview: pills.top >= link.bottom - 1, pillsAboveTitle: pills.bottom <= title.top + 1, n: document.querySelectorAll('#qrPrev .qr-pill').length, note: !!document.querySelector('.qr-note'), tplInSec: !!document.querySelector('#qrSec #qrTpl'), addBelowTitle: add.top >= title.bottom - 1, segH: seg.height, prepSegH: document.getElementById('linePrepTrack').getBoundingClientRect().height, addTxt: document.getElementById('qrAdd').textContent, rowsBelowAdd: document.querySelector('#qrRows').getBoundingClientRect().top >= seg.bottom - 1, tplInHub: !!document.querySelector('#hubSet #qrTpl') }; });
+check(qrLay.pillsBelowPreview && qrLay.pillsAboveTitle && qrLay.n === 3, `快速回覆按鈕（深色圓角）顯示在連結預覽下方、「快速回覆按鈕」標題上方（${qrLay.n} 顆）`);
+check(!qrLay.note && !qrLay.tplInSec && qrLay.tplInHub, '標題下的說明文字已移除；「搜尋網站網址」不在這個視窗，改放在「LINE推播設定」');
+check(qrLay.addTxt === '新增快速回覆' && qrLay.addBelowTitle && qrLay.rowsBelowAdd && Math.abs(qrLay.segH - qrLay.prepSegH) < 1.5, `說明的位置換成與介面按鈕相同樣式的「${qrLay.addTxt}」（高度 ${Math.round(qrLay.segH)}px，同「傳送資料」）`);
+await page.locator('#contentBlock').screenshot({ path: path.join(SHOTS, 'wiz-1b-quick-reply.png') });
 await page.waitForFunction(() => /內容有更動/.test(document.getElementById('lineWin').textContent) || !lineSt().prep);
 check(!(await page.evaluate(() => !!lineSt().prep)) && (await txt('#lineWin')).includes('內容有更動'), '在第 1 步改了內容（加快速回覆）：已上傳的資料作廢，要重新傳送資料');
 await toStep(4);
