@@ -281,9 +281,8 @@
   #s8Modal[data-view="hub"] #s8Modetabs, #s8Modal[data-view="hub"] #s8Title { display: none; }
   /* LINE 原生推播的四步驟精靈：底部進度列＋每步一個畫面 */
   #s8Modal[data-view="hub"] #lineFoot { display: none; }
-  .lw-pane[hidden], .lw-prep[hidden], #contentBlock[hidden], #lineFoot[hidden], .lsb-prev[hidden], .lsb-next[hidden], #lineConfirmBox[hidden], #lineConfirmCap[hidden], #lineGoTrack[hidden] { display: none; }
+  .lw-pane[hidden], #contentBlock[hidden], #lineFoot[hidden], .lsb-prev[hidden], .lsb-next[hidden], #lineConfirmBox[hidden], #lineConfirmCap[hidden], #lineGoTrack[hidden] { display: none; }
   .line-top { position: sticky; top: 0; z-index: 6; margin: 0 0 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
-  .lw-prep { margin: 14px 0 0; }
   .lw-title { margin: 0 0 12px; font-size: 16px; font-weight: 800; }
   .lw-title span { margin-left: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
   .lw-ops { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1468,12 +1467,6 @@
       </div>
 
       <ul class="s8-errs" id="s8Errs"></ul>
-      </div>
-      <div class="lw-prep s8-steps" id="lineP1" data-only="line">
-        <div class="s8-seg hug" id="linePrepTrack">
-          <button type="button" class="s8-segbtn col1" id="linePrepBtn">傳送資料</button>
-          <div class="s8-segstatus" id="linePrepOut" hidden><span id="linePrepMsg"></span></div>
-        </div>
       </div>
       <div id="s8Panel" data-only="s8">
       <div class="s8-page">傳送資料給S8</div>
@@ -5317,6 +5310,7 @@ function s8RenderStage() {
   const stage = document.getElementById('s8Stage');
   stage.textContent = '';
   if (!s8State) return;
+  if (typeof lineUpdateSteps === 'function') setTimeout(lineUpdateSteps, 0);   // 預覽圖產生好了／換頁：LINE 精靈第 1 步的「下一步」跟著更新
   const p = s8State.sp, im = s8State.images[p];
   if (!im) {
     const ph = document.createElement('span'); ph.className = 's8-ph'; ph.id = 's8StagePh';
@@ -6100,9 +6094,9 @@ const lineByMode = { news: null, ent: null };
 let lineUiMode = '';   // 目前「確認人數」「排程日期時間」輸入框裡放的是哪個版型的內容（兩個版型共用同一組輸入框）
 // 測試推播發到哪個帳號：'official'（目前版型的正式帳號，只 multicast 給操作者一位）或 'test'（測試帳號）；記在這個瀏覽器
 function lineTestOnLoad() { try { return localStorage.getItem('lineTestOn') === 'test' ? 'test' : 'official'; } catch (e) { return 'official'; } }
-const lineNewState = () => ({ step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', testOn: lineTestOnLoad(), test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' }, confirmVal: '', whenDate: '', whenTime: '' });
+const lineNewState = () => ({ step: 1, prep: null, choice: '', testOn: lineTestOnLoad(), test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' }, confirmVal: '', whenDate: '', whenTime: '' });
 const lineSt = () => (lineByMode[mode] = lineByMode[mode] || lineNewState());
-const lineBusyNow = () => { const st = lineByMode[mode]; return !!st && (st.prepMsg.kind === 'busy' || st.test === 'busy' || st.goState === 'busy'); };
+const lineBusyNow = () => { const st = lineByMode[mode]; return !!st && (st.test === 'busy' || st.goState === 'busy'); };
 // ---- 成員名單與操作者 ----
 // 名單來自「訊息推播 → LINE推播設定 → 權限管理」：測試帳號的名單（對方傳「登記」或管理者貼 userId）、正式帳號的名單（貼 userId，由 LINE 驗證）。
 // 同一個人在不同帳號的 userId 不同（不同 Provider），所以「操作者」用名字對應：名字相同＝同一個人。LINE 以「收件人數」計額度：發給 1 位＝1 則，不管有幾頁圖。
@@ -6205,7 +6199,7 @@ function lineRenderWin() {
   w.hidden = !st.win.text; w.textContent = st.win.text; w.className = `line-win line-top${st.win.kind ? ' ' + st.win.kind : ''}`;
 }
 
-function lineResetFlow(st) { Object.assign(st, { confirmVal: '', whenDate: '', whenTime: '', step: 1, prep: null, prepMsg: { text: '', kind: '' }, choice: '', test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
+function lineResetFlow(st) { Object.assign(st, { confirmVal: '', whenDate: '', whenTime: '', step: 1, prep: null, choice: '', test: '', testMsg: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: 0, goState: '', retryKey: { test: '', otest: '', official: '' }, win: { text: '', kind: '' } }); const cf = $line('lineConfirmTotal'); if (cf) cf.value = ''; lineResetSlider(); }
 function lineInvalidateIfChanged() {
   const st = lineByMode[mode];
   if (st && st.prep && st.prep.sig !== lineSig() && !lineBusyNow()) { const done = st.goState === 'ok'; lineResetFlow(st); st.win = { text: done ? '內容有更動：上一則推播已完成並鎖定，這是新的一則，請從第 1 步重新「傳送資料」。' : '內容有更動，已作廢上傳的資料，請重新「傳送資料」。', kind: done ? '' : 'bad' }; }
@@ -6258,31 +6252,35 @@ function lineFitControls() {
   probe.className = 's8-steps';
   probe.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;display:flex;flex-direction:column;align-items:flex-start;--s8-ctl-w:max-content';
   const add = (id, tweak) => { const c = $line(id).cloneNode(true); c.removeAttribute('id'); c.hidden = false; c.querySelectorAll('[id]').forEach(e => e.removeAttribute('id')); if (tweak) tweak(c); probe.appendChild(c); };
-  add('linePrepTrack', c => { c.classList.add('open'); const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = '✓ 傳送完成　格式檢查通過'; });
   add('lineSeg2');
   add('lineTestTrack', c => { c.classList.add('open'); const o = c.querySelector('.s8-segstatus'); o.hidden = false; o.querySelector('span').textContent = `✓ 已測試推播到${S8_ACCOUNT.ent}，請到手機確認`; });
   document.body.appendChild(probe);
   const w = Math.max(...Array.from(probe.children).map(c => c.getBoundingClientRect().width));
   probe.remove();
-  if (w > 100) ['lineP1', 'lineP3', 'lineP4'].forEach(id => $line(id).style.setProperty('--s8-ctl-w', `${Math.max(360, Math.ceil(w) + 2)}px`));
+  if (w > 100) ['lineP3', 'lineP4'].forEach(id => $line(id).style.setProperty('--s8-ctl-w', `${Math.max(360, Math.ceil(w) + 2)}px`));
   lineUpdateSteps();
 }
 
 // ---- 步驟與底部進度列 ----
 const LINE_STEP_NAMES = ['推播內容', '推播方式', '測試推播', '正式推播'];
+function lineContentIssue() {   // 推播內容還有什麼沒完成（空字串＝可以往下）。上傳與格式檢查改到「測試推播」時一起做
+  const errs = s8Validate(s8Collect());
+  if (errs.length) return `${errs[0]}${errs.length > 1 ? `（另外還有 ${errs.length - 1} 項）` : ''}`;
+  const ims = (s8State && s8State.images) || [];
+  for (let p = 0; p < (s8State ? s8State.regions.length : 0); p++) {
+    if (!ims[p] || !ims[p].blob) return `第 ${p + 1} 頁預覽圖還在產生中，請稍等一下。`;
+    if (ims[p].tooBig) return `第 ${p + 1} 頁圖片超過 2MB，請換掉細節很多的照片後重做。`;
+  }
+  return '';
+}
 function lineStepDone(st, n) {
-  if (n === 1) return !!st.prep;
+  if (n === 1) return !lineContentIssue();
   if (n === 2) return !!lineOp && !!(lineOpTid(mode) || lineOpTid('test'));
   if (n === 3) return st.test === 'ok';
   return st.goState === 'ok';
 }
 function lineStepWhy(st, n) {   // 這一步還沒完成的原因（「下一步」反灰時，從上方泡泡告訴你）
-  if (n === 1) {
-    if (st.prepMsg.kind === 'busy') return '正在傳送資料，請稍候。';
-    const errs = s8Validate(s8Collect());
-    if (errs.length) return `${errs[0]}${errs.length > 1 ? `（另外還有 ${errs.length - 1} 項）` : ''}`;
-    return '還沒按「傳送資料」完成格式檢查。';
-  }
+  if (n === 1) return lineContentIssue();
   if (n === 2) {
     if (!lineOp) return '還沒選擇操作者。';
     return `名單裡找不到操作者「${lineOp}」，請重新選擇或先到權限管理新增。`;
@@ -6348,19 +6346,12 @@ function lineUpdateSteps() {
     $line('lineConfirmTotal').value = st.confirmVal || '';
     if (st.whenDate && st.whenTime) { $line('lineDate').value = st.whenDate; $line('lineTime').value = st.whenTime; lineShowWhenText(); } else lineSetWhen(s8DefaultWhenMs());
   }
-  if (st.step > 1 && !st.prep) st.step = 1;   // 上傳的資料作廢了：回到第 1 步
+  if (st.step > 3 && !st.prep) st.step = 3;   // 上傳的資料作廢了（要先測試推播才會重新上傳）：不能停在正式推播
   const isLine = s8Md === 'line', cur = st.step, locked = st.goState === 'ok', busy = lineBusyNow();
   const setSt = (el, v) => { if (v) el.dataset.state = v; else delete el.dataset.state; };
   // 各步驟的畫面（只有 LINE 原生推播分頁用得到；S8 分頁整塊都顯示）
   $line('contentBlock').hidden = isLine && cur !== 1;
-  $line('lineP1').hidden = cur !== 1;
   [2, 3, 4].forEach(n => { $line(`lineP${n}`).hidden = cur !== n; });
-  // ① 推播內容：傳送資料
-  const pk = st.prepMsg.kind, pb = $line('linePrepBtn');
-  setSt(pb, pk); pb.disabled = pk === 'busy';
-  $line('linePrepTrack').classList.toggle('open', !!st.prepMsg.text);
-  const po = $line('linePrepOut'); po.hidden = !st.prepMsg.text; po.classList.toggle('bad', pk === 'bad');
-  $line('linePrepMsg').textContent = st.prepMsg.text || ''; po.title = st.prepMsg.text || '';
   // ② 推播方式：操作者
   if (cur === 2) lineOpRender();
   // ③ 測試推播：只傳給操作者本人
@@ -6437,31 +6428,24 @@ function lineUpdateSteps() {
   nx.dataset.tip = okNext ? '' : `第 ${cur} 步「${LINE_STEP_NAMES[cur - 1]}」還沒完成：${lineStepWhy(st, cur)}`;
   lineRenderWin();
 }
-// ① 傳送資料
-$line('linePrepBtn').addEventListener('click', async () => {
-  const st = lineSt();
-  const set = (text, kind) => { st.prepMsg = { text, kind }; lineUpdateSteps(); };
+// 上傳圖片＋請 LINE 檢查格式（不發送）。不再有獨立的「傳送資料」按鈕：按「推播測試」時需要才做（還沒傳過、或傳過太久）
+const LINE_PREP_FRESH_MS = 20 * 60 * 1000;   // Worker 的準備資料 30 分鐘過期，超過 20 分鐘就重傳
+async function linePrepare(st) {
   const d = s8Collect(), errs = s8Validate(d);
-  if (errs.length) { set(`✗ 還不能傳送：${errs.join('；')}`, 'bad'); return; }
-  lineResetFlow(st);
-  set('傳送中…（約數秒）', 'busy');
-  try {
-    const sig = lineSig(), payload = [];
-    if (s8State.sig !== s8Signature()) throw new Error('畫面內容和這個視窗開啟時不同，請關閉視窗後重新開啟');
-    for (let p = 0; p < d.pages.length; p++) {
-      const im = s8State.images[p];
-      if (!im || !im.blob) throw new Error(`第 ${p + 1} 頁圖片還在產生中`);
-      if (im.tooBig) throw new Error(`第 ${p + 1} 頁圖片超過 2MB，請換掉細節很多的照片後重做`);
-      payload.push({ width: L().exportW, height: L().exportH, images: { 1040: await blobToBase64(im.blob) }, buttons: d.pages[p].cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })) });
-    }
-    const pr = await s8Api('/line/prepare', { org: mode, name: d.name, altText: d.alt, quick: d.quick, pages: payload });
-    const vr = await s8Api('/line/validate', { prepareToken: pr.prepareToken, channel: 'test' });
-    if (!vr.valid) { set('✗ LINE 說格式不對，沒有發送任何東西（詳見下方）', 'bad'); lineWin(`LINE 說格式不對，沒有發送任何東西：\n${vr.message}`, 'bad'); return; }
-    st.prep = { prepareToken: pr.prepareToken, id: pr.id, sig };
-    set('✓ 傳送完成　格式檢查通過', 'ok');
-    lineWin('', '');
-  } catch (e) { set(`✗ 傳送失敗：${String(e.message || e).slice(0, 200)}`, 'bad'); lineWin(`傳送失敗：${e.message || e}`, 'bad'); }
-});
+  if (errs.length) throw new Error(`還不能傳送：${errs.join('；')}`);
+  if (s8State.sig !== s8Signature()) throw new Error('畫面內容和這個視窗開啟時不同，請關閉視窗後重新開啟');
+  const sig = lineSig(), payload = [];
+  for (let p = 0; p < d.pages.length; p++) {
+    const im = s8State.images[p];
+    if (!im || !im.blob) throw new Error(`第 ${p + 1} 頁圖片還在產生中`);
+    if (im.tooBig) throw new Error(`第 ${p + 1} 頁圖片超過 2MB，請換掉細節很多的照片後重做`);
+    payload.push({ width: L().exportW, height: L().exportH, images: { 1040: await blobToBase64(im.blob) }, buttons: d.pages[p].cells.map(c => ({ title: c.title, url: c.url, x: `${c.pct.x}%`, y: `${c.pct.y}%`, width: `${c.pct.width}%`, height: `${c.pct.height}%` })) });
+  }
+  const pr = await s8Api('/line/prepare', { org: mode, name: d.name, altText: d.alt, quick: d.quick, pages: payload });
+  const vr = await s8Api('/line/validate', { prepareToken: pr.prepareToken, channel: 'test' });
+  if (!vr.valid) throw new Error(`LINE 說格式不對，沒有發送任何東西：${vr.message}`);
+  st.prep = { prepareToken: pr.prepareToken, id: pr.id, sig, at: Date.now() };
+}
 // ③ 測試推播
 async function lineSend(channel, extra) {
   const st = lineSt(), key = channel === 'test' ? 'test' : (extra && extra.mode === 'test' ? 'otest' : 'official');
@@ -6471,14 +6455,16 @@ async function lineSend(channel, extra) {
 
 // ③ 測試推播：立即傳送，只傳給操作者本人（測試帳號或正式帳號都一樣，沒有排程）
 $line('lineTestBtn').addEventListener('click', async () => {
-  const st = lineSt(); if (!st.prep || st.test === 'busy') return;
-  if (st.prep.sig !== lineSig()) { lineInvalidateIfChanged(); return; }
+  const st = lineSt(); if (st.test === 'busy' || lineContentIssue()) return;
+  if (st.prep && st.prep.sig !== lineSig()) { lineInvalidateIfChanged(); return; }
   const ch = lineTestCh(st), toOfficial = ch !== 'test', acct = lineWhoAcct(ch), tid = lineOpTid(ch);
   if (!tid) { st.test = 'bad'; st.testMsg = `✗ 「${acct}」的名單裡沒有操作者「${lineOp}」`; lineUpdateSteps(); return; }
   const opAt = lineOp;
   if (st.test === 'ok') st.retryKey[toOfficial ? 'otest' : 'test'] = '';   // 「再推一次」是另一次發送，要換一把重試金鑰（否則 LINE 會當成同一筆而不發）
-  st.test = 'busy'; st.testMsg = '推播中…'; lineWin('', ''); lineUpdateSteps();
+  const needPrep = !st.prep || Date.now() - st.prep.at > LINE_PREP_FRESH_MS;
+  st.test = 'busy'; st.testMsg = needPrep ? '傳送資料中…（約數秒）' : '推播中…'; lineWin('', ''); lineUpdateSteps();
   try {
+    if (needPrep) { await linePrepare(st); st.testMsg = '推播中…'; lineUpdateSteps(); }
     const r = toOfficial ? await lineSend(ch, { mode: 'test', testers: [tid] }) : await lineSend('test', { testers: [tid] });
     if (r.quota) lineWhoFor(ch).quota = { limit: r.quota.limit, used: r.quota.used + (r.friends || 0) };   // 先用「發送前用量＋收件人數」估計；稍後再向 LINE 查實際用量核對
     if (lineOp !== opAt || lineTestCh(st) !== ch || lineOpTid(ch) !== tid) { st.test = ''; st.testMsg = ''; st.testToken = ''; lineWin('測試推播的操作者或帳號在傳送途中換了，這次結果不算數，請重新測試推播。', 'bad'); lineUpdateSteps(); return; }

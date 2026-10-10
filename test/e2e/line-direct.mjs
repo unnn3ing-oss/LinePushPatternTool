@@ -124,7 +124,7 @@ await openDialog();
 check((await txt('#s8Title')) === '排入推播', '彈窗改名為「排入推播」');
 const head = await page.evaluate(() => { const t = document.getElementById('s8Modetabs').getBoundingClientRect(), h = document.getElementById('s8Title').getBoundingClientRect(), c = document.getElementById('s8CloseBtn').getBoundingClientRect(), m = document.querySelector('#s8Modal').getBoundingClientRect(); return { left: t.left - m.left, beforeTitle: t.right <= h.left, closeRight: m.right - c.right, texts: [...document.querySelectorAll('#s8Modetabs .s8-ptab')].map(b => b.textContent), active: document.querySelector('#s8Modetabs .s8-ptab.active').dataset.md }; });
 check(head.texts.join('｜') === 'LINE原生推播｜S8推播' && head.active === 'line' && head.left < 40 && head.beforeTitle, `左上有切換「${head.texts.join('｜')}」，預設是 LINE原生推播`);
-check(await page.evaluate(() => getComputedStyle(document.getElementById('s8Panel')).display === 'none') && await vis('#lineFoot') && await vis('#lineP1'), 'LINE原生推播分頁只顯示 LINE 的步驟（底部進度列、傳送資料），不顯示 S8 的組織／發送對象／步驟');
+check(await page.evaluate(() => getComputedStyle(document.getElementById('s8Panel')).display === 'none') && await vis('#lineFoot') && await vis('#contentBlock'), 'LINE原生推播分頁只顯示 LINE 的步驟（底部進度列、推播內容），不顯示 S8 的組織／發送對象／步驟');
 check(await page.evaluate(() => ['s8Name', 's8Account', 's8TargetAll'].every(i => document.getElementById(i).offsetParent === null)) && await vis('#s8Alt'), 'LINE 不需要的欄位（群發名稱、組織、對象）隱藏，「推播通知」與連結預覽保留');
 await page.hover('#s8ModeS8');
 await page.waitForTimeout(450);
@@ -303,8 +303,7 @@ for (let i = 0; i < 11; i++) await page.click('#qrAdd');
 check(await page.isDisabled('#qrAdd') && (await txt('#qrAdd')) === '已達上限' && (await page.getAttribute('#qrAdd', 'title')) === '最多 13 顆' && (await page.$$eval('#qrRows .qr-row', r => r.length)) === 13, '最多 13 顆：滿了「新增」變成「已達上限」且不能按');
 await page.evaluate(() => { qrByMode.news.length = 2; qrRender(); qrChanged(); });
 // 傳送資料：快速回覆帶進 prepare；之後再改就作廢
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await page.evaluate(async () => { const st = lineSt(); await linePrepare(st); });   // 傳送資料已併入「推播測試」；這裡直接呼叫同一個函式驗證送出的內容
 const pq = reqs.prepare.at(-1).quick;
 check(JSON.stringify(pq) === JSON.stringify([{ label: '少康獨家專訪六都', kind: 'url', value: 'https://news.example.com/interview/six-cities' }, { label: '蔣萬安', kind: 'url', value: 'https://example.com/search?q=' + encodeURIComponent('蔣萬安') }]), '傳送資料：快速回覆依順序送出，連結留空的已換成搜尋網址（文字已 URL 編碼）');
 await page.locator('#qrRows .qr-lab input').nth(1).fill('蔣萬安 民調');
@@ -312,8 +311,7 @@ check(await page.evaluate(() => lineSt().prep === null) && (await txt('#lineWin'
 await page.locator('.qr-sec').screenshot({ path: path.join(SHOTS, 'line-ui-19b-quick-reply-2.png') });
 // 沒設快速回覆 → 不帶
 await page.evaluate(() => { qrByMode.news = []; qrRender(); qrChanged(); const st = lineSt(); lineResetFlow(st); lineUpdateSteps(); });
-await page.click('#linePrepBtn');
-await page.waitForFunction(() => /傳送完成/.test(document.getElementById('linePrepMsg').textContent), null, { timeout: 60000 });
+await page.evaluate(async () => { const st = lineSt(); await linePrepare(st); });   // 傳送資料已併入「推播測試」；這裡直接呼叫同一個函式驗證送出的內容
 check(JSON.stringify(reqs.prepare.at(-1).quick) === '[]', '沒設快速回覆：送出空陣列，行為跟以前一樣');
 check(await page.evaluate(() => qrByMode.ent.length === 0), '娛樂版型的快速回覆是獨立的一份');
 await page.click('#s8CloseBtn');
