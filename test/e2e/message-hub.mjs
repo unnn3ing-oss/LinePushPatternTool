@@ -84,6 +84,9 @@ const rowsOf = () => page.$$eval('#hubListBox .hub-row', rs => rs.map(r => ({ na
 
 // ===== 1. 按鈕與視窗 =====
 check((await txt('#s8Link')) === '訊息推播', '右上角按鈕叫「訊息推播」');
+const sk = await page.evaluate(() => { const b = document.getElementById('s8Link'), t = document.getElementById('labToggle'), cs = getComputedStyle(b), bef = getComputedStyle(b, '::before'), tbef = getComputedStyle(t, '::before'); return { bg: cs.backgroundColor, fg: cs.color, light: bef.display, tLight: tbef.display }; });
+check(sk.bg === 'rgb(220, 252, 231)' && sk.fg === 'rgb(22, 101, 52)', `「訊息推播」是綠色（底 ${sk.bg}、字 ${sk.fg}）`);
+check(sk.light === 'none' && sk.tLight !== 'none', '「訊息推播」沒有燈號，「試驗功能」的燈號還在');
 await page.click('#s8Link');
 check(await page.evaluate(() => document.getElementById('s8Overlay').classList.contains('open') && document.getElementById('s8Modal').dataset.view === 'hub'), '點「訊息推播」：開啟跟「排入LINE推播」同一個彈窗，進入訊息推播檢視');
 check((await page.$$eval('#hubTabs .s8-ptab', b => b.map(x => x.textContent).join('｜'))) === '推播列表｜LINE推播設定｜S8連結設定', '頂部三個分頁：推播列表｜LINE推播設定｜S8連結設定');
