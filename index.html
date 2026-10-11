@@ -384,6 +384,11 @@
   .chat-grp { display: grid; gap: 6px; }
   .chat-msgs { display: grid; gap: 6px; }
   .chat-img { display: block; width: 100%; height: auto; border-radius: 10px; background: #e5e7eb; }
+  .chat-pg { position: relative; border-radius: 10px; overflow: hidden; }
+  .chat-hit { position: absolute; display: block; box-sizing: border-box; cursor: pointer; outline: 0; }
+  .chat-hit:hover, .chat-hit:focus-visible { background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 2px #fff; }
+  a.chat-chip { text-decoration: none; cursor: pointer; }
+  a.chat-chip:hover, a.chat-chip:focus-visible { background: #5b77ad; color: #fff; }
   .chat-img.ph { aspect-ratio: 1040 / 700; display: grid; place-items: center; color: var(--muted); }
   .chat-time { text-align: right; font-size: 11px; color: #46567a; padding-right: 2px; }
   .chat-qr { display: flex; gap: 8px; overflow-x: auto; padding: 8px 10px 10px; background: #c7d4ee; scrollbar-width: none; }
@@ -1633,7 +1638,7 @@
               </div>
             </div>
             <div class="lw-chatwrap">
-              <div class="lw-chatcap">推播預覽（手機 LINE 聊天室模擬）</div>
+              <div class="lw-chatcap">推播預覽（手機 LINE 聊天室模擬）：點每一格或快速回覆，會另開分頁查看連結</div>
               <div class="chat" id="lineChat" aria-label="LINE 聊天室預覽"></div>
             </div>
           </div>
@@ -6466,11 +6471,12 @@ function lineStatRows(box, rows) {
 let lineChatSig = '';
 function lineChatRender(st) {
   const box = $line('lineChat'); if (!box) return;
-  const quick = (s8Collect().quick || []).map(q => q.label);
+  const coll = s8Collect(), quick = coll.quick || [];
+  const okUrl = u => (/^https?:\/\/\S+$/i.test(String(u || '')) ? String(u) : '');   // 只放 http(s) 連結，不讓 javascript: 之類的進預覽
   const imgs = (s8State && s8State.images ? s8State.images : []).map(im => (im && im.url) || '');
   const when = st.way === 'sched' ? lineWhenValue() : null;
   const time = lineTimeText(when && !when.err ? when.ms : Date.now());
-  const sig = JSON.stringify([mode, st.acct, imgs, quick, time]);
+  const sig = JSON.stringify([mode, st.acct, imgs, quick.map(q => [q.label, q.value]), coll.pages.map(pg => pg.cells.map(c => [c.url, c.title])), time]);
   if (sig === lineChatSig) return;
   lineChatSig = sig; box.textContent = '';
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
@@ -6479,13 +6485,27 @@ function lineChatRender(st) {
   const grp = el('div', 'chat-grp');   // 不放頭貼，預覽可以省空間
   const msgs = el('div', 'chat-msgs');
   Array.from({ length: s8State.regions.length }, (_, i) => imgs[i] || '').forEach((u, i) => {
-    if (u) { const im = el('img', 'chat-img'); im.src = u; im.alt = `第 ${i + 1} 頁訊息`; msgs.appendChild(im); }
+    if (u) {
+      const wrap = el('div', 'chat-pg'), im = el('img', 'chat-img'); im.src = u; im.alt = `第 ${i + 1} 頁訊息`; wrap.appendChild(im);
+      ((coll.pages[i] || {}).cells || []).forEach(c => {   // 每一格：點了另開分頁，打開這一格的連結
+        const href = okUrl(c.url); if (!href || !c.pct) return;
+        const a = el('a', 'chat-hit'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.style.cssText = `left:${c.pct.x}%;top:${c.pct.y}%;width:${c.pct.width}%;height:${c.pct.height}%`;
+        a.title = `${c.title}（${c.label}）\n${href}`; a.setAttribute('aria-label', `第 ${i + 1} 頁${c.label}：另開分頁`);
+        wrap.appendChild(a);
+      });
+      msgs.appendChild(wrap);
+    }
     else msgs.appendChild(el('div', 'chat-img ph', '圖片產生中…'));
   });
   msgs.appendChild(el('div', 'chat-time', time));
   grp.appendChild(msgs); body.appendChild(grp);
   box.append(bar, body);
-  if (quick.length) { const qr = el('div', 'chat-qr'); quick.forEach(q => qr.appendChild(el('span', 'chat-chip', q))); box.appendChild(qr); }
+  if (quick.length) { const qr = el('div', 'chat-qr'); quick.forEach(q => {   // 快速回覆：點了另開分頁，打開它的連結
+      const href = okUrl(q.value);
+      if (!href) { qr.appendChild(el('span', 'chat-chip', q.label)); return; }
+      const a = el('a', 'chat-chip', q.label); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = href; qr.appendChild(a);
+    }); box.appendChild(qr); }
 }
 
 function lineUpdateSteps() {

@@ -184,6 +184,22 @@ const s3 = await page.evaluate(() => ({
 check(s3.titles.length === 14 && s3.titles[0] === 'grp:訊息 1' && s3.titles[7] === 'grp:訊息 2' && s3.count === '共 12 格', `左側列出每則訊息標題（每行一個，分「訊息 1／訊息 2」，共 12 格）：${s3.titles.length} 列`);
 check(s3.quick.length === 3 && s3.quick[0].includes('蔣萬安') && s3.quick[0].includes('關鍵字') && s3.quick[0].includes('搜尋「蔣萬安」') && s3.quick[2].includes('連結') && s3.quick[2].includes('https://example.com/poll/2026'), `快速回覆列出文字與方式（關鍵字／連結）：${s3.quick.join(' | ')}`);
 check(!s3.info && s3.test && !s3.stat && !s3.shot && s3.slider, '第 3 步：沒有推播資訊框；有「推播測試狀態」與滑動按鈕');
+// 預覽可以實際點：每一格、快速回覆都另開分頁
+const pv = await page.evaluate(() => {
+  const hits = [...document.querySelectorAll('#lineChat .chat-hit')], im = document.querySelector('#lineChat .chat-pg img').getBoundingClientRect(), pg = document.querySelector('#lineChat .chat-pg').getBoundingClientRect();
+  const h0 = hits[0].getBoundingClientRect(), qa = [...document.querySelectorAll('#lineChat a.chat-chip')];
+  return { n: hits.length, blank: hits.every(a => a.target === '_blank' && /noopener/.test(a.rel)), hrefs: hits.slice(0, 2).map(a => a.href), inside: h0.left >= im.left - 1 && h0.top >= im.top - 1 && h0.right <= im.right + 1 && h0.bottom <= im.bottom + 1, small: h0.width < im.width / 2 && h0.height < im.height, qn: qa.length, qblank: qa.every(a => a.target === '_blank' && /noopener/.test(a.rel)), qh: qa.map(a => a.href), pgOk: pg.width > 0 };
+});
+check(pv.n === 12 && pv.blank && pv.hrefs[0].startsWith('https://example.com/p1/n1') && pv.hrefs[1].startsWith('https://example.com/p1/n2'), `預覽每一格都是連結（共 ${pv.n} 格），另開分頁（target=_blank、noopener）：${pv.hrefs[0]}`);
+check(pv.inside && pv.small, '每一格的點擊範圍落在圖片內、只蓋住那一格');
+check(pv.qn === 3 && pv.qblank && pv.qh[2] === 'https://example.com/poll/2026', `快速回覆也是連結、另開分頁：${pv.qh.join(' | ')}`);
+const [popup] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }), page.locator('#lineChat .chat-hit').first().click()]);
+check(popup.url().startsWith('https://example.com/p1/n1'), `點第一格：新分頁打開 ${popup.url()}`);
+await popup.close();
+const [popup2] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }), page.locator('#lineChat a.chat-chip').nth(2).click()]);
+check(popup2.url() === 'https://example.com/poll/2026', `點快速回覆：新分頁打開 ${popup2.url()}`);
+await popup2.close();
+check(page.url().includes('localhost') && (await stepNow()) === 3, '原本的頁面沒有被導走，還在第 3 步');
 const tl3 = await page.evaluate(() => { const ul = document.getElementById('lineTitles'), cs = getComputedStyle(ul); return { ov: cs.overflowY, mh: cs.maxHeight, full: ul.scrollHeight <= ul.clientHeight + 1, av: !!document.querySelector('#lineChat .chat-av'), firstImgTop: Math.round(document.querySelector('#lineChat .chat-img').getBoundingClientRect().top - document.querySelector('#lineChat .chat-bar').getBoundingClientRect().bottom) }; });
 check(tl3.mh === 'none' && tl3.ov !== 'auto' && tl3.ov !== 'scroll' && tl3.full, `每則訊息標題全部直接列出，不用捲動（max-height ${tl3.mh}、overflow ${tl3.ov}）`);
 check(!tl3.av && tl3.firstImgTop <= 24, `手機預覽沒有 LINE 頭貼，第一張圖直接接在標題列下（相距 ${tl3.firstImgTop}px）`);
