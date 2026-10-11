@@ -184,6 +184,9 @@ const s3 = await page.evaluate(() => ({
 check(s3.titles.length === 14 && s3.titles[0] === 'grp:訊息 1' && s3.titles[7] === 'grp:訊息 2' && s3.count === '共 12 格', `左側列出每則訊息標題（每行一個，分「訊息 1／訊息 2」，共 12 格）：${s3.titles.length} 列`);
 check(s3.quick.length === 3 && s3.quick[0].includes('蔣萬安') && s3.quick[0].includes('關鍵字') && s3.quick[0].includes('搜尋「蔣萬安」') && s3.quick[2].includes('連結') && s3.quick[2].includes('https://example.com/poll/2026'), `快速回覆列出文字與方式（關鍵字／連結）：${s3.quick.join(' | ')}`);
 check(!s3.info && s3.test && !s3.stat && !s3.shot && s3.slider, '第 3 步：沒有推播資訊框；有「推播測試狀態」與滑動按鈕');
+const tl3 = await page.evaluate(() => { const ul = document.getElementById('lineTitles'), cs = getComputedStyle(ul); return { ov: cs.overflowY, mh: cs.maxHeight, full: ul.scrollHeight <= ul.clientHeight + 1, av: !!document.querySelector('#lineChat .chat-av'), firstImgTop: Math.round(document.querySelector('#lineChat .chat-img').getBoundingClientRect().top - document.querySelector('#lineChat .chat-bar').getBoundingClientRect().bottom) }; });
+check(tl3.mh === 'none' && tl3.ov !== 'auto' && tl3.ov !== 'scroll' && tl3.full, `每則訊息標題全部直接列出，不用捲動（max-height ${tl3.mh}、overflow ${tl3.ov}）`);
+check(!tl3.av && tl3.firstImgTop <= 24, `手機預覽沒有 LINE 頭貼，第一張圖直接接在標題列下（相距 ${tl3.firstImgTop}px）`);
 check(!s3.hasInput && s3.chips.join('｜') === labs.join('｜') && s3.chatName === 'TVBS新聞' && s3.imgs === 2 && s3.split, '右側推播預覽：沒有底下的輸入列、兩頁圖、快速回覆按鈕，在左側內容的右邊（手機寬度）');
 check((await txt('#lineTestStat')).includes('尚未測試') && (await txt('#lineTestWho')).includes('只傳給操作人：小編本人'), '測試狀態：尚未測試；標明只傳給操作人');
 ns = await nextState();
@@ -307,6 +310,8 @@ check(off.channel === 'news' && off.testToken === 'ttok-news' && off.confirmTota
 
 // ===== 6. 第 5 步：推播狀態 =====
 check((await stepNow()) === 5 && !(await cfmOpen()) && (await paneVis()) === '3', '確認推播成功：關閉彈窗，進到第 5 步「推播狀態」');
+const bnow = await page.$$eval('#pushBubbles .push-bubble', bs => bs.map(b => b.querySelector('.pb-name').textContent + '｜' + b.querySelector('.pb-st').textContent));
+check(bnow.some(t => /^\d\d\/\d\d新聞｜已發送$/.test(t)) && bnow.some(t => /（測試）｜已發送$/.test(t)), `右下角泡泡：「訊息名稱｜狀態」→ ${bnow.join('、')}`);
 const s5 = await page.evaluate(() => ({ info: !document.getElementById('lineInfoBox').hidden, stat: !document.getElementById('lineStatBox').hidden, test: !document.getElementById('lineTestBox').hidden, shot: !document.getElementById('lineShotRow').hidden, slider: !document.getElementById('lineSlider').hidden, rows: [...document.querySelectorAll('#lineStatList .row')].map(r => r.textContent), btns: { list: !document.getElementById('lineListBtn').hidden, next: document.getElementById('lineNextBtn').textContent, nextRed: document.getElementById('lineNextBtn').classList.contains('red'), prev: !document.getElementById('linePrevBtn').hidden } }));
 check(s5.info && s5.stat && !s5.test && !s5.shot && !s5.slider && s5.rows[0].includes('已送出給 LINE') && s5.rows[1].includes('LINE 已接受，推播人數 287,091 位') && s5.rows[2].includes('稍後到推播列表'), `第 5 步：資訊框、標題、快速回覆、「推播狀態」：${s5.rows.join(' / ')}`);
 check(s5.btns.list && s5.btns.next === '完成推播' && !s5.btns.nextRed && !s5.btns.prev, '右下步驟按鈕：「推播列表」「完成推播」（沒有上一步）');
@@ -350,6 +355,8 @@ const sq = reqs.sched.at(-1);
 check(sq.channel === 'news' && sq.runAt === `${ymd(sw)}T${hm(sw)}:00+08:00` && sq.confirmTotal === 287091 && sq.testToken === 'ttok-news' && Array.isArray(sq.links) && sq.testers === undefined, '排程：帶新聞帳號、時間、人數、同帳號測試憑證、每格連結；沒有收件人名單');
 const s5s = await page.evaluate(() => [...document.querySelectorAll('#lineStatList .row')].map(r => r.textContent));
 check((await stepNow()) === 5 && s5s[0].includes('已排程') && s5s[0].includes(hm(sw)) && s5s[1].includes('推播列表') && s5s[1].includes('取消'), `第 5 步（排程）：${s5s.join(' / ')}`);
+const bsch = await page.$$eval('#pushBubbles .push-bubble', bs => bs.map(b => b.querySelector('.pb-name').textContent + '｜' + b.querySelector('.pb-st').textContent));
+check(bsch.some(t => /^\d\d\/\d\d新聞｜排程中$/.test(t)), `排程建立後：泡泡「訊息名稱｜排程中」→ ${bsch.join('、')}`);
 await page.locator('#s8Modal').screenshot({ path: path.join(SHOTS, 'wiz-7-status-sched.png') });
 
 // ===== 8. 測試帳號：正式推播＝群發給測試帳號的好友 =====

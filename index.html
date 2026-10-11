@@ -302,7 +302,7 @@
   .lw-kv dt { color: var(--muted); }
   .lw-kv dd { margin: 0; font-weight: 700; word-break: break-all; }
   .lw-kv dd.n { font-weight: 600; }
-  .lw-list { margin: 0; padding: 0; list-style: none; max-height: 128px; overflow: auto; font-size: 13px; }
+  .lw-list { margin: 0; padding: 0; list-style: none; font-size: 13px; }   /* 每則訊息標題：全部直接列出，不捲動 */
   .lw-list li { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--border); }
   .lw-list li:last-child { border-bottom: 0; }
   .lw-list li b { flex: none; width: 20px; color: var(--muted); font-weight: 700; }
@@ -382,7 +382,6 @@
   .chat-ic + .chat-ic { margin-left: 4px; }
   .chat-body { padding: 12px 8px 6px; background: linear-gradient(#9cb2dd, #c7d4ee); max-height: 420px; overflow-y: auto; }
   .chat-grp { display: grid; gap: 6px; }
-  .chat-av { width: 30px; height: 30px; border-radius: 50%; background: #f26b21; color: #fff; display: grid; place-items: center; font-weight: 900; font-style: italic; font-size: 15px; }
   .chat-msgs { display: grid; gap: 6px; }
   .chat-img { display: block; width: 100%; height: auto; border-radius: 10px; background: #e5e7eb; }
   .chat-img.ph { aspect-ratio: 1040 / 700; display: grid; place-items: center; color: var(--muted); }
@@ -724,6 +723,22 @@
     background: #ddd repeating-conic-gradient(#ccc 0% 25%, #ddd 0% 50%) 50% / 24px 24px;
     touch-action: none;
   }
+  /* ---- 推播狀態泡泡：右下角彈出、蓋在所有視窗之上；外框跟底部工具列（.dock）一樣 ---- */
+  #pushBubbles { position: fixed; right: 20px; bottom: 82px; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
+  .push-bubble { display: flex; align-items: center; gap: 10px; max-width: 100%; box-sizing: border-box; background: #1f2328; color: #fff; padding: 10px 18px; border-radius: 36px; box-shadow: 0 8px 30px rgba(0, 0, 0, .35); font-size: 14px; font-weight: 600; opacity: 0; transform: translateX(32px); transition: opacity .3s ease, transform .3s ease; }
+  .push-bubble.show { opacity: 1; transform: none; }
+  .push-bubble .pb-name { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+  .push-bubble .pb-sep { opacity: .45; }
+  .push-bubble .pb-st { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 12px; border-radius: 99px; font-size: 13px; font-weight: 700; background: rgba(255, 255, 255, .18); color: #fff; }
+  .push-bubble .pb-st.scheduled { background: #dbeafe; color: #1e40af; }
+  .push-bubble .pb-st.sending { background: #fbf0cf; color: #854d0e; }
+  .push-bubble .pb-st.sent { background: #dcfce7; color: #166534; }
+  .push-bubble .pb-st.failed, .push-bubble .pb-st.missed { background: #fee2e2; color: #991b1b; }
+  .push-bubble .pb-spin { display: none; width: 11px; height: 11px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pbspin .8s linear infinite; }
+  .push-bubble .pb-st.sending .pb-spin { display: inline-block; }
+  .push-bubble .pb-x { pointer-events: auto; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .14); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; }
+  .push-bubble .pb-x:hover { background: rgba(255, 255, 255, .3); }
+  @keyframes pbspin { to { transform: rotate(360deg); } }
   .status-toast {
     position: fixed;
     left: 50%;
@@ -1229,6 +1244,7 @@
   <button type="button" id="lockToastBtn">返回上一步更改</button>
 </div>
 
+<div id="pushBubbles" role="status" aria-live="polite"></div>
 <div class="status-toast" id="statusToast" role="status" aria-live="polite" title="點一下關閉" hidden></div>
 
 <aside class="tip-toast" id="tipToast" role="dialog" aria-label="操作提示">
@@ -6459,7 +6475,7 @@ function lineChatRender(st) {
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
   const bar = el('div', 'chat-bar'); bar.append(el('span', 'chat-back', '‹'), el('span', 'chat-name', st.acct === 'test' ? '測試帳號' : S8_ACCOUNT[st.acct]), el('span', 'chat-vf', '✓'), el('span', 'chat-ic', '⌕'), el('span', 'chat-ic', '≡'));
   const body = el('div', 'chat-body');
-  const grp = el('div', 'chat-grp'); grp.appendChild(el('div', 'chat-av', 'T'));
+  const grp = el('div', 'chat-grp');   // 不放頭貼，預覽可以省空間
   const msgs = el('div', 'chat-msgs');
   Array.from({ length: s8State.regions.length }, (_, i) => imgs[i] || '').forEach((u, i) => {
     if (u) { const im = el('img', 'chat-img'); im.src = u; im.alt = `第 ${i + 1} 頁訊息`; msgs.appendChild(im); }
@@ -6580,15 +6596,18 @@ async function lineTestRun() {
   if (st.test === 'ok' || st.test === 'bad') st.retryKey.test = '';   // 再推一次是另一次發送，要換一把重試金鑰（否則 LINE 會當成同一筆而不發）
   const needPrep = !st.prep || Date.now() - st.prep.at > LINE_PREP_FRESH_MS;
   st.test = 'busy'; st.testMsg = needPrep ? '傳送資料中…（約數秒）' : '推播中…'; st.testNote = ''; lineWin('', ''); lineUpdateSteps();
+  const tKey = `test:${Date.now()}`, tName = `${pushMsgName(Date.now())}（測試）`;
   try {
     if (needPrep) { await linePrepare(st); st.testMsg = '推播中…'; lineUpdateSteps(); }
+    pushBubble(tKey, tName, 'sending');
     const r = await lineSend(ch, { mode: 'test', testers: [tid] });
+    pushBubble(tKey, tName, r.testToken ? 'sent' : 'failed');
     if (r.quota) lineWhoFor(ch).quota = { limit: r.quota.limit, used: r.quota.used + (r.friends || 0) };   // 先用「發送前用量＋收件人數」估計；稍後再向 LINE 查實際用量核對
     if (lineOp !== opAt || st.acct !== ch || lineOpTid(ch) !== tid) { st.test = ''; st.testMsg = ''; st.testToken = ''; st.retryKey.test = ''; lineWin('測試推播的操作人或帳號在傳送途中換了，這次結果不算數，請重新推播測試。', 'bad'); lineUpdateSteps(); return; }
     if (!r.testToken) throw new Error('LINE 回報這把重試金鑰以前用過，這次沒有真的發出去，不能算測試過。請再按一次推播測試（會換新的金鑰）');
     st.test = 'ok'; st.testToken = r.testToken || ''; st.testNames = (r.recipients || [lineOp]).join('、'); st.testMsg = '';
     if (r.quota && Number.isFinite(r.quota.used)) lineVerifyUsage(r.quota.used, r.friends || 0, st, ch);
-  } catch (e) { st.test = 'bad'; st.testMsg = `推播失敗：${String(e.message || e).slice(0, 200)}`; st.retryKey.test = ''; }   // 失敗後再試一律換新金鑰
+  } catch (e) { st.test = 'bad'; st.testMsg = `推播失敗：${String(e.message || e).slice(0, 200)}`; st.retryKey.test = ''; if (pushBubbleEls.has(tKey)) pushBubble(tKey, tName, 'failed'); }   // 失敗後再試一律換新金鑰
   lineUpdateSteps();
 }
 $line('lineTestAgain').addEventListener('click', () => { const st = lineSt(); if (st.test !== 'ok' || st.go === 'ok' || lineBusyNow()) return; st.test = ''; st.testMsg = ''; st.testNote = ''; st.testToken = ''; st.retryKey.test = ''; lineUpdateSteps(); });
@@ -6647,6 +6666,7 @@ $line('lineCfmTotal').addEventListener('keydown', e => { if (e.key === 'Enter' &
 async function lineFire() {
   const st = lineSt(), sched = st.way === 'sched'; if (st.step !== 4 || st.go === 'busy' || st.go === 'ok') return;
   st.go = 'busy'; st.goErr = ''; lineUpdateSteps();
+  let bubbleKey = '', bubbleName = '';
   try {
     if (!st.prep || st.prep.sig !== lineSig()) throw new Error('內容有更動，請回到第 3 步重新推播測試');
     if (st.test !== 'ok' || !st.testToken) throw new Error('還沒有成功的測試推播');
@@ -6657,14 +6677,20 @@ async function lineFire() {
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
       const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: st.acct, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow(), retryKey: st.retryKey.official || (st.retryKey.official = crypto.randomUUID()) });   // retryKey：回應遺失後重按，Worker 認得是同一筆，不會多排一筆
       result = { kind: 'sched', when: `${when.text.slice(5, 10).replace('-', '/')} ${when.text.slice(11)}（台北時間）`, id: (r.schedule && r.schedule.id) || '' };
+      if (r.schedule && r.schedule.id) pushTrack({ id: r.schedule.id, channel: st.acct, name: r.schedule.name || pushMsgName(when.ms), runAt: Number.isFinite(r.schedule.runAt) ? r.schedule.runAt : when.ms, status: 'scheduled' });
     } else {
+      bubbleKey = `now:${st.retryKey.official || Date.now()}`; bubbleName = pushMsgName(Date.now());
+      pushBubble(bubbleKey, bubbleName, 'sending');
       const r = await lineSend(st.acct, { confirmTotal: typed, testToken: st.testToken });
+      pushBubble(bubbleKey, bubbleName, 'sent');
       result = { kind: 'now', at: String(r.sentAt || '').slice(11, 19) || '剛剛', friends: Number.isFinite(r.friends) ? r.friends : st.friends, already: !!r.alreadyAccepted, requestId: r.requestId || '' };
     }
     st.result = result; st.go = 'ok'; st.step = 5; editMarkClean(mode);   // 成功之後只做不會出錯的事，避免「已經送出了卻顯示失敗」讓人重按
     lineCfmClose(true);
   } catch (e) {
     st.go = 'bad';
+    if (sched) pushBubble(`sched-fail:${Date.now()}`, pushMsgName((lineWhenValue().ms) || Date.now()), 'failed', '排程失敗');
+    else if (bubbleKey) pushBubble(bubbleKey, bubbleName, 'failed');
     st.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '\n\n若不確定有沒有建立，請到「訊息推播 → 推播列表」確認（同一次排程重按不會重複建立）。' : '\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。'}`;
   }
   lineUpdateSteps();
@@ -6774,7 +6800,7 @@ async function lineShotBlob(st) {
     // 右：手機預覽
     let py = top;
     T('推播預覽（手機 LINE 聊天室模擬）', PX, py + 12, 12, 400, '#6b7280'); py += 20;
-    const phoneTop = py, phoneH = (() => { let h = 44 + 12 + 30 + 6; bitmaps.forEach(b => { h += (b ? Math.round((LINE_SHOT_PHONE - 16) * b.height / b.width) : 190) + 6; }); h += 18 + (qrows.length ? 50 : 8); return h; })();
+    const phoneTop = py, phoneH = (() => { let h = 44 + 12; bitmaps.forEach(b => { h += (b ? Math.round((LINE_SHOT_PHONE - 16) * b.height / b.width) : 190) + 6; }); h += 18 + (qrows.length ? 50 : 8); return h; })();
     if (draw) {
       ctx.save(); rr(PX, phoneTop, LINE_SHOT_PHONE, phoneH, 24); ctx.clip();
       const g = ctx.createLinearGradient(0, phoneTop, 0, phoneTop + phoneH); g.addColorStop(0, '#9cb2dd'); g.addColorStop(1, '#c7d4ee'); ctx.fillStyle = g; ctx.fillRect(PX, phoneTop, LINE_SHOT_PHONE, phoneH);
@@ -6785,8 +6811,6 @@ async function lineShotBlob(st) {
       ctx.restore();
     }
     let iy = phoneTop + 44 + 12;
-    if (draw) { ctx.fillStyle = '#f26b21'; ctx.beginPath(); ctx.arc(PX + 8 + 15, iy + 15, 15, 0, Math.PI * 2); ctx.fill(); T('T', PX + 8 + 11, iy + 21, 15, 900, '#fff'); }
-    iy += 36;
     bitmaps.forEach(b => { const iw = LINE_SHOT_PHONE - 16, ih = b ? Math.round(iw * b.height / b.width) : 190; if (draw) { ctx.save(); rr(PX + 8, iy, iw, ih, 10); ctx.clip(); if (b) ctx.drawImage(b, PX + 8, iy, iw, ih); else { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(PX + 8, iy, iw, ih); } ctx.restore(); } iy += ih + 6; });
     if (draw) { const when = st.way === 'sched' ? lineWhenValue() : null; ctx.textAlign = 'right'; T(lineTimeText(when && !when.err ? when.ms : Date.now()), PX + LINE_SHOT_PHONE - 10, iy + 10, 11, 400, '#46567a'); ctx.textAlign = 'left'; }
     iy += 18;
@@ -6877,7 +6901,7 @@ const hubData = {};   // 帳號 → { loaded, loading, records, error, heartbeat
 const hubFor = ch => (hubData[ch] = hubData[ch] || { loaded: false, loading: false, records: [], error: '', heartbeatAt: 0, serverNow: 0, auto: false });
 let hubDetailId = '', hubRenaming = false, hubLastTable = null;
 const hubStats = {};   // 推播 id → { busy, stats, message, error }
-const HUB_STATUS = { sent: '已發送', sending: '發送中', scheduled: '排程', failed: '發送失敗', missed: '逾時未發', cancelled: '已取消' };
+const HUB_STATUS = { sent: '已發送', sending: '訊息推播中', scheduled: '排程', failed: '發送失敗', missed: '逾時未發', cancelled: '已取消' };
 const HUB_STATS_DAYS = 14;   // LINE 只保留發送後 14 天的統計
 const hubFmt = iso => String(iso || '').slice(5, 16).replace('T', ' ').replace('-', '/');
 const hubNum = v => (Number.isFinite(v) ? v.toLocaleString() : '—');
@@ -6905,6 +6929,7 @@ async function hubListLoad(ch) {
   try {
     const r = await s8Api('/line/history/list', { channel: ch });
     d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true;
+    pushSyncList(ch, d.records);
   } catch (e) { d.error = String(e.message || e); }
   d.loading = false;
   if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
@@ -6927,7 +6952,7 @@ function hubListRender() {
     if (r.test) { const t = document.createElement('span'); t.className = 'test-tag'; t.textContent = '測試'; nm.appendChild(t); }
     const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = hubWhen(r);
     c1.append(nm, sub);
-    const c2 = document.createElement('div'); const chip = document.createElement('span'); chip.className = `line-chip ${r.status}`; chip.textContent = HUB_STATUS[r.status] || r.status; c2.appendChild(chip);
+    const c2 = document.createElement('div'); const chip = document.createElement('span'); const es = pushEff(r); chip.className = `line-chip ${es}`; chip.textContent = HUB_STATUS[es] || es; c2.appendChild(chip);
     const c3 = document.createElement('div'); c3.className = 'cnt'; const pp = hubPeople(r);
     const b = document.createElement('b'); b.textContent = pp.main; c3.appendChild(b);
     if (pp.sub) { const sb = document.createElement('div'); sb.className = 'sub'; sb.textContent = pp.sub; c3.appendChild(sb); }
@@ -6937,6 +6962,102 @@ function hubListRender() {
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     box.appendChild(row);
   });
+}
+
+// ---- 推播狀態泡泡＋排程狀態自動更新 ----
+// 每個發送狀態都用「訊息名稱＋訊息狀態」從右下角彈出泡泡（外框跟底部工具列一樣，蓋在所有視窗之上）。
+// 排程訊息：時間一到就先顯示「訊息推播中」（不用等 Worker 的 Cron），之後約每 10 秒向 Worker 查一次發送狀態，直到「已發送」（或失敗、逾時、取消）。
+const PUSH_STATUS = { scheduled: '排程中', sending: '訊息推播中', sent: '已發送', failed: '發送失敗', missed: '逾時未發', cancelled: '已取消' };
+const PUSH_POLL_MS = 10000, PUSH_BUBBLE_LINGER_MS = 8000;
+const pushBubbleEls = new Map();   // key → { el, timer }
+function pushBubbleClose(key) {
+  const b = pushBubbleEls.get(key); if (!b) return;
+  clearTimeout(b.timer); pushBubbleEls.delete(key);
+  b.el.classList.remove('show'); setTimeout(() => b.el.remove(), 350);
+}
+function pushBubble(key, name, status, label) {
+  const box = document.getElementById('pushBubbles'); if (!box) return;
+  let b = pushBubbleEls.get(key);
+  if (!b) {
+    const el = document.createElement('div'); el.className = 'push-bubble';
+    const nm = document.createElement('span'); nm.className = 'pb-name';
+    const sep = document.createElement('span'); sep.className = 'pb-sep'; sep.textContent = '｜';
+    const st = document.createElement('span'); st.className = 'pb-st'; const sp = document.createElement('i'); sp.className = 'pb-spin'; const stt = document.createElement('span'); st.append(sp, stt);
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'pb-x'; x.textContent = '×'; x.title = '關閉'; x.setAttribute('aria-label', '關閉');
+    x.addEventListener('click', () => pushBubbleClose(key));
+    el.append(nm, sep, st, x); box.appendChild(el);
+    b = { el, timer: 0 }; pushBubbleEls.set(key, b);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  }
+  const text = label || PUSH_STATUS[status] || status;
+  b.el.querySelector('.pb-name').textContent = name || '（未命名）';
+  b.el.querySelector('.pb-name').title = name || '';
+  b.el.querySelector('.pb-st').className = `pb-st ${status}`;
+  b.el.querySelector('.pb-st span').textContent = text;
+  b.el.dataset.status = status;
+  clearTimeout(b.timer);
+  if (status === 'sent' || status === 'cancelled') b.timer = setTimeout(() => pushBubbleClose(key), PUSH_BUBBLE_LINGER_MS);   // 失敗、逾時要看到才算數，自己按 × 關
+}
+// 排程到時間就先當作「訊息推播中」
+const pushEff = r => (r.status === 'scheduled' && Number.isFinite(r.runAt) && r.runAt <= Date.now() ? 'sending' : r.status);
+const pushWatch = new Map();   // 推播 id → { id, channel, name, runAt, status, shown }
+let pushWatchTimer = 0, pushWatchBusy = false;
+function pushMsgName(ms, m) { const p = taipeiParts(ms); return `${pad2(p.mo)}/${pad2(p.d)}${(m || mode) === 'ent' ? '娛樂' : '新聞'}`; }
+function pushNotify(w, eff) {
+  if (w.shown === eff) return;
+  w.shown = eff; pushBubble(`rec:${w.id}`, w.name, eff);
+  if (typeof hubIsOpen === 'function' && hubIsOpen()) { hubListRender(); if (hubDetailId) hubDetailRender(); }
+}
+// 這次操作建立的排程：立刻彈「排程中」泡泡並開始追蹤
+function pushTrack(rec) {
+  if (!rec || !rec.id) return;
+  const prev = pushWatch.get(rec.id);
+  const w = { id: rec.id, channel: rec.channel, name: rec.name || rec.altText || '', runAt: rec.runAt, status: rec.status || 'scheduled', shown: prev ? prev.shown : null };
+  pushWatch.set(rec.id, w); pushNotify(w, pushEff(w)); pushWatchPlan();
+}
+// 向 Worker 讀到最新的推播列表之後：更新追蹤中的狀態（有變就彈泡泡）；列表上還沒送出的排程也開始追蹤（不彈泡泡，等狀態變了才彈）
+function pushSyncList(ch, recs) {
+  const ids = new Set();
+  (recs || []).forEach(r => {
+    ids.add(r.id);
+    const w = pushWatch.get(r.id);
+    if (w) {
+      w.status = r.status; w.runAt = r.runAt; w.name = r.name || r.altText || w.name; pushNotify(w, pushEff(w));
+      if (r.status !== 'scheduled' && r.status !== 'sending') pushWatch.delete(r.id);
+    } else if (r.status === 'scheduled' || r.status === 'sending') {
+      pushWatch.set(r.id, { id: r.id, channel: ch, name: r.name || r.altText || '', runAt: r.runAt, status: r.status, shown: pushEff(r) });
+    }
+  });
+  [...pushWatch.values()].filter(w => w.channel === ch && !ids.has(w.id)).forEach(w => pushWatch.delete(w.id));   // 列表上已經沒有（被刪除）
+  pushWatchPlan();
+}
+function pushWatchPlan() {
+  clearTimeout(pushWatchTimer); pushWatchTimer = 0;
+  const live = [...pushWatch.values()]; if (!live.length) return;
+  live.forEach(w => pushNotify(w, pushEff(w)));   // 到時間的排程先換成「訊息推播中」，不用等網路
+  const due = live.some(w => pushEff(w) === 'sending');
+  const next = Math.min(...live.map(w => w.runAt).filter(Number.isFinite), Date.now() + 30000);
+  pushWatchTimer = setTimeout(pushWatchTick, due ? PUSH_POLL_MS : Math.max(500, next - Date.now()));
+}
+async function pushWatchTick() {
+  pushWatchTimer = 0;
+  if (pushWatchBusy) return;
+  const chs = new Set([...pushWatch.values()].filter(w => pushEff(w) === 'sending').map(w => w.channel));
+  if (!chs.size) { pushWatchPlan(); return; }
+  pushWatchBusy = true;
+  try {
+    if (labOn && readLabAuth()) {   // 沒登入或憑證過期就先不查（背景查詢不要跳登入視窗），下一輪再試
+      for (const ch of chs) {
+        try {
+          const r = await s8Api('/line/history/list', { channel: ch });
+          const d = hubFor(ch); d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true; d.error = '';
+          pushSyncList(ch, d.records);
+          if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
+        } catch (e) { /* 這一輪查不到，10 秒後再試 */ }
+      }
+    }
+  } finally { pushWatchBusy = false; }
+  pushWatchPlan();
 }
 hubEl('hubListRefresh').addEventListener('click', () => { if (hubDetailId) { hubStatsLoad(hubDetailId, true); return; } hubListLoad(hubCh); });
 async function hubStatsLoad(id, force) {
@@ -6990,7 +7111,7 @@ function hubDetailRender() {
   }
   const kv = document.createElement('div'); kv.className = 'hub-kv';
   hubKv(kv, '帳號', hubAcctName(rec.channel));
-  hubKv(kv, '發送狀態', HUB_STATUS[rec.status] || rec.status, rec.status === 'sent' ? 'ok' : (rec.status === 'failed' || rec.status === 'missed' ? 'bad' : ''));
+  hubKv(kv, '發送狀態', HUB_STATUS[pushEff(rec)] || rec.status, rec.status === 'sent' ? 'ok' : (rec.status === 'failed' || rec.status === 'missed' ? 'bad' : ''));
   hubKv(kv, rec.status === 'sent' ? '發送時間' : '排程時間', hubFmt(rec.status === 'sent' ? (rec.sentAt || rec.runAtIso) : rec.runAtIso) + '（台北時間）');
   hubKv(kv, '推播標題', rec.altText);
   const pp = hubPeople(rec); hubKv(kv, '推播人數', pp.sub ? `${pp.main}（${pp.sub}）` : pp.main);
@@ -7066,7 +7187,7 @@ function hubStatsRender() {
     });
     acts.append(rf, cpy);
   }
-  if (rec.status === 'scheduled') {
+  if (rec.status === 'scheduled' && pushEff(rec) === 'scheduled') {   // 時間到了（訊息推播中）就不能取消
     const del = document.createElement('button'); del.type = 'button'; del.id = 'hubCancelSched'; del.className = 'danger'; del.textContent = '取消這筆排程';
     del.addEventListener('click', async () => {
       if (!window.confirm(`確定要取消這筆排程嗎？\n\n${hubFmt(rec.runAtIso)}　${hubAcctName(rec.channel)}\n${rec.name || rec.altText}\n\n取消後不會發送。要改時間請到「排入LINE推播」視窗的「排程狀態」。`)) return;

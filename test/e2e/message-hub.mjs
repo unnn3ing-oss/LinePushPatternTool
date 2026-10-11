@@ -96,7 +96,7 @@ check(reqs.list.at(-1).channel === 'news', '向 Worker 要 TVBS新聞 的推播�
 let rows = await rowsOf();
 check(rows.map(r => r.name).join('｜') === '10/09新聞｜10/10新聞｜10/09晚間｜10/08新聞測試｜10/07新聞', `每列的訊息命名：${rows.map(r => r.name).join('｜')}`);
 check(rows[0].when.startsWith('發送 ') && rows[1].when.startsWith('排程 ') && /^排程 \d\d\/\d\d \d\d:\d\d$/.test(rows[1].when), `命名下方寫發送時間／排程時間：${rows[0].when}、${rows[1].when}`);
-check(rows.map(r => r.status).join('｜') === '已發送｜排程｜發送中｜已發送｜發送失敗', `發送狀態：${rows.map(r => r.status).join('｜')}`);
+check(rows.map(r => r.status).join('｜') === '已發送｜排程｜訊息推播中｜已發送｜發送失敗', `發送狀態：${rows.map(r => r.status).join('｜')}`);
 rows = await rowsOf();
 await page.waitForTimeout(400);
 check(reqs.stats.length === 0, '打開列表不會向 LINE 查統計（列表的人數不用它，省 LINE 的查詢額度）');
