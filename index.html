@@ -995,6 +995,19 @@
   .tip-help button:hover { background: var(--accent-dark); }
   .tip-help-lead { margin: 0 0 10px; color: var(--muted); }
   .tip-toast [hidden] { display: none; }
+  .tip-pager { overflow: hidden; touch-action: pan-y; transition: height .3s ease; }
+  .tip-track { display: flex; align-items: flex-start; transition: transform .35s ease; }
+  .tip-track.drag { transition: none; }
+  .tip-pane { flex: 0 0 100%; min-width: 0; box-sizing: border-box; }
+  .tip-tools { list-style: none; margin: 0; padding: 0; }
+  .tip-tools li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; }
+  .tip-tools li:last-child { margin-bottom: 0; }
+  .tip-tool-link { display: inline-block; margin-top: 7px; padding: 5px 14px; border-radius: 99px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; text-decoration: none; -webkit-user-drag: none; }
+  .tip-tool-link:hover, .tip-tool-link:focus-visible { background: var(--accent-dark); }
+  .tip-dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
+  .tip-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px; background: var(--border); cursor: pointer; transition: width .25s ease, background .25s ease; }
+  .tip-dot.on { width: 22px; background: var(--accent); }
+  .tip-toast[data-page="0"] .tip-toast-title::before { content: '+'; }
   .tip-steps { list-style: none; margin: 0; padding: 0; }
   .tip-steps li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
   .tip-steps li:last-child { margin-bottom: 0; }
@@ -1254,9 +1267,30 @@
 
 <aside class="tip-toast" id="tipToast" role="dialog" aria-label="操作提示">
   <div class="tip-toast-head">
-    <span class="tip-toast-title" id="tipToastTitle">操作提示</span>
+    <span class="tip-toast-title" id="tipToastTitle">更多工具</span>
     <button type="button" class="tip-toast-close" id="tipToastClose" aria-label="關閉" title="關閉">✕</button>
   </div>
+  <div class="tip-pager" id="tipPager">
+   <div class="tip-track" id="tipTrack">
+    <section class="tip-pane" id="tipPaneTools" aria-label="更多工具">
+      <ul class="tip-tools">
+        <li>
+          <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="M21 15l-5-5-8 8"/></svg></span>
+          <div class="tip-text"><b>圖片套版產生器</b>
+            <span>貼上標題、上傳圖片或選純色背景，自動套上 TVBS 娛樂（粉框）／新聞（藍框）版型，輸出 1080×1080 PNG；支援單張與批次。</span>
+            <a class="tip-tool-link" href="https://unnn3ing-oss.github.io/QuickPatterntool/" target="_blank" rel="noopener noreferrer">開啟網頁版 ↗</a>
+          </div>
+        </li>
+        <li>
+          <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5"/><path d="M4 20h16"/></svg></span>
+          <div class="tip-text"><b>YouTube 影片批量下載工具</b>
+            <span>批量下載公司 YouTube 頻道的公開影片（720p／1080p），檔名直接用影片標題；網頁版負責安裝引導與操作，需 Chrome 電腦版。</span>
+            <a class="tip-tool-link" href="https://unnn3ing-oss.github.io/videodownload/" target="_blank" rel="noopener noreferrer">開啟網頁版 ↗</a>
+          </div>
+        </li>
+      </ul>
+    </section>
+    <section class="tip-pane" id="tipPaneTips" aria-label="操作提示">
   <div id="tipNewsBlock">
     <ol class="tip-steps">
       <li>
@@ -1352,6 +1386,13 @@
     <p class="tip-help-lead" id="tipHelpLead">完整步驟與規則，請看詳細說明。</p>
     <button type="button" class="primary" id="helpDetailBtn">詳細功能說明</button>
   </div>
+    </section>
+   </div>
+  </div>
+  <div class="tip-dots" role="tablist" aria-label="切換分頁">
+    <button type="button" class="tip-dot on" id="tipDot0" role="tab" aria-selected="true" aria-label="更多工具" title="更多工具"></button>
+    <button type="button" class="tip-dot" id="tipDot1" role="tab" aria-selected="false" aria-label="操作提示" title="操作提示"></button>
+  </div>
 </aside>
 
 <div class="modal-overlay" id="helpOverlay">
@@ -1368,7 +1409,7 @@
         <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」（同樣有滑動效果，也能按住滑塊拖曳切換），兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
         <li><b>左側</b>：浮動面板。一開始是「快速填入」；點格子變成那一格的編輯面板，點空白處收起；步驟 2 則是檢查清單。</li>
         <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「檢查照片邊緣」開關、「清除本頁」、「下一步」；步驟 2 有提示、「返回編輯」、「下載本頁」、「全部下載」。</li>
-        <li><b>右下角</b>「!」：操作提示。剛開啟網頁時約 5 秒後自動收起；游標移到彈窗上就會一直顯示，移出彈窗外 1 秒後漸漸收起；按「!」可再打開。</li>
+        <li><b>右下角</b>「!」：操作提示，有兩個分頁——「更多工具」（我做的其他網頁版工具連結與簡述）與「操作提示」。剛開啟網頁時先顯示「更多工具」4 秒，再自動滑到「操作提示」，共約 8 秒後自動收起；可左右滑動（拖曳、觸控、觸控板橫向捲動、左右鍵）或按下方圓點切換；游標移到彈窗上就會一直顯示，移出彈窗外 1 秒後漸漸收起；按「!」可再打開（直接顯示操作提示）。</li>
       </ul>
 
       <h3>新聞／娛樂：步驟 1 編輯畫面</h3>
@@ -4544,15 +4585,36 @@ helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpO
 // reopens it. Each mode shows its own quick-start tips above the "詳細功能說明" button.
 const tipToast = document.getElementById('tipToast');
 const tipFab = document.getElementById('tipFab');
-const TIP_IDLE_MS = 5000;     // folds away this long after it opens (or after the last click / scroll on it)
+const TIP_IDLE_MS = 8000;     // folds away this long after it opens (or after the last click / scroll on it)
+const TIP_TOOLS_MS = 4000;    // 剛開網頁時先顯示「更多工具」這麼久，再自動滑到「操作提示」
 const TIP_LEAVE_MS = 1000;   // ...but while the pointer is over it, it stays; this long after the pointer leaves
 let tipCollapsed = false, tipTimer = null, tipHover = false;
+// 兩個分頁：0＝更多工具、1＝操作提示。可左右滑（拖曳、觸控、觸控板橫向捲動）、按下方圓點、或用左右鍵切換
+const tipPager = document.getElementById('tipPager'), tipTrack = document.getElementById('tipTrack');
+const tipPanes = [document.getElementById('tipPaneTools'), document.getElementById('tipPaneTips')], tipDots = [document.getElementById('tipDot0'), document.getElementById('tipDot1')];
+const TIP_TITLES = ['更多工具', '操作提示'];
+let tipPage = 0, tipSlideTimer = 0, tipJustDragged = false;
+function tipFit() { tipPager.style.height = `${tipPanes[tipPage].offsetHeight}px`; }
+function setTipPage(n, user) {   // user＝使用者自己切的：取消自動滑動，並重新計算收起時間
+  tipPage = Math.max(0, Math.min(1, n));
+  tipTrack.style.transform = `translateX(${-tipPage * 100}%)`;
+  tipPanes.forEach((pn, i) => { pn.inert = i !== tipPage; pn.setAttribute('aria-hidden', String(i !== tipPage)); });
+  tipDots.forEach((d, i) => { d.classList.toggle('on', i === tipPage); d.setAttribute('aria-selected', String(i === tipPage)); });
+  tipToast.dataset.page = String(tipPage);
+  document.getElementById('tipToastTitle').textContent = TIP_TITLES[tipPage];
+  tipFit();
+  if (user) { clearTimeout(tipSlideTimer); armTipTimer(); }
+}
+function armTipSlide() {   // 剛開網頁：先停在「更多工具」，4 秒後自動滑到「操作提示」（滑鼠在上面或已經自己操作就不滑）
+  clearTimeout(tipSlideTimer);
+  if (tipPage === 0 && !tipCollapsed && !tipHover) tipSlideTimer = setTimeout(() => { if (!tipHover && !tipCollapsed && tipPage === 0) setTipPage(1); }, TIP_TOOLS_MS);
+}
 function syncTipToast() {
   document.getElementById('tipNewsBlock').hidden = mode !== 'news';
   document.getElementById('tipEntBlock').hidden = mode !== 'ent';
   document.getElementById('tipCollageBlock').hidden = mode !== 'collage';
-  document.getElementById('tipToastTitle').textContent = '操作提示';
   tipToast.classList.toggle('tip-collapsed', tipCollapsed);
+  if (typeof tipFit === 'function') tipFit();
   tipFab.classList.toggle('show', tipCollapsed);
   if (typeof updateTipYield === 'function') updateTipYield();
 }
@@ -4569,16 +4631,45 @@ function setTipCollapsed(v) {
 document.getElementById('tipToastClose').addEventListener('click', () => setTipCollapsed(true));
 // Reopened from the "!" button: the popup appears right where the pointer is, so count it as hovering
 // (the browser may not send a mouseenter until the pointer moves).
-tipFab.addEventListener('click', () => { setTipCollapsed(false); tipHover = true; clearTimeout(tipTimer); });
+tipFab.addEventListener('click', () => { setTipCollapsed(false); setTipPage(1); clearTimeout(tipSlideTimer); tipHover = true; clearTimeout(tipTimer); });   // 從「!」重新打開：直接看操作提示
 ['pointerdown', 'wheel', 'scroll', 'touchmove', 'keydown'].forEach(ev =>
-  tipToast.addEventListener(ev, () => armTipTimer(), { passive: true }));
-tipToast.addEventListener('mouseenter', () => { tipHover = true; clearTimeout(tipTimer); });
+  tipToast.addEventListener(ev, () => { clearTimeout(tipSlideTimer); armTipTimer(); }, { passive: true }));
+tipToast.addEventListener('mouseenter', () => { tipHover = true; clearTimeout(tipTimer); clearTimeout(tipSlideTimer); });
 tipToast.addEventListener('mouseleave', () => { tipHover = false; armTipTimer(TIP_LEAVE_MS); });
 // Fallback when the pointer leaves without a mouseleave having been seen (see above).
 document.addEventListener('mousemove', e => {
   if (tipHover && !tipCollapsed && !tipToast.contains(e.target)) { tipHover = false; armTipTimer(TIP_LEAVE_MS); }
 });
 armTipTimer();
+// 切換分頁：圓點、左右鍵、拖曳／觸控滑動、觸控板橫向捲動
+tipDots.forEach((d, i) => d.addEventListener('click', () => setTipPage(i, true)));
+tipToast.addEventListener('keydown', e => { if (e.key === 'ArrowLeft' && tipPage > 0) setTipPage(0, true); else if (e.key === 'ArrowRight' && tipPage < 1) setTipPage(1, true); });
+let tipDrag = null, tipWheelLock = 0;
+tipPager.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0) return; tipDrag = { x: e.clientX, y: e.clientY, dx: 0, moved: false }; });
+tipPager.addEventListener('pointermove', e => {
+  if (!tipDrag) return;
+  const dx = e.clientX - tipDrag.x, dy = e.clientY - tipDrag.y;
+  if (!tipDrag.moved) { if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy)) return; tipDrag.moved = true; tipTrack.classList.add('drag'); try { tipPager.setPointerCapture(e.pointerId); } catch (err) { /* ok */ } }
+  const lim = (tipPage === 0 && dx > 0) || (tipPage === 1 && dx < 0) ? dx / 4 : dx;   // 到頭了拉不動（有一點阻尼）
+  tipDrag.dx = dx; tipTrack.style.transform = `translateX(calc(${-tipPage * 100}% + ${lim}px))`;
+  try { getSelection().removeAllRanges(); } catch (err) { /* ok */ }
+});
+const tipDragEnd = () => {
+  if (!tipDrag) return;
+  const d = tipDrag; tipDrag = null; tipTrack.classList.remove('drag');
+  if (!d.moved) return;
+  tipJustDragged = true; setTimeout(() => { tipJustDragged = false; }, 0);   // 拖完放開不要誤觸到下面的連結
+  if (d.dx < -50 && tipPage < 1) setTipPage(1, true); else if (d.dx > 50 && tipPage > 0) setTipPage(0, true); else setTipPage(tipPage, true);
+};
+tipPager.addEventListener('pointerup', tipDragEnd); tipPager.addEventListener('pointercancel', tipDragEnd);
+tipPager.addEventListener('click', e => { if (tipJustDragged) { e.preventDefault(); e.stopPropagation(); } }, true);
+tipPager.addEventListener('wheel', e => {
+  if (Math.abs(e.deltaX) < 20 || Math.abs(e.deltaX) < Math.abs(e.deltaY) || Date.now() < tipWheelLock) return;
+  tipWheelLock = Date.now() + 600; e.preventDefault();
+  setTipPage(tipPage + (e.deltaX > 0 ? 1 : -1), true);
+}, { passive: false });
+if (window.ResizeObserver) { const tro = new ResizeObserver(() => tipFit()); tipPanes.forEach(pn => tro.observe(pn)); }
+setTipPage(0); armTipSlide();
 // 操作提示在右下角，很容易被其他介面（底部操作列、左側浮動面板、下載確認框）碰到：碰到就先隱藏（淡出、不能點），等沒被碰到再顯示。
 function tipOverlapsOthers(el) {
   const r = el.getBoundingClientRect();
