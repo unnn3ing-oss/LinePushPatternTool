@@ -6164,8 +6164,8 @@ let lineOp = (() => { try { return localStorage.getItem(LINE_OP_KEY) || ''; } ca
 const lineOpTid = ch => { const t = lineWhoFor(ch).testers.find(x => x.name === lineOp); return t ? t.tid : ''; };
 const lineResetKeys = st => { st.retryKey = { test: '', official: '' }; };   // 收件人或帳號換了就是另一次發送，不能沿用同一把重試金鑰（否則 LINE 會當成同一筆而不發）
 function lineTestDrop(st) {   // 測試作廢：預覽與狀態那幾步不能再停著，退回推播測試
-  st.test = ''; st.testMsg = ''; st.testNote = ''; st.testNames = ''; st.testToken = ''; lineResetKeys(st);
-  if (st.step > 3) st.step = 3;
+  st.test = ''; st.testMsg = ''; st.testNote = ''; st.testNames = ''; st.testToken = ''; st.retryKey.test = '';   // 只換測試用的金鑰；正式群發的金鑰跟內容與帳號綁在一起，換操作人不該清掉（否則上次其實已受理的群發，重按會再發一次）
+  if (st.step > 3) { st.step = 3; lineCfmClose(true); }
 }
 function lineTestInvalidate() {   // 操作人或推播帳號換了：之前的測試推播不算數，要重新測試
   Object.values(lineByMode).forEach(st => { if (st && st.go !== 'ok' && st.go !== 'busy' && st.test !== 'busy') lineTestDrop(st); });   // 傳送中的測試不在這裡清：回應回來時會再比對操作人與帳號，不符就丟棄
@@ -6184,7 +6184,7 @@ function lineAcctSet(a) {
   const st = lineSt(); if (a === st.acct || st.go === 'ok' || lineBusyNow()) return;
   if (a !== 'test' && a !== mode) return;   // 內容是為這個版型做的，只能發到同版型的帳號（Worker 也會擋）
   st.acct = a; st.friends = null; st.friendsErr = ''; st.confirmVal = '';
-  lineTestDrop(st);
+  lineResetKeys(st); lineTestDrop(st);   // 帳號換了就是另一次發送：兩把金鑰都換
   const w = lineWhoFor(a); if (!w.loaded && !w.loading) lineWhoLoad(a);
   lineUpdateSteps();
 }
@@ -6619,7 +6619,7 @@ async function lineFire() {
     let result;
     if (sched) {
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
-      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: st.acct, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow() });
+      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: st.acct, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow(), retryKey: st.retryKey.official || (st.retryKey.official = crypto.randomUUID()) });   // retryKey：回應遺失後重按，Worker 認得是同一筆，不會多排一筆
       result = { kind: 'sched', when: `${when.text.slice(5, 10).replace('-', '/')} ${when.text.slice(11)}（台北時間）`, id: (r.schedule && r.schedule.id) || '' };
     } else {
       const r = await lineSend(st.acct, { confirmTotal: typed, testToken: st.testToken });
@@ -6629,7 +6629,7 @@ async function lineFire() {
     lineCfmClose(true);
   } catch (e) {
     st.go = 'bad';
-    st.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '' : '\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。'}`;
+    st.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '\n\n若不確定有沒有建立，請到「訊息推播 → 推播列表」確認（同一次排程重按不會重複建立）。' : '\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。'}`;
   }
   lineUpdateSteps();
 }
@@ -6692,7 +6692,7 @@ async function lineShotBlob(st) {
   const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
   const font = (px, w) => `${w || 400} ${px}px ${FONT}`;
   const wrap = (text, px, w, maxW) => { ctx.font = font(px, w); const out = []; let line = ''; for (const ch of String(text)) { if (ctx.measureText(line + ch).width > maxW && line) { out.push(line); line = ch; } else line += ch; } out.push(line); return out; };
-  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; } r = Math.min(r, w / 2, h / 2); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };   // 舊瀏覽器沒有 roundRect
   // 先量高度：以 height=0 的虛擬畫布跑一次排版（draw=false 不畫），再用量到的高度開畫布畫第二次
   const layout = draw => {
     let y = PAD;

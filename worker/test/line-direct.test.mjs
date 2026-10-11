@@ -338,6 +338,22 @@ test('測試帳號群發：不需要 LINE_ALLOW_OFFICIAL，但一樣要同帳號
   } finally { line.restore(); }
 });
 
+test('確認人數：null／空字串／false／[]／0 不能蒙混過小帳號（測試帳號只有 3 位好友）；數字字串與逗號可以', async () => {
+  const line = installFakeLine({ followers: 3 }); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
+  try {
+    const prep = await prepared(env);
+    const t = await testPushOn(env, prep, 'test');
+    assert.equal(t.status, 200, JSON.stringify(t.json));
+    for (const bad of [null, undefined, '', ' ', false, [], {}, 0, '0', 'abc', 5]) {
+      const r = await req(env, '/line/send', sendBody(prep, { mode: undefined, testers: undefined, testToken: t.json.testToken, confirmTotal: bad, retryKey: freshKey() }));
+      assert.equal(r.status, 409, `confirmTotal=${JSON.stringify(bad)}`); assert.match(r.json.error, /確認人數不符/);
+    }
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
+    const ok = await req(env, '/line/send', sendBody(prep, { mode: undefined, testers: undefined, testToken: t.json.testToken, confirmTotal: '3', retryKey: freshKey() }));
+    assert.equal(ok.status, 200, JSON.stringify(ok.json)); assert.equal(line.count('POST /v2/bot/message/broadcast'), 1);
+  } finally { line.restore(); }
+});
+
 test('正式帳號：查不到好友數 → 不發送', async () => {
   const line = installFakeLine({ followers: null });
   const env = { ...BASE_ENV, LINE_IMG: fakeR2(), LINE_ALLOW_OFFICIAL: '1' };
@@ -445,6 +461,23 @@ test('排程：建立（測試帳號群發）→ 存進 R2，狀態待發送，�
     assert.equal(line.count('POST /v2/bot/message/broadcast'), 0, '建立排程不會發送');
     assert.equal(line.count('POST /v2/bot/message/validate/broadcast'), 1, '建立當下先請 LINE 檢查格式');
     assert.equal(stored.approvedFriends, 1000); assert.equal(stored.test, false); assert.equal(stored.testerTids, undefined, '排程是群發，沒有指定收件人');
+  } finally { line.restore(); }
+});
+
+test('排程：同一把 retryKey 重送（回應遺失後重按）只會有一筆，回同一個 id', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    const prep = await prepared(env);
+    const testToken = (await testPushOn(env, prep, 'test')).json.testToken;
+    const retryKey = freshKey();
+    const a = await createSched(env, prep, { testToken, retryKey });
+    assert.equal(a.status, 200, JSON.stringify(a.json));
+    const b = await createSched(env, prep, { testToken, retryKey });
+    assert.equal(b.status, 200, JSON.stringify(b.json));
+    assert.equal(b.json.schedule.id, a.json.schedule.id); assert.equal(b.json.alreadyCreated, true);
+    assert.equal([...r2.store.keys()].filter(k => k.startsWith('sched/')).length, 1);
+    const c = await createSched(env, prep, { testToken, retryKey: freshKey() });
+    assert.notEqual(c.json.schedule.id, a.json.schedule.id);
   } finally { line.restore(); }
 });
 

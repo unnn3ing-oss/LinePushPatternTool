@@ -1063,9 +1063,12 @@ async function lineOfficialGate(env, key, prep, testToken) {
   const tested = await s8Open(env, testToken);
   if (!tested || tested.t !== 'line-tested' || tested.id !== prep.id || tested.ch !== key || !tested.x || tested.x < Date.now()) throw badInput(`群發前，同一份內容必須先在「${lineAcctLabel(key)}」測試推播成功（只發給操作人）。沒有發送任何東西。`);
 }
+// 確認人數：一定要是數字（或純數字字串），不接受 null／空字串／false／[] 這類會被轉成 0 的值；好友數 ≤ 50 的小帳號（常見於測試帳號）容許誤差只有 1，且好友數大於 0 時不能填 0
 const lineTypedApprove = typed => friends => {
-  const n = Number(typed);
-  if (!Number.isFinite(n) || Math.abs(n - friends) > Math.max(50, Math.round(friends * 0.02))) throw Object.assign(new Error(`確認人數不符：LINE 回報好友數約 ${friends} 人，你輸入的是 ${typed}。沒有發送任何東西。`), { status: 409 });
+  const okType = typeof typed === 'number' || (typeof typed === 'string' && /^\d[\d,]*$/.test(typed.trim()));
+  const n = okType ? Number(String(typed).replace(/,/g, '')) : NaN;
+  const tol = friends <= 50 ? 1 : Math.max(50, Math.round(friends * 0.02));
+  if (!Number.isFinite(n) || (friends > 0 && n < 1) || Math.abs(n - friends) > tol) throw Object.assign(new Error(`確認人數不符：LINE 回報好友數約 ${friends} 人，你輸入的是 ${typeof typed === 'string' || typeof typed === 'number' ? typed : '（沒有填）'}。沒有發送任何東西。`), { status: 409 });
 };
 async function lineOpenPrep(env, token, what = '發送') {
   const prep = await s8Open(env, token);
@@ -1272,6 +1275,10 @@ async function handleLineScheduleCreate(request, env) {
     lineChannelCreds(env, key);
     const pending = (await lineSchedList(env)).filter(x => x.status === 'scheduled' || x.status === 'sending').length;
     if (pending >= LINE_SCHED_MAX_PENDING) throw Object.assign(new Error(`待發送的排程已經 ${pending} 筆，請先刪除不需要的再建立。沒有建立排程。`), { status: 409 });
+    // 同一把 retryKey ＝ 同一次建立：回應遺失後重送，回已建好的那筆，不會多排一筆（id 由 retryKey 決定）
+    const rk = typeof body.retryKey === 'string' && LINE_RETRY_KEY.test(body.retryKey) ? body.retryKey : '';
+    const id = rk ? rk.replace(/-/g, '').slice(8, 32) : lineHex(12);
+    if (rk) { const dup = await lineSchedGet(env, id); if (dup && dup.channel === key) return jsonOk({ ok: true, schedule: lineSchedPublic(dup), alreadyCreated: true }, request, env); }
     const origin = new URL(request.url).origin;
     // 建立當下就把格式檢查與人數確認做完（發送當下還會再檢查一次）
     const messages = lineBuildMessages(prep, origin);
@@ -1281,7 +1288,7 @@ async function handleLineScheduleCreate(request, env) {
     const friends = info.followers ? info.followers.followers : null;
     if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全不排程。沒有建立排程。'), { status: 409 });
     lineTypedApprove(body.confirmTotal)(friends);
-    const id = lineHex(12), now = Date.now();
+    const now = Date.now();
     const rec = { v: 1, id, channel: key, org: prep.org, name: lineCleanName(body.name, prep.org, Date.parse(body.runAt)), test: false, altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
     await lineSchedPut(env, rec);
     return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
@@ -1342,7 +1349,7 @@ async function lineRunDue(env, now = Date.now()) {
         if (env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送已關閉（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1），沒有發送'), { status: 403 });
         if (rec.channel !== rec.org) throw badInput('排程內容與帳號不符，沒有發送');
       }
-      const approve = friends => { const a = rec.approvedFriends; if (a && Math.abs(friends - a) > Math.max(100, Math.round(a * LINE_SCHED_DRIFT))) throw Object.assign(new Error(`發送當下好友數約 ${friends} 人，和建立排程時確認的 ${a} 人差太多，為了安全沒有發送`), { status: 409 }); };
+      const approve = friends => { const a = rec.approvedFriends; if (Number.isFinite(a) && Math.abs(friends - a) > Math.max(100, Math.round(a * LINE_SCHED_DRIFT))) throw Object.assign(new Error(`發送當下好友數約 ${friends} 人，和建立排程時確認的 ${a} 人差太多，為了安全沒有發送`), { status: 409 }); };
       let r;
       if (!legacyTest) r = await lineBroadcastNow(env, rec.channel, prep, { origin: rec.origin, retryKey: rec.retryKey, approve });
       else {   // 舊版測試帳號排程：只發給建立排程時指定的人（名單裡已被移除的就略過；一個都不剩就失敗）

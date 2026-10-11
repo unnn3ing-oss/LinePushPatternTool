@@ -96,7 +96,7 @@
 
 - 一定先 `validate`，沒通過就不發；每次帶 `X-Line-Retry-Key`（UUID），同一個 key 重送 LINE 不會重複發；
 - 本月額度（上限－已用）不夠好友數就不發；
-- **群發（不帶 `mode:"test"`）**一律要求：**同一個帳號先成功測試推播過**（Worker 回的 `testToken`，內含頻道 `ch`，1 小時有效，換帳號不能用）；使用者輸入的好友數和 LINE 回報的相差在 2%（至少 50 人）以內；查不到好友數就不發。**新聞／娛樂帳號**另外要求 Worker 設了 `LINE_ALLOW_OFFICIAL=1`，且內容版型要和帳號對得上（新聞內容只能發新聞帳號）。**測試帳號**可直接群發給它所有好友（不需旗標、版型不限）。
+- **群發（不帶 `mode:"test"`）**一律要求：**同一個帳號先成功測試推播過**（Worker 回的 `testToken`，內含頻道 `ch`，1 小時有效，換帳號不能用）；使用者輸入的好友數必須是數字，且和 LINE 回報的相差在 2%（至少 50 人；好友數 ≤ 50 的小帳號只容許差 1、不能填 0）以內；查不到好友數就不發。**新聞／娛樂帳號**另外要求 Worker 設了 `LINE_ALLOW_OFFICIAL=1`，且內容版型要和帳號對得上（新聞內容只能發新聞帳號）。**測試帳號**可直接群發給它所有好友（不需旗標、版型不限）。
 - **測試推播**（`mode:"test"`＋`testers`）三個帳號都可以，只 multicast 給名單內 1 位。前端與 Worker 要一起部署：舊版 testToken 沒有 `ch`、測試推播現在一律要帶 `mode:"test"`。
 - Worker 只允許呼叫 12 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate／broadcast，以及 multicast（每次最多 1 位）、reply、profile），**沒有** push／narrowcast、不改頻道設定、不重發長效 token。程式寫死：正式帳號（新聞／娛樂）不能 reply／profile；正式帳號 broadcast 受上面的閘門限制。
 
@@ -126,7 +126,7 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 | 端點 | 作用 |
 |---|---|
-| `POST /line/schedule/create` | 建立排程。條件與立即推播相同（新聞／娛樂帳號要 `LINE_ALLOW_OFFICIAL=1`、同一個帳號先成功測試推播過並帶 `testToken`、輸入正確好友數；排程一律是群發）；時間要在 **5 分鐘後 ～ 14 天內**（台北時間，到分鐘）；待發送最多 30 筆 |
+| `POST /line/schedule/create` | 建立排程。條件與立即推播相同（新聞／娛樂帳號要 `LINE_ALLOW_OFFICIAL=1`、同一個帳號先成功測試推播過並帶 `testToken`、輸入正確好友數；排程一律是群發；可帶 `retryKey`（UUID）：同一把 key 重送只會回同一筆，避免回應遺失後重按多排一筆）；時間要在 **5 分鐘後 ～ 14 天內**（台北時間，到分鐘）；待發送最多 30 筆 |
 | `POST /line/schedule/list` | 查看排程（狀態、時間、嘗試次數、錯誤、發送後的 request id）與 Cron 心跳 |
 | `POST /line/schedule/update` | 變更時間（只有「待發送」的，且發送前不到 1 分鐘就來不及；網頁精靈已不提供，只能到推播列表取消） |
 | `POST /line/schedule/cancel` | 刪除（取消）排程（同上） |
