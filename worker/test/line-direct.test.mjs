@@ -354,6 +354,18 @@ test('確認人數：null／空字串／false／[]／0 不能蒙混過小帳號�
   } finally { line.restore(); }
 });
 
+test('測試推播被 LINE 回 409（重用舊 retryKey，這次沒有真的發出去）→ 不簽測試憑證，拿不到群發資格', async () => {
+  const line = installFakeLine({ broadcastStatus: 409, followers: 1000 }); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
+  try {
+    const prep = await prepared(env);
+    const t = await testPushOn(env, prep, 'test');
+    assert.equal(t.status, 200, JSON.stringify(t.json)); assert.equal(t.json.alreadyAccepted, true);
+    assert.equal(t.json.testToken, undefined, '409 不簽測試憑證');
+    const r = await req(env, '/line/send', sendBody(prep, { mode: undefined, testers: undefined, testToken: t.json.testToken, confirmTotal: 1000, retryKey: freshKey() }));
+    assert.equal(r.status, 400); assert.match(r.json.error, /測試推播成功/);
+  } finally { line.restore(); }
+});
+
 test('正式帳號：查不到好友數 → 不發送', async () => {
   const line = installFakeLine({ followers: null });
   const env = { ...BASE_ENV, LINE_IMG: fakeR2(), LINE_ALLOW_OFFICIAL: '1' };

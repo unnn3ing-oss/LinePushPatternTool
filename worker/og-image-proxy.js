@@ -1105,7 +1105,8 @@ async function handleLineSend(request, env) {
       : await lineMulticastTest(env, prep, { origin, retryKey: body.retryKey, recs: await lineResolveTesters(env, body.testers, key), key });
     const out = { ok: true, channel: key, official: !testPush, testOnly: testPush, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
     if (!out.official) { out.recipients = r.recipients; out.quota = r.quota; }
-    if (!out.official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, ch: key, x: Date.now() + LINE_TESTED_TTL_MS });
+    // LINE 回 409＝這把 retryKey 以前收過，這次沒有真的發出去：不簽測試憑證（不能憑重用舊金鑰就算「測試過了」）
+    if (!out.official && !r.alreadyAccepted) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, ch: key, x: Date.now() + LINE_TESTED_TTL_MS });
     out.historySaved = await lineHistorySave(env, { key, prep, body, r, out });
     return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }

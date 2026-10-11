@@ -97,7 +97,7 @@
 - 一定先 `validate`，沒通過就不發；每次帶 `X-Line-Retry-Key`（UUID），同一個 key 重送 LINE 不會重複發；
 - 本月額度（上限－已用）不夠好友數就不發；
 - **群發（不帶 `mode:"test"`）**一律要求：**同一個帳號先成功測試推播過**（Worker 回的 `testToken`，內含頻道 `ch`，1 小時有效，換帳號不能用）；使用者輸入的好友數必須是數字，且和 LINE 回報的相差在 2%（至少 50 人；好友數 ≤ 50 的小帳號只容許差 1、不能填 0）以內；查不到好友數就不發。**新聞／娛樂帳號**另外要求 Worker 設了 `LINE_ALLOW_OFFICIAL=1`，且內容版型要和帳號對得上（新聞內容只能發新聞帳號）。**測試帳號**可直接群發給它所有好友（不需旗標、版型不限）。
-- **測試推播**（`mode:"test"`＋`testers`）三個帳號都可以，只 multicast 給名單內 1 位。前端與 Worker 要一起部署：舊版 testToken 沒有 `ch`、測試推播現在一律要帶 `mode:"test"`。
+- **測試推播**（`mode:"test"`＋`testers`）三個帳號都可以，只 multicast 給名單內 1 位。LINE 回 409（這把 retryKey 以前收過、這次沒有真的發出去）時回 `alreadyAccepted:true`，**不簽 `testToken`**，需要換新的 retryKey 重測。前端與 Worker 要一起部署：舊版 testToken 沒有 `ch`、測試推播現在一律要帶 `mode:"test"`。
 - Worker 只允許呼叫 12 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate／broadcast，以及 multicast（每次最多 1 位）、reply、profile），**沒有** push／narrowcast、不改頻道設定、不重發長效 token。程式寫死：正式帳號（新聞／娛樂）不能 reply／profile；正式帳號 broadcast 受上面的閘門限制。
 
 ### 測試名單（測試帳號只發給「選到的人」，省額度）

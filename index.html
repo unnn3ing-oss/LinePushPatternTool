@@ -6549,10 +6549,11 @@ async function lineTestRun() {
     if (needPrep) { await linePrepare(st); st.testMsg = '推播中…'; lineUpdateSteps(); }
     const r = await lineSend(ch, { mode: 'test', testers: [tid] });
     if (r.quota) lineWhoFor(ch).quota = { limit: r.quota.limit, used: r.quota.used + (r.friends || 0) };   // 先用「發送前用量＋收件人數」估計；稍後再向 LINE 查實際用量核對
-    if (lineOp !== opAt || st.acct !== ch || lineOpTid(ch) !== tid) { st.test = ''; st.testMsg = ''; st.testToken = ''; lineWin('測試推播的操作人或帳號在傳送途中換了，這次結果不算數，請重新推播測試。', 'bad'); lineUpdateSteps(); return; }
+    if (lineOp !== opAt || st.acct !== ch || lineOpTid(ch) !== tid) { st.test = ''; st.testMsg = ''; st.testToken = ''; st.retryKey.test = ''; lineWin('測試推播的操作人或帳號在傳送途中換了，這次結果不算數，請重新推播測試。', 'bad'); lineUpdateSteps(); return; }
+    if (!r.testToken) throw new Error('LINE 回報這把重試金鑰以前用過，這次沒有真的發出去，不能算測試過。請再按一次推播測試（會換新的金鑰）');
     st.test = 'ok'; st.testToken = r.testToken || ''; st.testNames = (r.recipients || [lineOp]).join('、'); st.testMsg = '';
     if (r.quota && Number.isFinite(r.quota.used)) lineVerifyUsage(r.quota.used, r.friends || 0, st, ch);
-  } catch (e) { st.test = 'bad'; st.testMsg = `推播失敗：${String(e.message || e).slice(0, 200)}`; }
+  } catch (e) { st.test = 'bad'; st.testMsg = `推播失敗：${String(e.message || e).slice(0, 200)}`; st.retryKey.test = ''; }   // 失敗後再試一律換新金鑰
   lineUpdateSteps();
 }
 $line('lineTestAgain').addEventListener('click', () => { const st = lineSt(); if (st.test !== 'ok' || st.go === 'ok' || lineBusyNow()) return; st.test = ''; st.testMsg = ''; st.testNote = ''; st.testToken = ''; st.retryKey.test = ''; lineUpdateSteps(); });
