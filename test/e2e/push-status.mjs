@@ -51,7 +51,7 @@ const st = await page.evaluate(() => {
 });
 check(st.pos === 'fixed' && st.z > st.maxZ, `泡泡固定在視窗上、層級 ${st.z} 高於其他所有元素（${st.maxZ}）`);
 check(st.bg === st.dbg && st.rad === st.drad && st.sh === st.dsh && st.pad === st.dpad, `外框跟底部工具列相同：底色 ${st.bg}、圓角 ${st.rad}、陰影、內距`);
-check(st.right < 40 && st.bottom > 60 && st.bottom < 140, `在網頁右下方（距右 ${Math.round(st.right)}px、距下 ${Math.round(st.bottom)}px）`);
+check(st.right < 40 && st.bottom < 40, `在網頁最右下角、蓋住操作提示（距右 ${Math.round(st.right)}px、距下 ${Math.round(st.bottom)}px）`);
 const spin = await page.evaluate(() => getComputedStyle(document.querySelector('#pushBubbles .pb-spin')).display);
 check(spin !== 'none', '「訊息推播中」帶轉圈圈');
 

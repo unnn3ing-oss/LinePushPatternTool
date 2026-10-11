@@ -558,8 +558,8 @@ test('排程：list 回傳待發送在前、含心跳；update 只能改待發�
     assert.equal(c.status, 200); assert.equal(c.json.schedule.status, 'cancelled');
     assert.equal((await req(env, '/line/schedule/cancel', { id: b.id })).status, 409, '已取消的不能再取消／變更');
     assert.equal((await req(env, '/line/schedule/update', { id: b.id, runAt: inMin(90) })).status, 409);
-    // 快要發送（<1 分鐘）來不及動
-    await setRunAt(r2, a.id, Date.now() + 30000);
+    // 快要發送（<30 秒）來不及動
+    await setRunAt(r2, a.id, Date.now() + 15000);
     assert.equal((await req(env, '/line/schedule/cancel', { id: a.id })).status, 409);
     // 取消的在 Cron 時不會發
     await setRunAt(r2, b.id, Date.now() - 60000);

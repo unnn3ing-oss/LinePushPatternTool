@@ -724,7 +724,7 @@
     touch-action: none;
   }
   /* ---- 推播狀態泡泡：右下角彈出、蓋在所有視窗之上；外框跟底部工具列（.dock）一樣 ---- */
-  #pushBubbles { position: fixed; right: 20px; bottom: 82px; transition: bottom .2s ease; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
+  #pushBubbles { position: fixed; right: 20px; bottom: 20px; transition: right .3s ease, bottom .3s ease; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
   .push-bubble { display: flex; align-items: center; gap: 10px; max-width: 100%; box-sizing: border-box; background: #1f2328; color: #fff; padding: 10px 18px; border-radius: 36px; box-shadow: 0 8px 30px rgba(0, 0, 0, .35); font-size: 14px; font-weight: 600; opacity: 0; transform: translateX(32px); transition: opacity .3s ease, transform .3s ease; }
   .push-bubble.show { opacity: 1; transform: none; }
   .push-bubble .pb-name { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
@@ -5303,7 +5303,7 @@ function setLab(on) {
   labToggle.setAttribute('aria-pressed', String(on));
   try { sessionStorage.setItem('labOn', on ? '1' : '0'); } catch (e) { /* tab-only convenience */ }
   cellSelected = false; headerSelected = false;
-  if (!on && typeof pushWatchStop === 'function') pushWatchStop();
+  if (on && typeof pushWatchResume === 'function') { try { pushWatchResume(); } catch (e) { /* 還沒初始化 */ } }
   s8UpdatePill();
   syncChrome();
   render();
@@ -6696,9 +6696,9 @@ async function lineFire() {
     if (called) {   // 還沒送到 Worker 就擋下的（內容有更動、沒測試…）不彈泡泡；網路斷掉這種「不知道有沒有成功」的要講清楚
       const unsure = e && (e instanceof TypeError || e.name === 'AbortError' || /Failed to fetch|NetworkError|Load failed/i.test(String(e.message || '')));
       const wm = sched ? ((lineWhenValue().ms) || Date.now()) : Date.now();
-      pushBubble(sched ? `sched-fail:${fireKey}` : bubbleKey, bubbleName || pushMsgName(wm, org), unsure ? 'missed' : 'failed', unsure ? '未確認，請至後台確認' : (sched ? '排程失敗' : undefined));
+      pushBubble(sched ? `sched-fail:${fireKey}` : bubbleKey, bubbleName || pushMsgName(wm, org), unsure ? 'missed' : 'failed', unsure ? '出現錯誤，請先到推播列表確認，再重新推播流程' : (sched ? '排程失敗' : undefined));
     }
-    st.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '\n\n若不確定有沒有建立，請到「訊息推播 → 推播列表」確認（同一次排程重按不會重複建立）。' : '\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。'}`;
+    st.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '\n\n若不確定有沒有建立，請到「訊息推播 → 推播列表」確認（同一次排程重按不會重複建立）。' : '\n\n若不確定有沒有發出去，請先到「訊息推播 → 推播列表」看有沒有這筆紀錄（同一次發送重按不會重複發送）。'}`;
   }
   lineUpdateSteps();
 }
@@ -6936,7 +6936,7 @@ async function hubListLoad(ch) {
   try {
     const r = await s8Api('/line/history/list', { channel: ch });
     d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true;
-    pushSyncList(ch, d.records, d.serverNow, d.heartbeatAt);
+    pushSyncList(ch, d.records, d.serverNow);
   } catch (e) { d.error = String(e.message || e); }
   d.loading = false;
   if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
@@ -6982,15 +6982,28 @@ function pushBubbleClose(key) {
   clearTimeout(b.timer); pushBubbleEls.delete(key);
   b.el.classList.remove('show'); setTimeout(() => b.el.remove(), 350);
 }
-// 預設在右下角（工具列上方）；「排入LINE推播」視窗開著時，往上移到精靈底部按鈕列的上方，不蓋住「下一步」等按鈕
+// 位置：整個網頁的右下角。有彈窗在用（.modal-overlay.open）就直接蓋住「操作提示」；沒有彈窗時，改在「操作提示」（展開的卡片或收起後的「!」）的左側彈出。
+// 操作提示被底部工具列擠掉（隱藏）時，泡泡就靠右下角；如果泡泡會壓到底部工具列，就整疊抬高到工具列上方。
 function pushBubblePlace() {
   const box = document.getElementById('pushBubbles'); if (!box) return;
-  const f = document.getElementById('lineFoot'); let bottom = 82;
-  if (f && f.offsetParent !== null) bottom = Math.min(Math.max(82, Math.round(innerHeight - f.getBoundingClientRect().top + 10)), Math.max(82, innerHeight - 140));
-  box.style.bottom = `${bottom}px`;
+  let right = 20, bottom = 20;
+  if (!document.querySelector('.modal-overlay.open')) {
+    const tip = document.getElementById('tipToast'), fab = document.getElementById('tipFab'), col = tip.classList.contains('tip-collapsed'), el = col ? fab : tip;
+    const hidden = el.classList.contains('tip-yield') || (col && !fab.classList.contains('show'));
+    const w = el.offsetWidth || (col ? 46 : 372);
+    if (!hidden) { if (innerWidth - 20 - w - 12 - 16 >= 240) right = 20 + w + 12; else bottom = 20 + (el.offsetHeight || 46) + 12; }   // 視窗太窄放不下：改疊在「操作提示」上方
+    const dock = document.getElementById('dock');
+    if (dock && !dock.hidden && getComputedStyle(dock).display !== 'none') {
+      const d = dock.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight, top = innerHeight - bottom;
+      if (d.width && innerWidth - right - bw < d.right && innerWidth - right > d.left && top > d.top && top - bh < d.bottom) bottom = Math.max(bottom, Math.round(innerHeight - d.top + 12));
+    }
+  }
+  box.style.right = `${right}px`; box.style.bottom = `${bottom}px`; box.style.maxWidth = `calc(100vw - ${right + 16}px)`;
 }
-window.addEventListener('resize', pushBubblePlace);
-new MutationObserver(pushBubblePlace).observe(s8Overlay, { attributes: true, subtree: true, attributeFilter: ['class', 'hidden', 'data-view', 'style'] });
+let pushPlaceRaf = 0;
+const pushPlaceSoon = () => { if (!pushPlaceRaf) pushPlaceRaf = requestAnimationFrame(() => { pushPlaceRaf = 0; pushBubblePlace(); }); };
+window.addEventListener('resize', pushPlaceSoon);
+new MutationObserver(pushPlaceSoon).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class', 'hidden'] });   // 彈窗開關、操作提示展開／收起
 function pushBubble(key, name, status, label) {
   const box = document.getElementById('pushBubbles'); if (!box) return;
   pushBubblePlace();
@@ -7013,20 +7026,21 @@ function pushBubble(key, name, status, label) {
   b.el.querySelector('.pb-st span').textContent = text;
   b.el.dataset.status = status;
   clearTimeout(b.timer);
+  pushBubblePlace();   // 內容變了、寬度跟著變
   if (status === 'sent' || status === 'cancelled') b.timer = setTimeout(() => pushBubbleClose(key), PUSH_BUBBLE_LINGER_MS);   // 失敗、逾時要看到才算數，自己按 × 關
 }
-// 排程到時間就先當作「訊息推播中」。時間以 Worker 的時鐘為準（每次讀列表時記下與本機的差）；Cron 沒在跑、或超過 35 分鐘還沒送出，就不再說「推播中」，改顯示「逾時未發」
-const PUSH_OVERDUE_MS = 35 * 60 * 1000, PUSH_LOCK_MS = 60 * 1000;
-const pushClock = {};   // 帳號 → { skew: Worker 時間 − 本機時間, stale: Cron 心跳是否已中斷 }
+// 排程到時間就先當作「訊息推播中」。時間以 Worker 的時鐘為準（每次讀列表時記下與本機的差）；超過 3 分鐘還沒送出，就不再說「推播中」，改顯示「逾時未發」
+const PUSH_OVERDUE_MS = 3 * 60 * 1000, PUSH_LOCK_MS = 30 * 1000;
+const pushClock = {};   // 帳號 → { skew: Worker 時間 − 本機時間 }
 const pushNow = ch => Date.now() + ((pushClock[ch] && pushClock[ch].skew) || 0);
 function pushEff(r) {
   if (r.status !== 'scheduled' || !Number.isFinite(r.runAt)) return r.status;
-  const now = pushNow(r.channel), over = now - r.runAt, c = pushClock[r.channel];
+  const over = pushNow(r.channel) - r.runAt;
   if (over < 0) return 'scheduled';
-  if (over > PUSH_OVERDUE_MS || (c && c.stale && over > 3 * 60 * 1000)) return 'missed';
+  if (over > PUSH_OVERDUE_MS) return 'missed';
   return 'sending';
 }
-const pushLocked = r => r.status === 'scheduled' && Number.isFinite(r.runAt) && r.runAt - pushNow(r.channel) < PUSH_LOCK_MS;   // 距離發送不到 1 分鐘：Worker 不收取消
+const pushLocked = r => r.status === 'scheduled' && Number.isFinite(r.runAt) && r.runAt - pushNow(r.channel) < PUSH_LOCK_MS;   // 距離發送不到 30 秒：Worker 不收取消
 const pushWatch = new Map();   // 推播 id → { id, channel, name, runAt, status, shown, locked }
 let pushWatchTimer = 0, pushWatchBusy = false, pushWatchPaused = false;
 const pushOrgOf = st => (st.acct === 'ent' || st.acct === 'news' ? st.acct : mode);   // 泡泡上的名稱用「推播帳號」的類別，不是目前畫面的模式
@@ -7045,8 +7059,9 @@ function pushTrack(rec) {
   pushWatch.set(rec.id, w); pushWatchPaused = false; pushNotify(w, pushEff(w)); pushWatchPlan();
 }
 // 向 Worker 讀到最新的推播列表之後：更新追蹤中的狀態（有變就彈泡泡）；列表上還沒送出的排程也開始追蹤（不彈泡泡，等狀態變了才彈）
-function pushSyncList(ch, recs, serverNow, heartbeatAt) {
-  pushClock[ch] = { skew: Number.isFinite(serverNow) && serverNow > 0 ? serverNow - Date.now() : 0, stale: !!(recs || []).some(r => r.status === 'scheduled' || r.status === 'sending') && (!heartbeatAt || serverNow - heartbeatAt > 3 * 60 * 1000) };
+function pushSyncList(ch, recs, serverNow) {
+  pushClock[ch] = { skew: Number.isFinite(serverNow) && serverNow > 0 ? serverNow - Date.now() : 0 };
+  pushBubbleClose('poll-err');   // 能讀到列表，查詢錯誤的提示就不用留了
   const ids = new Set();
   (recs || []).forEach(r => {
     ids.add(r.id);
@@ -7054,6 +7069,8 @@ function pushSyncList(ch, recs, serverNow, heartbeatAt) {
     if (w) {
       w.status = r.status; w.runAt = r.runAt; w.name = r.name || r.altText || w.name; pushNotify(w, pushEff(w));
       if (r.status !== 'scheduled' && r.status !== 'sending') pushWatch.delete(r.id);
+    } else if (pushBubbleEls.has(`rec:${r.id}`) && r.status === 'sent' && pushBubbleEls.get(`rec:${r.id}`).el.dataset.status === 'missed') {
+      pushBubble(`rec:${r.id}`, r.name || r.altText || '', 'sent');   // 之前判定逾時，結果其實後來發出去了：更正泡泡
     } else if (r.status === 'scheduled' || r.status === 'sending') {
       pushWatch.set(r.id, { id: r.id, channel: ch, name: r.name || r.altText || '', runAt: r.runAt, status: r.status, shown: pushEff(r), locked: pushLocked(r) });
     }
@@ -7062,16 +7079,8 @@ function pushSyncList(ch, recs, serverNow, heartbeatAt) {
   pushWatchPaused = false;
   pushWatchPlan();
 }
-// 登出試驗功能、憑證過期：全部停掉，不留泡泡也不留計時器
-function pushWatchStop() {
-  clearTimeout(pushWatchTimer); pushWatchTimer = 0; pushWatch.clear(); pushWatchPaused = false;
-  [...pushBubbleEls.keys()].forEach(k => pushBubbleClose(k));
-}
-// 輪詢頻率：剛到時間 10 秒一次；2 分鐘後 30 秒；10 分鐘後 60 秒（Cron 壞掉時不要一直打 Worker）
-function pushPollGap(live) {
-  const over = Math.min(...live.filter(w => pushEff(w) === 'sending').map(w => pushNow(w.channel) - w.runAt));
-  return over < 2 * 60 * 1000 ? PUSH_POLL_MS : over < 10 * 60 * 1000 ? 30000 : 60000;
-}
+// 試驗功能重新打開：有還沒送完的排程就繼續查
+function pushWatchResume() { pushWatchPaused = false; pushWatchPlan(); }
 function pushWatchPlan() {
   clearTimeout(pushWatchTimer); pushWatchTimer = 0;
   let relock = false;
@@ -7087,7 +7096,11 @@ function pushWatchPlan() {
   const due = live.some(w => pushEff(w) === 'sending');
   const marks = live.flatMap(w => [w.runAt, w.runAt - PUSH_LOCK_MS].filter(t => Number.isFinite(t) && t > pushNow(w.channel)).map(t => t - (pushNow(w.channel) - Date.now())));
   const next = Math.min(...marks, Date.now() + 30000);
-  pushWatchTimer = setTimeout(pushWatchTick, due ? pushPollGap(live) : Math.max(500, next - Date.now()));
+  pushWatchTimer = setTimeout(pushWatchTick, due ? PUSH_POLL_MS : Math.max(500, next - Date.now()));
+}
+// 背景查詢出問題要讓使用者知道（同一顆泡泡更新；之後查到了就自己收起）
+function pushPollErr(kind) {
+  pushBubble('poll-err', '推播狀態查詢', kind === 'auth' ? 'failed' : 'missed', kind === 'auth' ? '憑證已過期，請重新登入試驗功能' : kind === 'timeout' ? '查詢逾時，稍後自動重試' : '查詢失敗，稍後自動重試');
 }
 async function pushWatchTick() {
   pushWatchTimer = 0;
@@ -7096,15 +7109,18 @@ async function pushWatchTick() {
   if (!chs.size) { pushWatchPlan(); return; }
   pushWatchBusy = true;
   try {
-    if (!(labOn && readLabAuth())) pushWatchPaused = true;   // 沒登入或憑證過期：背景查詢不跳登入視窗，等使用者重新登入、讀到列表後再繼續
+    if (!(labOn && readLabAuth())) { pushWatchPaused = true; if (labOn) pushPollErr('auth'); }   // 沒登入或憑證過期：背景查詢不跳登入視窗，只彈泡泡通知；重新登入、讀到列表後再繼續
     else {
       for (const ch of chs) {
         try {
           const r = await s8Api('/line/history/list', { channel: ch }, {}, false, true);
           const d = hubFor(ch); d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true; d.error = '';
-          pushSyncList(ch, d.records, d.serverNow, d.heartbeatAt);
+          pushSyncList(ch, d.records, d.serverNow);
           if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
-        } catch (e) { if (e && e.code === 'auth') { pushWatchPaused = true; break; } /* 其他錯誤：這一輪查不到，下一輪再試 */ }
+        } catch (e) {
+          if (e && e.code === 'auth') { pushWatchPaused = true; pushPollErr('auth'); break; }
+          pushPollErr(e && e.name === 'AbortError' ? 'timeout' : 'net');   // 這一輪查不到：通知一下，下一輪自動再試
+        }
       }
     }
   } finally { pushWatchBusy = false; }
@@ -7255,7 +7271,7 @@ function hubStatsRender() {
     });
     acts.append(rf, cpy);
   }
-  if (rec.status === 'scheduled' && pushEff(rec) === 'scheduled' && !pushLocked(rec)) {   // 時間到了（訊息推播中）、或不到 1 分鐘就要發送，就不能取消
+  if (rec.status === 'scheduled' && pushEff(rec) === 'scheduled' && !pushLocked(rec)) {   // 時間到了（訊息推播中）、或不到 30 秒就要發送，就不能取消
     const del = document.createElement('button'); del.type = 'button'; del.id = 'hubCancelSched'; del.className = 'danger'; del.textContent = '取消這筆排程';
     del.addEventListener('click', async () => {
       if (!window.confirm(`確定要取消這筆排程嗎？\n\n${hubFmt(rec.runAtIso)}　${hubAcctName(rec.channel)}\n${rec.name || rec.altText}\n\n取消後不會發送。要改時間請到「排入LINE推播」視窗的「排程狀態」。`)) return;

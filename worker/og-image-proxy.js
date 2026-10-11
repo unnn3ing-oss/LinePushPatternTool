@@ -1319,7 +1319,7 @@ async function handleLineScheduleChange(request, env, action) {
     const rec = await lineSchedGet(env, body.id);
     if (!rec) throw Object.assign(new Error('找不到這筆排程'), { status: 404 });
     if (rec.status !== 'scheduled') throw Object.assign(new Error(`這筆排程目前是「${rec.status}」，只有「待發送」的能${action === 'update' ? '變更' : '刪除'}`), { status: 409 });
-    if (rec.runAt - Date.now() < 60 * 1000) throw Object.assign(new Error('這筆排程再不到 1 分鐘就要發送，來不及變更或刪除了'), { status: 409 });
+    if (rec.runAt - Date.now() < 30 * 1000) throw Object.assign(new Error('這筆排程再不到 30 秒就要發送，來不及變更或刪除了'), { status: 409 });
     if (action === 'update') {
       const bad = checkLineRunAt(body.runAt); if (bad) throw badInput(`${bad}。排程沒有變動。`);
       rec.runAt = Date.parse(body.runAt); rec.attempts = 0; rec.lastError = '';

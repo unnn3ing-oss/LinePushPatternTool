@@ -29,18 +29,21 @@ await page.route(`${WORKER}/**`, async route => {
 await page.addInitScript(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token', expiresAt: Date.now() + 3600e3 })); });
 await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
+const bubbles = () => page.$$eval('#pushBubbles .push-bubble', bs => bs.map(b => b.querySelector('.pb-name').textContent + '｜' + b.querySelector('.pb-st').textContent));
 const load = () => page.evaluate(() => hubListLoad('news'));
 const eff = id => page.evaluate(id => pushEff(hubFor('news').records.find(r => r.id === id)), id);
 
 // 1. 伺服器時鐘比本機快 2 分鐘：本機看起來還沒到的排程，其實已經在推播
 const now = Date.now();
-skewMs = 120000; records = [mk('a', now + 60000), mk('b', now + 30000 + 120000)];
+skewMs = 120000; records = [mk('a', now + 60000), mk('b', now + 15000 + 120000)];
 await load();
 check(await eff(records[0].id) === 'sending', '用 Worker 的時鐘判斷：本機還差 1 分鐘、Worker 已過時間 → 訊息推播中');
 // 2. 不到 1 分鐘不能取消（Worker 會拒絕）
 await page.click('#s8Link'); await page.waitForSelector('#hubListBox .hub-row');
 await page.evaluate(id => hubOpenDetail(id), records[1].id);
-check(await page.locator('#hubCancelSched').count() === 0, '距離發送不到 1 分鐘：不顯示「取消這筆排程」');
+check(await page.locator('#hubCancelSched').count() === 0, '距離發送不到 30 秒：不顯示「取消這筆排程」');
+records = [mk('b2', now + 45000 + 120000)]; await load(); await page.evaluate(id => hubOpenDetail(id), records[0].id);
+check(await page.locator('#hubCancelSched').count() === 1, '還有 45 秒：還可以取消（只有最後 30 秒不行）');
 skewMs = 0; records = [mk('c', now + 10 * 60000)]; await load(); await page.evaluate(id => hubOpenDetail(id), records[0].id);
 check(await page.locator('#hubCancelSched').count() === 1, '還有 10 分鐘：可以取消');
 
@@ -51,13 +54,11 @@ check(await page.inputValue('#hubRenameInp') === '我正在輸入的新名稱', 
 check(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'hubRenameInp', '輸入框的游標也還在');
 await page.evaluate(() => { hubRenaming = false; hubCloseDetail(); });
 
-// 4. Cron 沒在跑：不要一直說「推播中」
-skewMs = 0; heartbeatAgo = 10 * 60000; records = [mk('d', Date.now() - 5 * 60000)]; await load();
-check(await eff(records[0].id) === 'missed', 'Cron 心跳中斷、已經過 5 分鐘：顯示「逾時未發」，不說推播中');
-heartbeatAgo = 0; records = [mk('e', Date.now() - 2 * 60000)]; await load();
-check(await eff(records[0].id) === 'sending', 'Cron 正常、剛過 2 分鐘：訊息推播中');
-records = [mk('f', Date.now() - 36 * 60000)]; await load();
-check(await eff(records[0].id) === 'missed', '超過 35 分鐘還是排程中：視為逾時未發');
+// 4. 超過 3 分鐘還沒送出：顯示「逾時未發」
+skewMs = 0; records = [mk('d', Date.now() - 3.5 * 60000)]; await load();
+check(await eff(records[0].id) === 'missed', '已經過 3.5 分鐘還是排程中：顯示「逾時未發」');
+records = [mk('e', Date.now() - 2.5 * 60000)]; await load();
+check(await eff(records[0].id) === 'sending', '剛過 2.5 分鐘：還是訊息推播中');
 await page.evaluate(() => hubCloseDetail());
 
 // 5. 列表上消失（被刪除）的排程：追蹤和泡泡一起收掉
@@ -77,28 +78,57 @@ await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ t
 await page.evaluate(() => pushWatchTick());
 check(await page.evaluate(() => pushWatchPaused === true && !document.getElementById('labOverlay').classList.contains('open')), '輪詢遇到 401：暫停，不跳視窗');
 mode401 = false;
+await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token', expiresAt: Date.now() + 3600e3 })); pushWatchPaused = false; });   // 上面的 401 會清掉憑證，重新放回去
 
-// 7. 關掉試驗功能：追蹤、泡泡、計時器全清
+// 7. 關掉試驗功能：泡泡與追蹤維持現狀，但不再查詢；重新打開就繼續
 await page.evaluate(() => { pushBubble('x', 'X', 'failed'); pushWatch.set('z', { id: 'z', channel: 'news', name: 'z', runAt: Date.now() + 1e6, status: 'scheduled' }); setLab(false); });
-await page.waitForTimeout(500);
-check(await page.evaluate(() => pushWatch.size === 0 && pushWatchTimer === 0 && !document.querySelector('#pushBubbles .push-bubble')), '關掉試驗功能：追蹤、計時器、泡泡全部清掉');
-await page.evaluate(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token', expiresAt: Date.now() + 3600e3 })); setLab(true); });
+await page.evaluate(() => pushWatchTick());
+check(await page.evaluate(() => pushWatch.has('z') && !!document.querySelector('#pushBubbles .push-bubble')), '關掉試驗功能：泡泡與追蹤維持原樣');
+await page.evaluate(() => { pushWatch.delete('z'); setLab(true); });
+check(await page.evaluate(() => pushWatchPaused === false), '重新打開試驗功能：恢復查詢');
 
-// 8. 窄視窗：泡泡不蓋住精靈右下角的按鈕
-await page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; openS8Dialog(); });
-await page.waitForFunction(() => document.querySelectorAll('#s8Stage .s8-cell').length === 6 && s8State.images.length === 2 && s8State.images.every(Boolean), null, { timeout: 60000 }).catch(() => {});
-await page.evaluate(() => { for (const k of [...pushBubbleEls.keys()]) pushBubbleClose(k); pushBubble('a', '10/11新聞', 'sending'); pushBubble('b', '10/11新聞（測試）', 'failed', '未確認，請至後台確認'); });
-await page.waitForTimeout(600);
-for (const w of [1280, 900, 700, 520, 390]) {
-  await page.setViewportSize({ width: w, height: 800 }); await page.waitForTimeout(250);
-  const o = await page.evaluate(() => {
-    const btn = document.getElementById('lineNextBtn'); if (!btn || btn.offsetParent === null) return null;
-    const b = btn.getBoundingClientRect(); const hit = [...document.querySelectorAll('#pushBubbles .push-bubble')].filter(e => { const r = e.getBoundingClientRect(); return r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top; }).length;
-    return { hit, btn: [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)], vw: innerWidth, vh: innerHeight };
-  });
-  if (!o) { check(true, `寬 ${w}px：精靈未開，略過`); continue; }
-  check(o.hit === 0, `寬 ${w}px：泡泡沒有蓋住「下一步」按鈕 ${JSON.stringify(o.btn)}`);
+// 7b. 背景查詢逾時／失敗：彈泡泡通知，查到了就自動收起
+await page.evaluate(() => { for (const k of [...pushBubbleEls.keys()]) pushBubbleClose(k); });
+records = [mk('p', Date.now() - 10000)]; await load();
+await page.evaluate(() => { window.__realFetch = window.fetch; window.fetch = () => Promise.reject(new TypeError('Failed to fetch')); });
+await page.evaluate(() => pushWatchTick()); await page.waitForTimeout(400);
+check((await bubbles()).join(',') === '推播狀態查詢｜查詢失敗，稍後自動重試', `查詢失敗：彈出通知（${(await bubbles()).join(',')}）`);
+await page.evaluate(() => { window.fetch = (u, o) => { const e = new DOMException('aborted', 'AbortError'); return Promise.reject(e); }; });
+await page.evaluate(() => pushWatchTick()); await page.waitForTimeout(400);
+check((await bubbles()).join(',') === '推播狀態查詢｜查詢逾時，稍後自動重試', '查詢逾時：泡泡改成「查詢逾時」（同一顆更新）');
+await page.evaluate(() => { window.fetch = window.__realFetch; });
+await page.evaluate(() => pushWatchTick()); await page.waitForTimeout(800);
+check((await bubbles()).filter(x => x.startsWith('推播狀態查詢')).length === 0, '查到之後：通知自動收起');
+
+// 8. 位置：沒有彈窗時在「操作提示」左側（被底部工具列擠掉時靠右下角、壓到工具列就抬高）；有彈窗時蓋住操作提示（整個網頁最右下角）
+await page.evaluate(() => { for (const k of [...pushBubbleEls.keys()]) pushBubbleClose(k); document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open')); pushBubble('a', '10/11新聞', 'sending'); pushBubble('b', '10/11新聞（測試）', 'sent'); });
+const geo = () => page.evaluate(() => {
+  const bx = document.getElementById('pushBubbles').getBoundingClientRect(), tip = document.getElementById('tipToast'), fab = document.getElementById('tipFab'), col = tip.classList.contains('tip-collapsed'), el = col ? fab : tip;
+  const hid = el.classList.contains('tip-yield'), t = el.getBoundingClientRect(), d = document.getElementById('dock').getBoundingClientRect();
+  const kids = [...document.querySelectorAll('#pushBubbles .push-bubble')].map(e => e.getBoundingClientRect());
+  const L = Math.min(...kids.map(k => k.left)), R = Math.max(...kids.map(k => k.right)), T = Math.min(...kids.map(k => k.top)), B = Math.max(...kids.map(k => k.bottom));
+  return { bR: innerWidth - R, bB: innerHeight - B, hid, col, tipL: t.left, overlapDock: L < d.right && R > d.left && T < d.bottom && B > d.top, overlapTip: !hid && L < t.right && R > t.left && T < t.bottom && B > t.top };
+});
+await page.setViewportSize({ width: 2400, height: 900 }); await page.evaluate(() => setTipCollapsed(false)); await page.waitForTimeout(900);
+let g = await geo();
+check(!g.col && !g.hid && !g.overlapTip && !g.overlapDock && Math.abs(g.bB - 20) < 3 && g.bR > 20 + 372, `寬螢幕、操作提示展開：泡泡在它左側，不壓到操作提示與工具列（距右 ${Math.round(g.bR)}px、距下 ${Math.round(g.bB)}px）`);
+await page.evaluate(() => setTipCollapsed(true)); await page.waitForTimeout(900);
+g = await geo();
+check(g.col && !g.overlapTip && !g.overlapDock && Math.abs(g.bB - 20) < 3 && g.bR > 20 + 46 && g.bR < 20 + 46 + 40, `操作提示收成「!」：泡泡靠到它的左側（距右 ${Math.round(g.bR)}px）`);
+for (const w of [1280, 900, 600, 390]) {
+  await page.setViewportSize({ width: w, height: 800 }); await page.evaluate(() => setTipCollapsed(false)); await page.waitForTimeout(900);
+  g = await geo();
+  check(!g.overlapDock && !g.overlapTip, `寬 ${w}px（操作提示展開）：泡泡不壓到底部工具列、不壓到操作提示（距右 ${Math.round(g.bR)}px、距下 ${Math.round(g.bB)}px，操作提示${g.hid ? '被擠掉' : '顯示中'}）`);
 }
+await page.setViewportSize({ width: 1280, height: 800 });
+await page.evaluate(() => { s8AltByMode[mode] = '測試推播標題'; openS8Dialog(); }); await page.waitForTimeout(900);
+g = await geo();
+check(Math.abs(g.bR - 20) < 3 && Math.abs(g.bB - 20) < 3, `有彈窗在用：泡泡移到網頁最右下角，蓋住操作提示（距右 ${Math.round(g.bR)}px、距下 ${Math.round(g.bB)}px）`);
+const topOk = await page.evaluate(() => +getComputedStyle(document.getElementById('pushBubbles')).zIndex > Math.max(...[...document.querySelectorAll('.modal-overlay')].map(o => +getComputedStyle(o).zIndex || 0)));
+check(topOk, '泡泡層級在彈窗之上');
+await page.evaluate(() => { document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open')); }); await page.waitForTimeout(900);
+g = await geo();
+check(!g.overlapDock, '彈窗關掉：泡泡回到不壓工具列的位置');
 check(pageErrors.length === 0, `頁面沒有 JS 錯誤 ${pageErrors.join('|')}`);
 await browser.close();
 console.log(failed ? `\n${failed} 項失敗` : '\n全部通過');
