@@ -14,7 +14,7 @@
 4. 回到 Worker 頁面，複製網址（長得像 `https://og-image-proxy.<你的帳號>.workers.dev`）。
 5. 把這個網址交給管理網頁的人設定（見下方），或先自己測試：
 
-   在網頁網址後面加 `?imageProxy=<你的worker網址>` 開一次（例如 `https://unnn3ing-oss.github.io/LinePushPatternTool/?imageProxy=https://og-image-proxy.xxx.workers.dev`），網址會存在這台瀏覽器裡，之後正常開網頁就會自動抓圖。
+   在網頁網址後面加 `?imageProxy=<你的worker網址>` 開一次（例如 `https://unnn3ing-oss.github.io/LinePushPatternTool/?imageProxy=https://og-image-proxy.xxx.workers.dev`），網址會存在這台瀏覽器裡，之後正常開網頁就會自動抓圖。（防釣魚：頁面不是從 localhost 開、且網址不是預設 Worker 時，會先跳確認視窗，同意後才記住；沒同意就用預設 Worker。）
 
 ## 試驗功能密碼（網頁右上角「試驗功能」用）
 

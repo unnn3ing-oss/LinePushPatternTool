@@ -4334,19 +4334,53 @@ function parseQuickFillText(text) {
 // ---- Auto photo from the article link ---------------------------------------
 // The browser can't read other sites' pages (CORS), so quick fill asks a small
 // Cloudflare Worker (worker/README.md) for each article's first image. The
-// Worker address comes from ?imageProxy=<url> (remembered in this browser) or
-// DEFAULT_IMAGE_PROXY; with neither, auto photos are simply off.
+// Worker address: DEFAULT_IMAGE_PROXY, or a custom one given as ?imageProxy=<url>.
+// 這個網址會收到 Lab 密碼與憑證，所以不能讓任何人用一條連結就改掉：
+//   - 只有「預設 Worker」，以及從 localhost／127.0.0.1 開啟（本機開發、測試）時才直接採用；
+//   - 其他網址一律要先跳確認（顯示完整網址），同意後只記住「那一個網址」；沒同意就用預設 Worker；
+//   - 網址必須是 https（本機才可用 http），不可含帳號密碼；處理完會把 ?imageProxy= 從網址列拿掉。
 const DEFAULT_IMAGE_PROXY = 'https://og-image-proxy.19jpz-3.workers.dev';
-function imageProxyUrl() {
+const imageProxyDefault = () => DEFAULT_IMAGE_PROXY.replace(/\/+$/, '');
+let imageProxyResolved = null;
+function imageProxyResolve() {
+  const def = imageProxyDefault();
+  const isLocalPage = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  const parse = raw => {
+    try {
+      const u = new URL(String(raw || '').trim());
+      const localHost = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname);
+      if (u.username || u.password) return null;
+      if (u.protocol !== 'https:' && !(u.protocol === 'http:' && localHost)) return null;
+      return { href: u.href.replace(/\/+$/, ''), origin: u.origin };
+    } catch (e) { return null; }
+  };
+  let st = null; try { st = window.localStorage; } catch (e) { /* no storage */ }
+  const get = k => { try { return st ? st.getItem(k) : null; } catch (e) { return null; } };
+  const set = (k, v) => { try { if (st) st.setItem(k, v); } catch (e) { /* ok */ } };
+  const del = k => { try { if (st) st.removeItem(k); } catch (e) { /* ok */ } };
+  let q = null;
   try {
-    const q = new URLSearchParams(location.search).get('imageProxy');
-    if (q !== null) {
-      if (q) localStorage.setItem('imageProxy', q); else localStorage.removeItem('imageProxy');
-    }
-    return (localStorage.getItem('imageProxy') || DEFAULT_IMAGE_PROXY).replace(/\/+$/, '');
-  } catch (e) {
-    return DEFAULT_IMAGE_PROXY.replace(/\/+$/, '');
-  }
+    const sp = new URLSearchParams(location.search);
+    q = sp.get('imageProxy');
+    if (q !== null) { sp.delete('imageProxy'); const qs = sp.toString(); history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash); }
+  } catch (e) { /* ok */ }
+  if (q === '') { del('imageProxy'); del('imageProxyOk'); return def; }   // ?imageProxy= 空的＝恢復預設
+  const cand = parse(q !== null ? q : get('imageProxy'));
+  if (!cand) { if (q === null) { del('imageProxy'); del('imageProxyOk'); } return def; }
+  const trusted = cand.href === def || cand.origin === parse(def).origin || isLocalPage;
+  if (trusted) { if (cand.href !== def) set('imageProxy', cand.href); else del('imageProxy'); return cand.href; }
+  if (get('imageProxyOk') === cand.origin && (q === null || get('imageProxy') === cand.href)) { set('imageProxy', cand.href); return cand.href; }   // 之前同意過這個網址
+  let ok = false;
+  try {
+    ok = window.confirm(`有人要把這個網頁的後端（Worker）改成：\n\n${cand.href}\n\n之後你輸入的「試驗功能密碼」與憑證都會送到這個網址。\n如果這不是你自己架的 Worker，請按「取消」。\n\n確定要使用這個網址嗎？`);
+  } catch (e) { ok = false; }
+  if (ok) { set('imageProxy', cand.href); set('imageProxyOk', cand.origin); return cand.href; }
+  del('imageProxy'); del('imageProxyOk');
+  return def;
+}
+function imageProxyUrl() {
+  if (imageProxyResolved === null) imageProxyResolved = imageProxyResolve();
+  return imageProxyResolved;
 }
 let imageFetchRun = 0;
 function blobToImage(blob) {
@@ -5259,6 +5293,7 @@ function setLab(on) {
 }
 function openLabLogin() {
   labPass.value = ''; labMsg.textContent = ''; labEnterBtn.disabled = false;
+  if (imageProxyUrl() !== imageProxyDefault()) labMsg.textContent = `注意：密碼會送到自訂的 Worker（${imageProxyUrl()}），不是預設的。`;
   labOverlay.classList.add('open');
   setTimeout(() => labPass.focus(), 0);
 }
