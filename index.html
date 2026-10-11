@@ -1000,10 +1000,14 @@
   .tip-track.drag { transition: none; }
   .tip-pane { flex: 0 0 100%; min-width: 0; box-sizing: border-box; }
   .tip-tools { list-style: none; margin: 0; padding: 0; }
-  .tip-tools li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; }
+  .tip-tools li { margin-bottom: 12px; }
   .tip-tools li:last-child { margin-bottom: 0; }
-  .tip-tool-link { display: inline-block; margin-top: 7px; padding: 5px 14px; border-radius: 99px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; text-decoration: none; -webkit-user-drag: none; }
-  .tip-tool-link:hover, .tip-tool-link:focus-visible { background: var(--accent-dark); }
+  .tip-tool-link { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--border); border-radius: 20px; background: var(--card-bg); color: inherit; text-decoration: none; cursor: pointer; -webkit-user-drag: none; transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+  .tip-tool-link:hover, .tip-tool-link:focus-visible { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); transform: translateY(-1px); outline: 0; }
+  .tip-tool-link:active { transform: none; }
+  .tip-tool-link .tip-text { flex: 1; }
+  .tip-tool-link .tip-go { flex: none; align-self: center; width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--step-soft); color: var(--accent); font-size: 14px; font-weight: 700; transition: background .2s ease, color .2s ease; }
+  .tip-tool-link:hover .tip-go, .tip-tool-link:focus-visible .tip-go { background: var(--accent); color: #fff; }
   .tip-dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
   .tip-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px; background: var(--border); cursor: pointer; transition: width .25s ease, background .25s ease; }
   .tip-dot.on { width: 22px; background: var(--accent); }
@@ -1275,18 +1279,22 @@
     <section class="tip-pane" id="tipPaneTools" aria-label="更多工具">
       <ul class="tip-tools">
         <li>
-          <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="M21 15l-5-5-8 8"/></svg></span>
-          <div class="tip-text"><b>圖片套版產生器</b>
-            <span>貼上標題、上傳圖片或選純色背景，自動套上 TVBS 娛樂（粉框）／新聞（藍框）版型，輸出 1080×1080 PNG；支援單張與批次。</span>
-            <a class="tip-tool-link" href="https://unnn3ing-oss.github.io/QuickPatterntool/" target="_blank" rel="noopener noreferrer">開啟網頁版 ↗</a>
-          </div>
+          <a class="tip-tool-link" href="https://unnn3ing-oss.github.io/QuickPatterntool/" target="_blank" rel="noopener noreferrer" aria-label="圖片套版產生器：另開分頁打開網頁版">
+            <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="M21 15l-5-5-8 8"/></svg></span>
+            <div class="tip-text"><b>圖片套版產生器</b>
+              <span>貼上標題、上傳圖片或選純色背景，自動套上 TVBS 娛樂（粉框）／新聞（藍框）版型，輸出 1080×1080 PNG；支援單張與批次。</span>
+            </div>
+            <span class="tip-go" aria-hidden="true">↗</span>
+          </a>
         </li>
         <li>
-          <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5"/><path d="M4 20h16"/></svg></span>
-          <div class="tip-text"><b>YouTube 影片批量下載工具</b>
-            <span>批量下載公司 YouTube 頻道的公開影片（720p／1080p），檔名直接用影片標題；網頁版負責安裝引導與操作，需 Chrome 電腦版。</span>
-            <a class="tip-tool-link" href="https://unnn3ing-oss.github.io/videodownload/" target="_blank" rel="noopener noreferrer">開啟網頁版 ↗</a>
-          </div>
+          <a class="tip-tool-link" href="https://unnn3ing-oss.github.io/videodownload/" target="_blank" rel="noopener noreferrer" aria-label="YouTube 影片批量下載工具：另開分頁打開網頁版">
+            <span class="tip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5"/><path d="M4 20h16"/></svg></span>
+            <div class="tip-text"><b>YouTube 影片批量下載工具</b>
+              <span>批量下載公司 YouTube 頻道的公開影片（720p／1080p），檔名直接用影片標題；網頁版負責安裝引導與操作，需 Chrome 電腦版。</span>
+            </div>
+            <span class="tip-go" aria-hidden="true">↗</span>
+          </a>
         </li>
       </ul>
     </section>

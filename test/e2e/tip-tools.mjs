@@ -17,8 +17,9 @@ const st = () => page.evaluate(() => ({ page: tipPage, title: document.getElemen
 await page.waitForTimeout(600);
 let s = await st();
 check(s.page === 0 && s.title === '更多工具' && !s.collapsed, `剛開網頁：先顯示「更多工具」（${s.title}）`);
-const info = await page.evaluate(() => ({ links: [...document.querySelectorAll('#tipPaneTools a.tip-tool-link')].map(a => [a.href, a.target, a.rel]), names: [...document.querySelectorAll('#tipPaneTools .tip-text b')].map(b => b.textContent), descs: [...document.querySelectorAll('#tipPaneTools .tip-text > span')].map(x => x.textContent.length > 20) }));
+const info = await page.evaluate(() => ({ links: [...document.querySelectorAll('#tipPaneTools a.tip-tool-link')].map(a => [a.href, a.target, a.rel]), names: [...document.querySelectorAll('#tipPaneTools .tip-text b')].map(b => b.textContent), descs: [...document.querySelectorAll('#tipPaneTools .tip-text > span')].map(x => x.textContent.length > 20), nested: document.querySelectorAll('#tipPaneTools a a, #tipPaneTools a button').length, cards: [...document.querySelectorAll('#tipPaneTools a.tip-tool-link')].map(a => { const r = a.getBoundingClientRect(), cs = getComputedStyle(a); return r.width > 250 && r.height > 60 && parseFloat(cs.borderTopWidth) > 0 && cs.cursor === 'pointer'; }), cardText: [...document.querySelectorAll('#tipPaneTools a.tip-tool-link')].map(a => a.querySelector('b').textContent) }));
 check(info.names.join('|') === '圖片套版產生器|YouTube 影片批量下載工具' && info.descs.every(Boolean), `兩個工具都有名稱與簡述：${info.names.join('、')}`);
+check(info.cards.length === 2 && info.cards.every(Boolean) && info.nested === 0 && info.cardText.join('|') === '圖片套版產生器|YouTube 影片批量下載工具', '兩個工具各是一個框，整個框就是連結（外框、游標手指、框內沒有另一顆按鈕）');
 check(info.links[0][0] === 'https://unnn3ing-oss.github.io/QuickPatterntool/' && info.links[1][0] === 'https://unnn3ing-oss.github.io/videodownload/' && info.links.every(l => l[1] === '_blank' && /noopener/.test(l[2])), '網頁版連結正確、另開分頁');
 check(s.hGap < 2, '彈窗高度貼合目前分頁');
 await page.waitForFunction(() => tipPage === 1, null, { timeout: 6000 });
@@ -56,12 +57,17 @@ await page.mouse.move(box.x + box.width - 30, cy); await page.mouse.down(); awai
 check((await st()).page === 0, '拖得太短：彈回原位');
 
 // 點連結：新分頁；拖曳經過連結不會誤開
-const [pop] = await Promise.all([ctx.waitForEvent('page', { timeout: 4000 }), page.locator('#tipPaneTools a.tip-tool-link').first().click()]);
-check(pop.url() === 'https://unnn3ing-oss.github.io/QuickPatterntool/', `點「開啟網頁版」：新分頁開 ${pop.url()}`);
+const [pop] = await Promise.all([ctx.waitForEvent('page', { timeout: 4000 }), page.locator('#tipPaneTools a.tip-tool-link').first().locator('.tip-text span').click()]);
+check(pop.url() === 'https://unnn3ing-oss.github.io/QuickPatterntool/', `點第一個工具的框：新分頁開 ${pop.url()}`);
 await pop.close();
 check(page.url().startsWith('http://localhost') && (await st()).page === 0, '原頁面沒被導走');
 const pagesBefore = ctx.pages().length;
 const lk = await page.locator('#tipPaneTools a.tip-tool-link').first().boundingBox();
+const pop2P = ctx.waitForEvent('page', { timeout: 4000 });
+await page.locator('#tipPaneTools a.tip-tool-link').nth(1).click();
+const pop2 = await pop2P;
+check(pop2.url() === 'https://unnn3ing-oss.github.io/videodownload/', `點第二個工具的框：新分頁開 ${pop2.url()}`);
+await pop2.close();
 await page.mouse.move(lk.x + lk.width - 4, lk.y + lk.height / 2); await page.mouse.down(); await page.mouse.move(lk.x - 150, lk.y + lk.height / 2, { steps: 8 }); await page.mouse.up(); await page.waitForTimeout(600);
 check(ctx.pages().length === pagesBefore && (await st()).page === 1, '從連結上開始拖曳滑動：會換頁，不會誤開連結');
 
