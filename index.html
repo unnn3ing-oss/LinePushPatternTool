@@ -295,9 +295,10 @@
   .line-pid b { flex: none; width: 2.6em; font-size: 12px; color: var(--text); }
   .line-pid code { min-width: 0; font: 12px ui-monospace, Menlo, Consolas, monospace; word-break: break-all; color: var(--text); }
   .line-pid.none { opacity: .65; }
-  .line-pid button { flex: none; padding: 0 7px; border-radius: 99px; font-size: 13px; line-height: 18px; }
+  #lineMemOverlay .btn-row button.danger { color: #b91c1c; }
+  #lineMemOverlay .btn-row button[hidden] { display: none; }
+  #lineMemOverlay .modal-body { overflow-y: auto; }
   .line-tact { display: inline-flex; gap: 6px; flex: none; }
-  .line-trename { flex: 1 1 140px; min-width: 0; max-width: 220px; padding: 2px 8px; border: 1px solid rgba(0, 0, 0, .25); border-radius: 8px; font: inherit; font-size: 14px; }
   .line-chip { display: inline-block; padding: 1px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: rgba(0, 0, 0, .08); color: var(--text); }
   .line-chip.scheduled { background: #dbeafe; color: #1e40af; }
   .line-chip.sending { background: #fbf0cf; }
@@ -467,6 +468,7 @@
   .line-srow .acts input { width: auto; padding: 4px 8px; font-size: 13px; }
   /* 操作提示（右下角）：被其他介面碰到就先隱藏，等沒被碰到再顯示 */
   .tip-toast.tip-yield, .tip-fab.tip-yield { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+  #lineMemOverlay { z-index: 120; }   /* 蓋在「訊息推播」視窗上、低於重新登入視窗 */
   #labOverlay { z-index: 200; }   /* 重新登入時蓋在其他彈窗上 */
   /* LINE 直接發送（試驗） */
   .line-box { margin-top: 18px; border: 1px solid var(--border, rgba(0,0,0,.12)); border-radius: 16px; padding: 0 16px; background: var(--card-bg); }
@@ -1756,21 +1758,10 @@
             <div class="line-note" id="lineAdminMsg" style="margin-top:6px"></div>
           </div>
           <div id="lineAdminBody" hidden>
-        <div class="hub-bar" style="margin-top:8px"><span class="line-sub" id="lineTesterTitle">權限管理（所有帳號）</span><button type="button" id="lineRosterRefresh">↻ 重新讀取名單</button></div>
+        <div class="hub-bar" style="margin-top:8px"><span class="line-sub" id="lineTesterTitle">權限管理（所有帳號）</span><span class="line-tact"><button type="button" class="primary" id="lineMemAdd">＋ 新增帳號</button><button type="button" id="lineRosterRefresh">↻ 重新讀取名單</button></span></div>
         <div class="line-note" style="margin-top:0" id="lineTesterHint">這裡是整個系統的權限源頭，三個帳號一起管理，不受上方帳號切換影響。一列一個人，新聞、娛樂、測試帳號的 userId 並排（同一個人在不同帳號的 userId 不同）；名字相同就是同一個人，操作人是用名字對應的，所以名字要一致。名單內的人可以被選為「操作人」，測試推播只會傳給操作人本人，群發不受名單影響。測試帳號的好友傳「登記」也會自動加入測試帳號的名單。</div>
         <div id="lineTesterList" class="line-note">讀取中…</div>
-        <div id="lineAddRow">
-          <div class="hub-bar" style="margin-top:14px"><span class="line-sub">新增／更新成員（一次設定所有帳號的 userId）</span></div>
-          <div class="line-note" style="margin-top:0">填名字（不填就用 LINE 上的暱稱），再填這個人在各帳號的 LINE userId（U 開頭加 32 碼，可從 S8 客戶中心複製；同一個人在不同帳號的 userId 不同）。沒有的帳號留空就好。Worker 會先向 LINE 查他的暱稱，確認這個 ID 在那個帳號有效才加入；名字三個帳號共用，所以操作人一定對得上。已經在名單裡的人，會更新名字。</div>
-          <div class="line-row" style="margin-top:8px"><input type="text" id="lineAddName" autocomplete="off" maxlength="40" placeholder="名字（選填；輸入現有成員的名字會帶入他已有的 userId）" aria-label="名字" style="flex:1 1 auto;min-width:0"></div>
-          <div class="line-adduids">
-            <label for="lineAddUid_news">新聞帳號</label><input type="text" id="lineAddUid_news" data-ch="news" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="新聞帳號的 LINE userId"><span class="line-addres" id="lineAddRes_news"></span>
-            <label for="lineAddUid_ent">娛樂帳號</label><input type="text" id="lineAddUid_ent" data-ch="ent" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="娛樂帳號的 LINE userId"><span class="line-addres" id="lineAddRes_ent"></span>
-            <label for="lineAddUid_test">測試帳號</label><input type="text" id="lineAddUid_test" data-ch="test" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="測試帳號的 LINE userId"><span class="line-addres" id="lineAddRes_test"></span>
-          </div>
-          <div class="btn-row" style="margin:8px 0 0"><button type="button" id="lineAddFind">查詢</button><button type="button" id="lineAddOk" disabled>加入名單</button></div>
-          <div class="line-note" id="lineAddOut" style="margin-top:6px"></div>
-        </div>
+        <div class="line-note" id="lineListMsg" style="margin-top:8px"></div>
         <div class="hub-bar" style="margin-top:20px"><span class="line-sub">快速回覆設定</span></div>
         <div class="line-note" style="margin-top:0">快速回覆按鈕每次推播都不同，在「排入LINE推播」第 1 步新增。連結留空的按鈕，會把「顯示文字」當關鍵字，到這裡設定的搜尋網站去搜尋。這個網址所有推播共用，記在這個瀏覽器。</div>
         <div class="qr-tpl"><label for="qrTpl">搜尋網站網址</label><input type="text" id="qrTpl" autocomplete="off" spellcheck="false" placeholder="https://example.com/search?q={keyword}（{keyword} 會換成按鈕文字）"></div>
@@ -1804,6 +1795,32 @@
         <button type="button" id="linePrevBtn" class="lsb-prev" hidden>上一步</button>
         <button type="button" id="lineListBtn" class="lsb-list" hidden>推播列表</button>
         <button type="button" id="lineNextBtn" class="lsb-next primary">下一步</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="lineMemOverlay">
+  <div class="modal" style="max-width:560px" role="dialog" aria-labelledby="lineMemTitle">
+    <div class="modal-head">
+      <h2 id="lineMemTitle">新增帳號</h2>
+      <button type="button" id="lineMemClose" class="modal-close" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="line-note" id="lineMemHint" style="margin-top:0"></div>
+      <div class="line-row" style="margin-top:8px"><input type="text" id="lineAddName" autocomplete="off" maxlength="40" placeholder="名字（選填；輸入現有成員的名字會帶入他已有的 userId）" aria-label="名字" style="flex:1 1 auto;min-width:0"></div>
+      <div class="line-adduids">
+        <label for="lineAddUid_news">新聞帳號</label><input type="text" id="lineAddUid_news" data-ch="news" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="新聞帳號的 LINE userId"><span class="line-addres" id="lineAddRes_news"></span>
+        <label for="lineAddUid_ent">娛樂帳號</label><input type="text" id="lineAddUid_ent" data-ch="ent" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="娛樂帳號的 LINE userId"><span class="line-addres" id="lineAddRes_ent"></span>
+        <label for="lineAddUid_test">測試帳號</label><input type="text" id="lineAddUid_test" data-ch="test" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="測試帳號的 LINE userId"><span class="line-addres" id="lineAddRes_test"></span>
+      </div>
+      <div class="line-note" id="lineAddOut" style="margin-top:8px"></div>
+      <div class="btn-row" style="margin:12px 0 0">
+        <button type="button" class="danger" id="lineMemDel" hidden>移除此人</button>
+        <span style="flex:1 1 auto"></span>
+        <button type="button" id="lineMemCancel">取消</button>
+        <button type="button" id="lineAddFind">查詢</button>
+        <button type="button" class="primary" id="lineAddOk" disabled>加入名單</button>
       </div>
     </div>
   </div>
@@ -7498,7 +7515,7 @@ function lineAdminRender(msg, bad) {
 function lineAdminLogout(msg, bad) {
   clearTimeout(lineAdminTimer); lineAdminTok = null; $line('lineAdminPass').value = '';
   $line('lineTesterList').textContent = ''; LINE_ADD_CHS.forEach(ch => { lineAddUidEl(ch).value = ''; }); $line('lineAddName').value = '';   // 登出就把畫面上的名單與沒送出的 userId 一併清掉
-  lineAddReset(''); lineAdminRender(msg, bad);
+  lineMemClose(); lineListMsg(''); lineAddReset(''); lineAdminRender(msg, bad);
 }
 async function lineAdminApi(path, body) {   // 進階的 Worker 呼叫：帶管理者憑證；Worker 說沒登入或過期就退回登入畫面
   if (!lineAdminOn()) { lineAdminLogout('管理者登入已過期，請重新登入。', true); throw new Error('需要管理者登入，請先登入'); }
@@ -7524,6 +7541,10 @@ $line('lineAdminOut').addEventListener('click', () => lineAdminLogout(''));
 
 // 權限管理：這個帳號「可以被選為測試推播收件人」的成員（名字＋對應的 LINE userId）
 // 權限管理（所有帳號）：以「人」為單位，一列一個名字，新聞／娛樂／測試三個帳號的 userId 並排；不受上方帳號切換影響。名字相同＝同一個人（操作人是用名字對應的）
+// 列表本身是唯讀的（沒有任何會直接改資料的按鈕）：新增走「＋ 新增帳號」彈窗，改名、換 userId、清掉某個帳號、移除整個人都在每列的「編輯」彈窗裡做，避免誤觸
+const LINE_ADD_CHS = ['news', 'ent', 'test'];
+const LINE_ACCT_SHORT = { news: '新聞', ent: '娛樂', test: '測試' };
+const lineAddUidEl = ch => $line(`lineAddUid_${ch}`), lineAddResEl = ch => $line(`lineAddRes_${ch}`);
 function linePeople() {
   const by = new Map();
   LINE_ADD_CHS.forEach(ch => lineWhoFor(ch).testers.forEach(t => { if (!by.has(t.name)) by.set(t.name, { name: t.name, t: {} }); by.get(t.name).t[ch] = t; }));
@@ -7539,6 +7560,7 @@ async function lineRosterLoad(ch) {   // 只讀名單（不查額度），給進
 }
 const lineRosterReload = () => LINE_ADD_CHS.forEach(ch => lineRosterLoad(ch));
 $line('lineRosterRefresh').addEventListener('click', lineRosterReload);
+function lineListMsg(text, bad) { const o = $line('lineListMsg'); o.textContent = text || ''; o.classList.toggle('bad', !!bad); }
 function lineTesterListRender() {
   const box = $line('lineTesterList'); box.textContent = '';
   if (!lineAdminOn()) return;   // 沒登入管理者：名單與 userId 不放進畫面
@@ -7546,132 +7568,141 @@ function lineTesterListRender() {
   if (ws.some(w => !w.loaded && !w.error)) { box.textContent = '讀取中…'; return; }
   LINE_ADD_CHS.forEach((ch, i) => { if (ws[i].error) { const d = document.createElement('div'); d.className = 'line-note bad'; d.textContent = `✗ 「${lineWhoAcct(ch)}」的名單讀不到：${ws[i].error}`; box.appendChild(d); } });
   const people = linePeople();
-  if (!people.length) { if (!ws.some(w => w.error)) box.appendChild(Object.assign(document.createElement('div'), { textContent: '名單是空的。' })); return; }
+  if (!people.length) { if (!ws.some(w => w.error)) box.appendChild(Object.assign(document.createElement('div'), { textContent: '名單是空的。按上面的「＋ 新增帳號」加入第一位。' })); return; }
   people.forEach(p => {
     const row = document.createElement('div'); row.className = 'line-person';
     const head = document.createElement('div'); head.className = 'line-phead';
     const nm = document.createElement('span'); nm.className = 'line-pname'; nm.textContent = p.name;
-    const acts = document.createElement('span'); acts.className = 'line-tact';
-    const rn = document.createElement('button'); rn.type = 'button'; rn.dataset.act = 'rename'; rn.textContent = '改名';
-    rn.addEventListener('click', () => lineTesterRenameEdit(head, nm, p));
-    const rm = document.createElement('button'); rm.type = 'button'; rm.dataset.act = 'remove'; rm.textContent = '移除';
-    rm.addEventListener('click', () => lineTesterRemove(p, LINE_ADD_CHS.filter(ch => p.t[ch])));
-    acts.append(rn, rm); head.append(nm, acts);
+    const ed = document.createElement('button'); ed.type = 'button'; ed.dataset.act = 'edit'; ed.textContent = '編輯';
+    ed.addEventListener('click', () => lineMemOpen(p));
+    head.append(nm, ed);
     const ids = document.createElement('div'); ids.className = 'line-pids';
     LINE_ADD_CHS.forEach((ch, i) => {
       const t = p.t[ch], cell = document.createElement('span'); cell.className = `line-pid${t ? '' : ' none'}`; cell.dataset.ch = ch;
       const lb = document.createElement('b'); lb.textContent = LINE_ACCT_SHORT[ch]; cell.appendChild(lb);
-      if (t) {
-        const code = document.createElement('code'); code.textContent = t.userId || ''; cell.appendChild(code);
-        const x = document.createElement('button'); x.type = 'button'; x.dataset.act = 'remove-one'; x.textContent = '×'; x.title = `只從「${lineWhoAcct(ch)}」移除`; x.setAttribute('aria-label', `從${lineWhoAcct(ch)}移除${p.name}`);
-        x.addEventListener('click', () => lineTesterRemove(p, [ch])); cell.appendChild(x);
-      } else cell.appendChild(document.createTextNode(ws[i].error ? '讀取失敗' : '未設定'));
+      if (t) { const code = document.createElement('code'); code.textContent = t.userId || ''; cell.appendChild(code); }
+      else cell.appendChild(document.createTextNode(ws[i].error ? '讀取失敗' : '未設定'));
       ids.appendChild(cell);
     });
     row.append(head, ids); box.appendChild(row);
   });
 }
-const LINE_ACCT_SHORT = { news: '新聞', ent: '娛樂', test: '測試' };
-// 移除：可以只從一個帳號移除（每格的 ×），也可以整個人（所有有他的帳號）一次移除；一個帳號一個帳號送，哪個失敗就只報哪個
-async function lineTesterRemove(p, chs) {
-  const accts = chs.map(lineWhoAcct).join('、');
-  if (!window.confirm(`從「${accts}」的名單移除「${p.name}」嗎？\\n\\n移除後測試推播不會再發給他；${chs.includes('test') ? '他可以再傳「登記」重新加入測試帳號，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
-  const fail = [];
-  for (const ch of chs) {
-    try { const r = await lineAdminApi('/line/testers/remove', { channel: ch, tid: p.t[ch].tid }); lineWhoFor(ch).testers = r.testers || []; }
-    catch (e) { fail.push(`${lineWhoAcct(ch)}：${(e && e.message) || e}`); if (!lineAdminOn()) break; }
-  }
-  if (fail.length) window.alert(`移除失敗：\\n${fail.join('\\n')}`);
-  lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
-}
-// 改名：這個人在所有帳號的名單裡一起改（名字三個帳號要一致，操作人才對得上）；userId 不變
-function lineTesterRenameEdit(head, nm, p) {
-  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'line-trename'; inp.maxLength = 40; inp.value = p.name; inp.setAttribute('aria-label', `「${p.name}」的新名字`);
-  const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = '儲存';
-  const no = document.createElement('button'); no.type = 'button'; no.textContent = '取消';
-  const acts = document.createElement('span'); acts.className = 'line-tact'; acts.append(ok, no);
-  head.replaceChild(inp, nm); head.replaceChild(acts, head.lastChild);
-  const cancel = () => lineTesterListRender();
-  const save = async () => {
-    const v = inp.value.trim(), chs = LINE_ADD_CHS.filter(ch => p.t[ch]);
-    if (!v || v === p.name) { cancel(); return; }
-    const clash = chs.find(ch => lineWhoFor(ch).testers.some(t => t.tid !== p.t[ch].tid && t.name === v));
-    if (clash) { window.alert(`「${lineWhoAcct(clash)}」的名單裡已經有另一位叫「${v}」，名字不能重複。沒有改任何東西。`); inp.focus(); return; }
-    ok.disabled = no.disabled = inp.disabled = true;
-    const done = [], fail = [];
-    for (const ch of chs) {
-      try { const r = await lineAdminApi('/line/testers/rename', { channel: ch, tid: p.t[ch].tid, name: v }); lineWhoFor(ch).testers = r.testers || []; done.push(ch); }
-      catch (e) { fail.push(`${lineWhoAcct(ch)}：${(e && e.message) || e}`); if (!lineAdminOn()) break; }
-    }
-    if (done.length && lineOp === p.name) lineOpSet(v);   // 目前的操作人被改名：跟著改，之前的測試推播會作廢、要重測
-    lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
-    const o = $line('lineAddOut');
-    if (!fail.length) { o.classList.remove('bad'); o.textContent = `✓ 已把「${p.name}」改名為「${v}」（${done.map(lineWhoAcct).join('、')}）。`; return; }
-    o.classList.add('bad'); o.textContent = `✗ 改名只做了一部分：成功 ${done.length ? done.map(lineWhoAcct).join('、') : '（無）'}；失敗 ${fail.join('；')}。各帳號名字不一致會被當成不同人，請修正後再改一次。`;
-    if (lineAdminOn()) window.alert(`改名失敗：\\n${fail.join('\\n')}`);
-  };
-  ok.addEventListener('click', save); no.addEventListener('click', cancel);
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } else if (e.key === 'Escape') { e.stopPropagation(); cancel(); } });
-  inp.focus(); inp.select();
-}
-// 新增／更新成員：同一個人一次設定所有帳號（新聞／娛樂／測試）的 userId，沒填的帳號跳過。名字三個帳號共用，所以名字一定一致（操作人是用名字對應的）
-// 流程：先「查詢」（每個有填的帳號各向 LINE 驗證，並顯示暱稱）→ 全部通過才能「加入名單」→ 一個帳號一個帳號寫入，哪個失敗就只顯示哪個
-const LINE_ADD_CHS = ['news', 'ent', 'test'];
-const lineAddUidEl = ch => $line(`lineAddUid_${ch}`), lineAddResEl = ch => $line(`lineAddRes_${ch}`);
-let lineAddFound = null;   // 查詢全部通過的結果：{ name, rows: [{ ch, uid }] }
+
+// ---- 「新增帳號」「編輯」彈窗（同一個彈窗）----
+// 新增：名字＋三個帳號的 userId（沒有的留空）。編輯：帶入這個人現在的名字與三個 userId，可以改名、換 userId、把某格清空（＝只從那個帳號移除）、或「移除此人」。
+// 流程：「查詢」＝新填或改過的 userId 各向 LINE 驗證（沒動的不用再查），全部通過才能「加入名單／儲存」；寫入是一個帳號一個帳號送，哪個失敗就只報哪個。名字三個帳號共用，所以名字一定一致。
+let lineMem = null;   // { mode: 'add' | 'edit', p }
+let lineAddFound = null;   // 查詢通過的結果：{ name, steps: { <帳號>: [{ op: 'add'|'rename'|'remove', ... }] } }
 function lineAddRow(ch, text, bad) { const e = lineAddResEl(ch); e.textContent = text || ''; e.classList.toggle('bad', !!bad); }
 function lineAddReset(text, bad) {
   lineAddFound = null; $line('lineAddOk').disabled = true;
   LINE_ADD_CHS.forEach(ch => lineAddRow(ch, ''));
   const o = $line('lineAddOut'); o.textContent = text || ''; o.classList.toggle('bad', !!bad);
 }
+function lineMemOpen(p) {
+  if (!lineAdminOn()) return;
+  lineMem = p ? { mode: 'edit', p } : { mode: 'add' };
+  $line('lineMemTitle').textContent = p ? `編輯「${p.name}」` : '新增帳號';
+  $line('lineMemHint').textContent = p ? '可以改名字、換成新的 userId，或把某個帳號那格清空（只從那個帳號移除）。沒動的 userId 不會重新查詢。名字三個帳號共用，改名會在他有的所有帳號一起改。' : '填名字（不填就用 LINE 上的暱稱），再填這個人在各帳號的 LINE userId（U 開頭加 32 碼，可從 S8 客戶中心複製；同一個人在不同帳號的 userId 不同）。沒有的帳號留空就好。Worker 會先向 LINE 查他的暱稱，確認這個 ID 在那個帳號有效才加入；已經在名單裡的人，會更新名字。';
+  $line('lineAddName').value = p ? p.name : '';
+  LINE_ADD_CHS.forEach(ch => { lineAddUidEl(ch).value = p && p.t[ch] ? p.t[ch].userId || '' : ''; });
+  $line('lineAddOk').textContent = p ? '儲存' : '加入名單'; $line('lineMemDel').hidden = !p;
+  lineAddReset('');
+  $line('lineMemOverlay').classList.add('open'); $line('lineAddName').focus();
+}
+function lineMemClose() { $line('lineMemOverlay').classList.remove('open'); lineMem = null; lineAddFound = null; }
+$line('lineMemAdd').addEventListener('click', () => lineMemOpen(null));
+$line('lineMemClose').addEventListener('click', lineMemClose); $line('lineMemCancel').addEventListener('click', lineMemClose);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $line('lineMemOverlay').classList.contains('open')) { e.stopImmediatePropagation(); lineMemClose(); } }, true);   // 不誤關底下的「訊息推播」視窗；點彈窗外面不會關（避免打到一半被誤關）
 LINE_ADD_CHS.forEach(ch => lineAddUidEl(ch).addEventListener('input', () => lineAddReset('')));
 $line('lineAddName').addEventListener('input', () => { if (lineAddFound) lineAddReset(''); });
-$line('lineAddName').addEventListener('change', async () => {   // 輸入現有成員的名字：把他在各帳號已有的 userId 帶進空格子（方便補另一個帳號）
+$line('lineAddName').addEventListener('change', async () => {   // 新增時輸入現有成員的名字：把他在各帳號已有的 userId 帶進空格子（方便補另一個帳號）
+  if (!lineMem || lineMem.mode !== 'add') return;
   const n = $line('lineAddName').value.trim(); if (!n) return;
   await Promise.all(LINE_ADD_CHS.map(ch => { const w = lineWhoFor(ch); return w.loaded || w.loading ? 0 : lineWhoLoad(ch); }));   // 還沒讀過的帳號先讀名單
-  if ($line('lineAddName').value.trim() !== n) return;
+  if (!lineMem || $line('lineAddName').value.trim() !== n) return;
   LINE_ADD_CHS.forEach(ch => { const el = lineAddUidEl(ch); if (el.value.trim()) return; const t = lineWhoFor(ch).testers.find(x => x.name === n && x.userId); if (t) el.value = t.userId; });
 });
 $line('lineAddFind').addEventListener('click', async () => {
-  const name = $line('lineAddName').value.trim();
-  const rows = LINE_ADD_CHS.map(ch => ({ ch, uid: lineAddUidEl(ch).value.trim() })).filter(r => r.uid);
-  if (!rows.length) { lineAddReset('✗ 至少要填一個帳號的 userId。', true); return; }
+  if (!lineMem) return;
+  const edit = lineMem.mode === 'edit', p = lineMem.p, typed = $line('lineAddName').value.trim();
+  const fields = LINE_ADD_CHS.map(ch => ({ ch, uid: lineAddUidEl(ch).value.trim(), old: edit ? p.t[ch] || null : null }));
+  const filled = fields.filter(f => f.uid), changed = filled.filter(f => !(f.old && f.old.userId === f.uid));   // changed：新填或改過的，要向 LINE 驗證
   lineAddReset('');
-  const badFmt = rows.filter(r => !/^U[0-9a-f]{32}$/.test(r.uid));
-  if (badFmt.length) { badFmt.forEach(r => lineAddRow(r.ch, '✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true)); $line('lineAddOut').textContent = '✗ 有格式不對的 userId，沒有向 LINE 查詢。'; $line('lineAddOut').classList.add('bad'); return; }
-  $line('lineAddFind').disabled = true; $line('lineAddOut').textContent = '向 LINE 查詢中…'; rows.forEach(r => lineAddRow(r.ch, '查詢中…'));
-  await Promise.all(rows.map(r => { const w = lineWhoFor(r.ch); return w.loaded || w.loading ? 0 : lineWhoLoad(r.ch); }));   // 先讀名單，才檢查得出名字重複
-  const res = await Promise.allSettled(rows.map(r => lineAdminApi('/line/testers/lookup', { channel: r.ch, userId: r.uid, name })));
-  const firstOk = res.find(x => x.status === 'fulfilled'), finalName = name || (firstOk ? firstOk.value.found.lineName : '');
+  if (!filled.length) { lineAddReset(edit ? '✗ 至少要留一個帳號的 userId。要整個人移除，請按「移除此人」。' : '✗ 至少要填一個帳號的 userId。', true); return; }
+  const badFmt = changed.filter(f => !/^U[0-9a-f]{32}$/.test(f.uid));
+  if (badFmt.length) { lineAddReset('✗ 有格式不對的 userId，沒有向 LINE 查詢。', true); badFmt.forEach(f => lineAddRow(f.ch, '✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true)); return; }
+  $line('lineAddFind').disabled = true; $line('lineAddOut').textContent = changed.length ? '向 LINE 查詢中…' : '';
+  changed.forEach(f => lineAddRow(f.ch, '查詢中…'));
+  await Promise.all(changed.map(f => { const w = lineWhoFor(f.ch); return w.loaded || w.loading ? 0 : lineWhoLoad(f.ch); }));   // 先讀名單，才檢查得出名字重複
+  const res = await Promise.allSettled(changed.map(f => lineAdminApi('/line/testers/lookup', { channel: f.ch, userId: f.uid, name: typed || (edit ? p.name : '') })));
+  const firstOk = res.find(x => x.status === 'fulfilled'), finalName = typed || (edit ? p.name : (firstOk ? firstOk.value.found.lineName : ''));
   let bad = 0;
-  rows.forEach((r, i) => {
-    if (res[i].status !== 'fulfilled') { bad++; lineAddRow(r.ch, `✗ ${(res[i].reason && res[i].reason.message) || res[i].reason}`, true); return; }
-    const f = res[i].value.found, w = lineWhoFor(r.ch);
-    if (w.loaded && !w.error && w.testers.some(t => t.name === finalName && t.userId !== r.uid)) { bad++; lineAddRow(r.ch, `✗ 「${lineWhoAcct(r.ch)}」的名單裡已經有另一位叫「${finalName}」，名字不能重複，請換一個名字。`, true); return; }
-    lineAddRow(r.ch, `✓ LINE 暱稱「${f.lineName}」${f.already ? '，已在名單裡（會更新名字）' : ''}`);
+  const conflict = f => { const w = lineWhoFor(f.ch); return w.loaded && !w.error && w.testers.some(t => t.name === finalName && t.userId !== f.uid && !(f.old && t.tid === f.old.tid)); };
+  changed.forEach((f, i) => {
+    if (res[i].status !== 'fulfilled') { bad++; lineAddRow(f.ch, `✗ ${(res[i].reason && res[i].reason.message) || res[i].reason}`, true); return; }
+    if (conflict(f)) { bad++; lineAddRow(f.ch, `✗ 「${lineWhoAcct(f.ch)}」的名單裡已經有另一位叫「${finalName}」，名字不能重複，請換一個名字。`, true); return; }
+    const info = res[i].value.found;
+    lineAddRow(f.ch, `✓ LINE 暱稱「${info.lineName}」${f.old ? '（換成新的 userId）' : info.already ? '，已在名單裡（會更新名字）' : ''}`);
   });
-  const o = $line('lineAddOut');
-  if (bad) { o.classList.add('bad'); o.textContent = `✗ 有 ${bad} 個帳號沒通過，不能加入。請修正或清空那一格再查詢（通過的帳號不受影響，清掉其他格即可單獨加入）。`; }
-  else { o.classList.remove('bad'); lineAddFound = { name: finalName, rows }; $line('lineAddOk').disabled = false; o.textContent = `✓ 全部查到了，會用「${finalName}」加入或更新 ${rows.length} 個帳號（${rows.map(r => lineWhoAcct(r.ch).replace('帳號', '')).join('、')}）。確認是對的人，再按「加入名單」。`; }
+  const steps = {}; let renameCount = 0;
+  fields.forEach(f => {
+    const st = steps[f.ch] = [];
+    if (!f.uid) { if (f.old) st.push({ op: 'remove', tid: f.old.tid }); return; }
+    if (f.old && f.old.userId === f.uid) {
+      if (finalName !== p.name) { if (conflict(f)) { bad++; lineAddRow(f.ch, `✗ 「${lineWhoAcct(f.ch)}」的名單裡已經有另一位叫「${finalName}」，名字不能重複，請換一個名字。`, true); } else { st.push({ op: 'rename', tid: f.old.tid }); renameCount++; lineAddRow(f.ch, '會跟著改名'); } }
+      return;
+    }
+    st.push({ op: 'add', uid: f.uid }); if (f.old) st.push({ op: 'remove', tid: f.old.tid });   // 換 userId：先加新的，成功了才移除舊的
+  });
+  fields.filter(f => !f.uid && f.old).forEach(f => lineAddRow(f.ch, `會從「${lineWhoAcct(f.ch)}」移除`));
+  const o = $line('lineAddOut'), total = Object.values(steps).reduce((n, a) => n + a.length, 0);
+  if (bad) { o.classList.add('bad'); o.textContent = `✗ 有 ${bad} 個帳號沒通過，不能儲存。請修正那一格再查詢（沒填的帳號不受影響）。`; }
+  else if (!total) { o.classList.remove('bad'); o.textContent = '沒有任何變更。'; }
+  else { o.classList.remove('bad'); lineAddFound = { name: finalName, steps }; $line('lineAddOk').disabled = false; o.textContent = edit ? `✓ 可以儲存：${LINE_ADD_CHS.filter(ch => steps[ch].length).map(ch => lineWhoAcct(ch)).join('、')}會更新（名字用「${finalName}」）。` : `✓ 全部查到了，會用「${finalName}」加入或更新 ${changed.length} 個帳號（${changed.map(f => lineWhoAcct(f.ch).replace('帳號', '')).join('、')}）。確認是對的人，再按「加入名單」。`; }
   $line('lineAddFind').disabled = false;
 });
+// 把一個帳號的步驟依序送出；中途失敗就停在那個帳號（不再往下做，避免「新的沒加成功卻先刪了舊的」）
+async function lineMemRun(ch, steps, name) {
+  for (const s of steps) {
+    const body = s.op === 'add' ? { channel: ch, userId: s.uid, name } : s.op === 'rename' ? { channel: ch, tid: s.tid, name } : { channel: ch, tid: s.tid };
+    const out = await lineAdminApi(`/line/testers/${s.op}`, body); lineWhoFor(ch).testers = out.testers || [];
+  }
+}
 $line('lineAddOk').addEventListener('click', async () => {
-  const f = lineAddFound; if (!f) return;
+  const f = lineAddFound, mem = lineMem; if (!f || !mem) return;
+  const rm = LINE_ADD_CHS.filter(ch => f.steps[ch].some(s => s.op === 'remove') && !f.steps[ch].some(s => s.op === 'add'));   // 純粹清空（不是換 userId）的帳號
+  if (rm.length && !window.confirm(`這會把「${mem.p ? mem.p.name : f.name}」從「${rm.map(lineWhoAcct).join('、')}」的名單移除（他在其他帳號的 userId 不動）。\n\n確定嗎？`)) return;
   $line('lineAddOk').disabled = true; $line('lineAddFind').disabled = true;
   const done = [], fail = [];
-  for (const r of f.rows) {
-    try { const out = await lineAdminApi('/line/testers/add', { channel: r.ch, userId: r.uid, name: f.name }); const w = lineWhoFor(r.ch); w.testers = out.testers || []; w.loaded = true; w.error = ''; done.push(r.ch); }
-    catch (e) { fail.push({ ch: r.ch, msg: String((e && e.message) || e) }); }
+  for (const ch of LINE_ADD_CHS) {
+    if (!f.steps[ch].length) continue;
+    try { await lineMemRun(ch, f.steps[ch], f.name); done.push(ch); } catch (e) { fail.push({ ch, msg: String((e && e.message) || e) }); if (!lineAdminOn()) break; }
   }
+  if (mem.p && done.length && lineOp === mem.p.name && f.name !== mem.p.name) lineOpSet(f.name);   // 目前的操作人被改名：跟著改，之前的測試推播會作廢、要重測
   lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
   $line('lineAddFind').disabled = false;
-  done.forEach(ch => { lineAddUidEl(ch).value = ''; });
-  if (!fail.length) { $line('lineAddName').value = ''; lineAddReset(`✓ 已把「${f.name}」加入或更新到：${done.map(lineWhoAcct).join('、')}。`); return; }
-  lineAddReset(`✗ ${done.length ? `已完成：${done.map(lineWhoAcct).join('、')}；` : ''}沒成功：${fail.map(x => lineWhoAcct(x.ch)).join('、')}。失敗的帳號還留在格子裡，修正後再按「查詢」。`, true);
+  if (!lineAdminOn()) return;   // 憑證過期：已經退回登入畫面
+  if (!fail.length) { lineMemClose(); lineListMsg(`✓ 已${mem.p ? '儲存' : '加入或更新'}「${f.name}」（${done.map(lineWhoAcct).join('、')}）。${mem.p && f.name !== mem.p.name ? '同一個人在其他帳號的名單也要是同名，才會被當成同一位操作人。' : ''}`); return; }
+  lineAddReset(`✗ ${done.length ? `已完成：${done.map(lineWhoAcct).join('、')}；` : ''}沒成功：${fail.map(x => lineWhoAcct(x.ch)).join('、')}。已完成的帳號請關掉重開「編輯」確認目前內容，失敗的修正後再按「查詢」。`, true);
   fail.forEach(x => lineAddRow(x.ch, `✗ ${x.msg}`, true));
 });
-
+$line('lineMemDel').addEventListener('click', async () => {   // 移除此人：從他有的所有帳號移除
+  const mem = lineMem; if (!mem || !mem.p) return;
+  const chs = LINE_ADD_CHS.filter(ch => mem.p.t[ch]);
+  if (!window.confirm(`把「${mem.p.name}」從「${chs.map(lineWhoAcct).join('、')}」的名單全部移除嗎？\n\n移除後測試推播不會再發給他；${chs.includes('test') ? '他可以再傳「登記」重新加入測試帳號，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
+  $line('lineMemDel').disabled = true;
+  const fail = [];
+  for (const ch of chs) {
+    try { const r = await lineAdminApi('/line/testers/remove', { channel: ch, tid: mem.p.t[ch].tid }); lineWhoFor(ch).testers = r.testers || []; }
+    catch (e) { fail.push(`${lineWhoAcct(ch)}：${(e && e.message) || e}`); if (!lineAdminOn()) break; }
+  }
+  $line('lineMemDel').disabled = false;
+  lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
+  if (!lineAdminOn()) return;
+  if (!fail.length) { lineMemClose(); lineListMsg(`✓ 已把「${mem.p.name}」從 ${chs.map(lineWhoAcct).join('、')} 移除。`); return; }
+  lineAddReset(`✗ 沒移除成功：${fail.join('；')}。關掉重開「編輯」確認目前內容。`, true);
+});
 
 // ---- 「排入推播」視窗左上的切換：LINE原生推播／S8推播 ----
 function s8SetMd(md) {

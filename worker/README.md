@@ -86,7 +86,7 @@
 | `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給操作者一位（每次最多 1 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
 | `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
 | `POST /line/admin/login` | 管理者帳號密碼登入（`{user, pass}`，要先有試驗功能憑證）→ 30 分鐘憑證；帳號密碼放 Worker Secret `LINE_ADMIN_USER`、`LINE_ADMIN_PASS`（沒設＝進階權限修改整個關閉，回 503）。之後 `testers/add｜remove｜rename｜lookup` 都要帶 `X-Line-Admin`，沒帶或過期回 403；`testers/list` 只要試驗功能憑證 |
-| `POST /line/testers/list`｜`remove`｜`rename` | 查看／移除／改名成員名單（`rename` 帶 `tid`＋`name`，只改名字、userId 不變、不問 LINE，同一個帳號內名字不能重複；回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 進階設定 → 權限管理（所有帳號）」列表用；網頁一次讀三個帳號、依名字把同一個人的三個 userId 並排，需要試驗功能憑證）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
+| `POST /line/testers/list`｜`remove`｜`rename` | 查看／移除／改名成員名單（`rename` 帶 `tid`＋`name`，只改名字、userId 不變、不問 LINE，同一個帳號內名字不能重複；回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 進階設定 → 權限管理（所有帳號）」列表用；網頁一次讀三個帳號、依名字把同一個人的三個 userId 並排，唯讀；新增／編輯／移除都在彈窗裡，由網頁組合 `lookup`／`add`／`rename`／`remove` 依序送出；`list` 只需試驗功能憑證，其餘動作另需管理者登入）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
 | `POST /line/testers/lookup`｜`add` | 貼上對方的 LINE userId（`name` 可自己填，不填就用 LINE 暱稱）→ Worker 用該帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效；`add` 驗證通過才存（正式帳號上限 20 人、測試帳號 50 人）。測試帳號也能這樣加，不一定要傳「登記」 |
 | `POST /line/schedule/*` | 排程推播：建立、查看、變更時間、刪除（見下一節） |
 | `POST /line/clicks` | 用發送時 LINE 回的 request id，查這次群發每個連結的點擊次數與人數（`GET /v2/bot/insight/message/event`，唯讀） |
