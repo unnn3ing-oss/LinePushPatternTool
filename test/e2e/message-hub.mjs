@@ -207,8 +207,10 @@ await page.fill('#lineAdminPass', 'pw123'); await page.press('#lineAdminPass', '
 await page.waitForFunction(() => !document.getElementById('lineAdminBody').hidden);
 check((await txt('#lineAdminState')).includes('管理者已登入') && await vis('#lineAdminOut') && (await page.inputValue('#lineAdminPass')) === '' && await vis('#qrTpl') && await vis('#lineAddRow'), '登入成功：顯示「管理者已登入」與登出；權限管理、快速回覆設定展開，密碼欄清空');
 check(await page.evaluate(() => { const t = JSON.stringify([sessionStorage, localStorage]); return !t.includes('adm-'); }), '管理者憑證只在記憶體，沒寫進 sessionStorage／localStorage');
-await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
-check((await txt('#lineTesterTitle')).includes('權限管理') && (await txt('#lineTesterList')).includes('小編本人') && (await txt('#lineTesterList')).includes('U0123456789abcdef0123456789abcdef'), '權限管理：列表顯示名字＋對應的 userId');
+await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-person').length === 2);
+check((await txt('#lineTesterTitle')).includes('權限管理（所有帳號）') && (await txt('#lineTesterHint')).includes('不受上方帳號切換影響'), '權限管理（所有帳號）：標題與說明——整個系統的權限源頭，不分帳號');
+const person = n => page.locator(`#lineTesterList .line-person:has(.line-pname:text-is("${n}"))`);
+check(await page.locator('#lineTesterList .line-person').count() === 2 && (await person('小編本人').textContent()).includes('U0123456789abcdef0123456789abcdef') && (await person('小編本人').locator('.line-pid[data-ch=ent]').textContent()).includes('未設定') && (await person('王小明').locator('.line-pid[data-ch=test]').textContent()).includes('U' + 'a'.repeat(32)) && await person('王小明').locator('.line-pid').count() === 3, '列表以「人」為單位：一列一個名字，新聞／娛樂／測試三個帳號的 userId 並排，沒有的顯示「未設定」；三個帳號的人都在同一份列表');
 await page.locator('#hubBody').screenshot({ path: path.join(SHOTS, 'hub-3-settings.png') });
 // 新增／更新成員：同一個人一次設定所有帳號的 userId（新聞／娛樂／測試，沒填的跳過）
 check(await vis('#lineAddUid_news') && await vis('#lineAddUid_ent') && await vis('#lineAddUid_test') && (await txt('#lineAddRow')).includes('一次設定所有帳號'), '新增成員：新聞／娛樂／測試三個帳號各一格 userId，名字共用');
@@ -224,36 +226,39 @@ await page.waitForFunction(() => !document.getElementById('lineAddOk').disabled)
 check((await txt('#lineAddOut')).includes('新聞、測試') && (await txt('#lineAddRes_test')).includes('LINE 暱稱「LINE暱稱小美」') && (await txt('#lineAddRes_ent')) === '', '全部通過：說明會加入哪幾個帳號，沒填的帳號不動');
 await page.locator('#hubBody').screenshot({ path: path.join(SHOTS, 'hub-3b-add-all.png') });
 await page.click('#lineAddOk');
-await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
+await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-person').length === 3);
 check(reqs.add.length === 2 && reqs.add.every(r => r.name === '主播小美') && reqs.add.map(r => r.channel).sort().join() === 'news,test' && (await txt('#lineTesterList')).includes(UID2) && (await page.inputValue('#lineAddUid_news')) === '' && (await page.inputValue('#lineAddUid_test')) === '' && (await page.inputValue('#lineAddName')) === '' && await page.evaluate(() => lineWhoFor('test').testers.length === 2), '「加入名單」：同一個名字寫進新聞與測試兩個帳號的名單，輸入框清空');
 await page.fill('#lineAddName', '小編本人'); await page.dispatchEvent('#lineAddName', 'change');
 await page.waitForFunction(() => document.getElementById('lineAddUid_news').value !== '');
 check((await page.inputValue('#lineAddUid_news')) === 'U0123456789abcdef0123456789abcdef' && (await page.inputValue('#lineAddUid_test')) === '' && (await page.inputValue('#lineAddUid_ent')) === '', '輸入現有成員的名字：把他已有的 userId 帶進對應格子，其他格子留空');
 await page.fill('#lineAddName', ''); await page.fill('#lineAddUid_news', '');
-// 改名：每位成員有「改名」與「移除」；改名是行內輸入，Enter／儲存送出，Esc／取消放棄
-check(await page.locator('#lineTesterList .line-trow:last-child button[data-act=rename]').count() === 1 && await page.locator('#lineTesterList .line-trow:last-child button[data-act=remove]').count() === 1, '每位成員有「改名」與「移除」兩個按鈕');
-await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+// 改名：每個人有「改名」「移除」，每格 userId 另有「×」（只從該帳號移除）；改名是行內輸入，Enter／儲存送出，Esc／取消放棄；改名會在這個人有的所有帳號一起改
+const last = '#lineTesterList .line-person:nth-child(2)';   // 順序：新聞的人（小編本人、主播小美）→ 測試的人（王小明）
+check(await page.locator(`${last} .line-phead button[data-act=rename]`).count() === 1 && await page.locator(`${last} .line-phead button[data-act=remove]`).count() === 1 && await page.locator(`${last} .line-pid button[data-act=remove-one]`).count() === 2, '每個人有「改名」「移除」，每格 userId 有「×」（沒設定的格子沒有）');
+await page.click(`${last} button[data-act=rename]`);
 check(await page.inputValue('#lineTesterList .line-trename') === '主播小美' && await page.evaluate(() => document.activeElement.classList.contains('line-trename')), '按「改名」：名字變成輸入框（帶入原名、已聚焦）');
 await page.keyboard.press('Escape');
 check(await page.locator('#lineTesterList .line-trename').count() === 0 && reqs.trename.length === 0 && (await txt('#lineTesterList')).includes('主播小美'), 'Esc：放棄，沒有送出');
-await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+await page.click(`${last} button[data-act=rename]`);
 await page.fill('#lineTesterList .line-trename', '   ');
 await page.keyboard.press('Enter');
 check(reqs.trename.length === 0 && await page.locator('#lineTesterList .line-trename').count() === 0, '空白名字：不送出、回到列表');
-await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+await page.click(`${last} button[data-act=rename]`);
+await page.fill('#lineTesterList .line-trename', '小編本人');
+await page.click(`${last} button:has-text("儲存")`);
+await page.waitForTimeout(300);
+check(dialogs.at(-1).includes('「新聞帳號」的名單裡已經有另一位叫「小編本人」') && reqs.trename.length === 0 && await page.locator('#lineTesterList .line-trename').count() === 1, '新名字跟某個帳號名單裡的另一個人重複：送出前就擋下並說明是哪個帳號，沒有改任何東西，輸入框保留');
 await page.fill('#lineTesterList .line-trename', '主播美美');
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => document.getElementById('lineTesterList').textContent.includes('主播美美'));
-check(reqs.trename.at(-1).channel === 'news' && reqs.trename.at(-1).tid === '2'.repeat(16) && reqs.trename.at(-1).name === '主播美美' && (await txt('#lineTesterList')).includes(UID2) && !(await txt('#lineTesterList')).includes('主播小美') && (await txt('#lineAddOut')).includes('改名為「主播美美」'), '改名：只送這個帳號、這位的 tid 與新名字；userId 不變，並提醒其他帳號也要同名');
-await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
-await page.fill('#lineTesterList .line-trename', '小編本人');
-await page.click('#lineTesterList .line-trow:last-child button:has-text("儲存")');
-await page.waitForTimeout(300);
-check(dialogs.at(-1).includes('改名失敗') && dialogs.at(-1).includes('已經有「小編本人」') && await page.locator('#lineTesterList .line-trename').count() === 1, '名字跟名單內其他人重複：Worker 擋下，顯示原因、輸入框保留可再改');
-await page.keyboard.press('Escape');
-await page.click('#lineTesterList .line-trow:last-child button[data-act=remove]');
-await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
-check(reqs.remove.at(-1).channel === 'news' && reqs.remove.at(-1).tid === '2'.repeat(16) && dialogs.at(-1).includes('主播美美'), '移除成員：先確認，只動這個帳號的名單');
+check(reqs.trename.length === 2 && reqs.trename.every(r => r.name === '主播美美') && reqs.trename.map(r => r.channel).sort().join() === 'news,test' && reqs.trename.find(r => r.channel === 'news').tid === '2'.repeat(16) && reqs.trename.find(r => r.channel === 'test').tid === '4'.repeat(16) && (await txt('#lineTesterList')).includes(UID2) && (await txt('#lineTesterList')).includes(UID3) && !(await txt('#lineTesterList')).includes('主播小美') && (await txt('#lineAddOut')).includes('新聞帳號、測試帳號'), '改名：這個人在新聞與測試兩個帳號的名單一起改成同名，userId 不變');
+// 只從一個帳號移除（每格的 ×）、整個人移除
+await page.click(`${last} .line-pid[data-ch=test] button[data-act=remove-one]`);
+await page.waitForFunction(() => document.querySelector('#lineTesterList .line-person:nth-child(2) .line-pid[data-ch=test]').textContent.includes('未設定'));
+check(reqs.remove.at(-1).channel === 'test' && reqs.remove.at(-1).tid === '4'.repeat(16) && dialogs.at(-1).includes('測試帳號') && (await page.locator(`${last} .line-pid[data-ch=news] code`).textContent()) === UID2, '格子的「×」：確認後只從那個帳號移除，這個人在其他帳號的 userId 還在');
+await page.click(`${last} .line-phead button[data-act=remove]`);
+await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-person').length === 2);
+check(reqs.remove.at(-1).channel === 'news' && reqs.remove.at(-1).tid === '2'.repeat(16) && dialogs.at(-1).includes('主播美美'), '整個人移除：先確認，從他有的帳號移除');
 // 快速回覆的「搜尋網站網址」在這個分頁設定（所有推播共用，記在瀏覽器）
 check(await vis('#qrTpl') && (await txt('#hubSet')).includes('快速回覆設定'), '「LINE推播設定」有「快速回覆設定 → 搜尋網站網址」');
 await page.fill('#qrTpl', 'https://news.example.com/search?q={keyword}');
@@ -264,7 +269,7 @@ await page.waitForFunction(() => /連不上/.test(document.getElementById('hubSt
 check((await txt('#hubStatusBox')).includes('尚未設定'), '憑證沒設的帳號：連線狀態顯示 ✗ 連不上與原因');
 await page.click('#hubAcctTest');
 await page.waitForFunction(() => /測試官方帳號/.test(document.getElementById('hubStatusBox').textContent));
-check((await txt('#hubStatusBox')).includes('上限 200') && (await txt('#hubStatusBox')).includes('剩 164') && !(await txt('#hubStatusBox')).includes('正式群發') && (await txt('#lineTesterList')).includes('王小明') && (await txt('#lineTesterHint')).includes('登記'), '測試帳號：額度（200／已用 36／剩 164）、名單與「傳登記」說明');
+check((await txt('#hubStatusBox')).includes('上限 200') && (await txt('#hubStatusBox')).includes('剩 164') && !(await txt('#hubStatusBox')).includes('正式群發') && (await txt('#lineTesterList')).includes('王小明') && (await txt('#lineTesterList')).includes('小編本人') && (await txt('#lineTesterHint')).includes('登記'), '測試帳號：額度（200／已用 36／剩 164）；進階設定的名單不受帳號切換影響（新聞、測試的人都在）、有「傳登記」說明');
 check(await vis('#lineAddRow'), '測試帳號也能直接貼 userId 新增');
 await page.click('#hubStatusBtn');
 check(reqs.status.filter(r => r.channel === 'test').length >= 2, '「重新檢查」：重新向 LINE 查');
@@ -275,11 +280,11 @@ check(!(await vis('#lineAdminBody')) && (await txt('#lineAdminState')).includes(
 await page.fill('#lineAdminUser', 'boss'); await page.fill('#lineAdminPass', 'pw123'); await page.click('#lineAdminIn');
 await page.waitForFunction(() => !document.getElementById('lineAdminBody').hidden);
 adminTok = 'rotated-by-worker';
-await page.click('#lineTesterList .line-trow:first-child button[data-act=rename]');
+await page.click('#lineTesterList .line-person:first-child button[data-act=rename]');
 await page.fill('#lineTesterList .line-trename', '改不成');
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => document.getElementById('lineAdminMsg').textContent.includes('過期'));
-check(!(await vis('#lineAdminBody')) && dialogs.at(-1).includes('需要管理者登入') && (await txt('#lineAdminMsg')).includes('重新登入'), '憑證過期（Worker 回 403）：改名失敗、自動退回登入畫面並提示重新登入');
+check(!(await vis('#lineAdminBody')) && (await txt('#lineAdminMsg')).includes('重新登入') && (await txt('#lineTesterList')) === '', '憑證過期（Worker 回 403）：改名失敗、自動退回登入畫面並提示重新登入，畫面上的名單清掉');
 
 // ===== 8. 憑證過期 → 密碼視窗 → 自動繼續 =====
 await page.click('#hubTabList'); await page.click('#hubAcctNews');
