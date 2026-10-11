@@ -272,6 +272,12 @@
   .line-trow span { font-size: 14px; color: var(--text); }
   .line-trow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; }
   .line-trow button { padding: 2px 12px; font-size: 13px; }
+  .line-adduids { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; margin-top: 8px; }
+  .line-adduids label { font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .line-adduids input { min-width: 0; }
+  .line-addres { grid-column: 2; margin: -2px 0 2px; font-size: 12px; line-height: 1.5; color: #166534; }
+  .line-addres:empty { display: none; }
+  .line-addres.bad { color: #b91c1c; font-weight: 600; }
   .line-tact { display: inline-flex; gap: 6px; flex: none; }
   .line-trename { flex: 1 1 140px; min-width: 0; max-width: 220px; padding: 2px 8px; border: 1px solid rgba(0, 0, 0, .25); border-radius: 8px; font: inherit; font-size: 14px; }
   .line-chip { display: inline-block; padding: 1px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: rgba(0, 0, 0, .08); color: var(--text); }
@@ -1724,13 +1730,15 @@
         <div class="line-note" style="margin-top:0" id="lineTesterHint"></div>
         <div id="lineTesterList" class="line-note">讀取中…</div>
         <div id="lineAddRow">
-          <div class="line-note">新增成員：填名字（不填就用 LINE 上的暱稱）與對方在這個帳號的 LINE userId（U 開頭加 32 碼，可從 S8 客戶中心複製）。Worker 會先向 LINE 查他的暱稱，確認這個 ID 在這個帳號有效才加入；LINE 查不到就不會加。</div>
-          <div class="line-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
-            <input type="text" id="lineAddName" autocomplete="off" maxlength="40" placeholder="名字（選填）" aria-label="名字" style="flex:0 1 150px;min-width:0">
-            <input type="text" id="lineAddUid" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="LINE userId" style="flex:1 1 260px;min-width:0">
-            <button type="button" id="lineAddFind">查詢</button>
-            <button type="button" id="lineAddOk" disabled>加入名單</button>
+          <div class="hub-bar" style="margin-top:14px"><span class="line-sub">新增／更新成員（一次設定所有帳號的 userId）</span></div>
+          <div class="line-note" style="margin-top:0">填名字（不填就用 LINE 上的暱稱），再填這個人在各帳號的 LINE userId（U 開頭加 32 碼，可從 S8 客戶中心複製；同一個人在不同帳號的 userId 不同）。沒有的帳號留空就好。Worker 會先向 LINE 查他的暱稱，確認這個 ID 在那個帳號有效才加入；名字三個帳號共用，所以操作人一定對得上。已經在名單裡的人，會更新名字。</div>
+          <div class="line-row" style="margin-top:8px"><input type="text" id="lineAddName" autocomplete="off" maxlength="40" placeholder="名字（選填；輸入現有成員的名字會帶入他已有的 userId）" aria-label="名字" style="flex:1 1 auto;min-width:0"></div>
+          <div class="line-adduids">
+            <label for="lineAddUid_news">新聞帳號</label><input type="text" id="lineAddUid_news" data-ch="news" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="新聞帳號的 LINE userId"><span class="line-addres" id="lineAddRes_news"></span>
+            <label for="lineAddUid_ent">娛樂帳號</label><input type="text" id="lineAddUid_ent" data-ch="ent" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="娛樂帳號的 LINE userId"><span class="line-addres" id="lineAddRes_ent"></span>
+            <label for="lineAddUid_test">測試帳號</label><input type="text" id="lineAddUid_test" data-ch="test" autocomplete="off" spellcheck="false" placeholder="U8f0f…（32 碼）" aria-label="測試帳號的 LINE userId"><span class="line-addres" id="lineAddRes_test"></span>
           </div>
+          <div class="btn-row" style="margin:8px 0 0"><button type="button" id="lineAddFind">查詢</button><button type="button" id="lineAddOk" disabled>加入名單</button></div>
           <div class="line-note" id="lineAddOut" style="margin-top:6px"></div>
         </div>
         <div class="hub-bar" style="margin-top:20px"><span class="line-sub">快速回覆設定</span></div>
@@ -7411,7 +7419,7 @@ const hubStatusBy = {};   // 帳號 → { busy, data, error }
 function hubSetShow() {
   hubEl('hubStatusTitle').textContent = `連線狀態（${hubAcctName(hubCh)}）`;
   hubStatusRender(); hubStatusLoad(hubCh);
-  const w = lineWhoFor(hubCh); lineAddReset(''); lineTesterListRender();
+  const w = lineWhoFor(hubCh); lineTesterListRender();
   if (!w.loaded && !w.loading) lineWhoLoad(hubCh);
 }
 async function hubStatusLoad(ch, force) {
@@ -7498,36 +7506,62 @@ function lineTesterRenameEdit(row, mem, t, ch, w) {
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } else if (e.key === 'Escape') { e.stopPropagation(); cancel(); } });
   inp.focus(); inp.select();
 }
-// 新增成員：先「查詢」（向 LINE 驗證並顯示暱稱），確認是對的人再「加入名單」
-let lineAddFound = null;
-function lineAddReset(text, bad) { lineAddFound = null; $line('lineAddOk').disabled = true; const o = $line('lineAddOut'); o.textContent = text || ''; o.classList.toggle('bad', !!bad); }
-$line('lineAddUid').addEventListener('input', () => lineAddReset(''));
+// 新增／更新成員：同一個人一次設定所有帳號（新聞／娛樂／測試）的 userId，沒填的帳號跳過。名字三個帳號共用，所以名字一定一致（操作人是用名字對應的）
+// 流程：先「查詢」（每個有填的帳號各向 LINE 驗證，並顯示暱稱）→ 全部通過才能「加入名單」→ 一個帳號一個帳號寫入，哪個失敗就只顯示哪個
+const LINE_ADD_CHS = ['news', 'ent', 'test'];
+const lineAddUidEl = ch => $line(`lineAddUid_${ch}`), lineAddResEl = ch => $line(`lineAddRes_${ch}`);
+let lineAddFound = null;   // 查詢全部通過的結果：{ name, rows: [{ ch, uid }] }
+function lineAddRow(ch, text, bad) { const e = lineAddResEl(ch); e.textContent = text || ''; e.classList.toggle('bad', !!bad); }
+function lineAddReset(text, bad) {
+  lineAddFound = null; $line('lineAddOk').disabled = true;
+  LINE_ADD_CHS.forEach(ch => lineAddRow(ch, ''));
+  const o = $line('lineAddOut'); o.textContent = text || ''; o.classList.toggle('bad', !!bad);
+}
+LINE_ADD_CHS.forEach(ch => lineAddUidEl(ch).addEventListener('input', () => lineAddReset('')));
 $line('lineAddName').addEventListener('input', () => { if (lineAddFound) lineAddReset(''); });
+$line('lineAddName').addEventListener('change', async () => {   // 輸入現有成員的名字：把他在各帳號已有的 userId 帶進空格子（方便補另一個帳號）
+  const n = $line('lineAddName').value.trim(); if (!n) return;
+  await Promise.all(LINE_ADD_CHS.map(ch => { const w = lineWhoFor(ch); return w.loaded || w.loading ? 0 : lineWhoLoad(ch); }));   // 還沒讀過的帳號先讀名單
+  if ($line('lineAddName').value.trim() !== n) return;
+  LINE_ADD_CHS.forEach(ch => { const el = lineAddUidEl(ch); if (el.value.trim()) return; const t = lineWhoFor(ch).testers.find(x => x.name === n && x.userId); if (t) el.value = t.userId; });
+});
 $line('lineAddFind').addEventListener('click', async () => {
-  const ch = lineBoxCh(), uid = $line('lineAddUid').value.trim(), name = $line('lineAddName').value.trim();
-  if (!/^U[0-9a-f]{32}$/.test(uid)) { lineAddReset('✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true); return; }
-  $line('lineAddFind').disabled = true; lineAddReset(`向 LINE（${lineWhoAcct(ch)}）查詢中…`);
-  try {
-    const r = await s8Api('/line/testers/lookup', { channel: ch, userId: uid, name });
-    lineAddFound = { ch, uid, name };
-    $line('lineAddOk').disabled = false;
-    const o = $line('lineAddOut'); o.classList.remove('bad');
-    const f = r.found, shown = f.name === f.lineName ? `「${f.name}」` : `「${f.name}」（LINE 暱稱：${f.lineName}）`;
-    o.textContent = f.already ? `✓ 查到${shown}，已經在「${lineWhoAcct(ch)}」的名單裡（再按「加入名單」會更新名字）。` : `✓ LINE 查到這個 ID 的暱稱是「${f.lineName}」，會用${shown}加入。確認是對的人，再按「加入名單」。`;
-  } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
+  const name = $line('lineAddName').value.trim();
+  const rows = LINE_ADD_CHS.map(ch => ({ ch, uid: lineAddUidEl(ch).value.trim() })).filter(r => r.uid);
+  if (!rows.length) { lineAddReset('✗ 至少要填一個帳號的 userId。', true); return; }
+  lineAddReset('');
+  const badFmt = rows.filter(r => !/^U[0-9a-f]{32}$/.test(r.uid));
+  if (badFmt.length) { badFmt.forEach(r => lineAddRow(r.ch, '✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true)); $line('lineAddOut').textContent = '✗ 有格式不對的 userId，沒有向 LINE 查詢。'; $line('lineAddOut').classList.add('bad'); return; }
+  $line('lineAddFind').disabled = true; $line('lineAddOut').textContent = '向 LINE 查詢中…'; rows.forEach(r => lineAddRow(r.ch, '查詢中…'));
+  await Promise.all(rows.map(r => { const w = lineWhoFor(r.ch); return w.loaded || w.loading ? 0 : lineWhoLoad(r.ch); }));   // 先讀名單，才檢查得出名字重複
+  const res = await Promise.allSettled(rows.map(r => s8Api('/line/testers/lookup', { channel: r.ch, userId: r.uid, name })));
+  const firstOk = res.find(x => x.status === 'fulfilled'), finalName = name || (firstOk ? firstOk.value.found.lineName : '');
+  let bad = 0;
+  rows.forEach((r, i) => {
+    if (res[i].status !== 'fulfilled') { bad++; lineAddRow(r.ch, `✗ ${(res[i].reason && res[i].reason.message) || res[i].reason}`, true); return; }
+    const f = res[i].value.found, w = lineWhoFor(r.ch);
+    if (w.loaded && !w.error && w.testers.some(t => t.name === finalName && t.userId !== r.uid)) { bad++; lineAddRow(r.ch, `✗ 「${lineWhoAcct(r.ch)}」的名單裡已經有另一位叫「${finalName}」，名字不能重複，請換一個名字。`, true); return; }
+    lineAddRow(r.ch, `✓ LINE 暱稱「${f.lineName}」${f.already ? '，已在名單裡（會更新名字）' : ''}`);
+  });
+  const o = $line('lineAddOut');
+  if (bad) { o.classList.add('bad'); o.textContent = `✗ 有 ${bad} 個帳號沒通過，不能加入。請修正或清空那一格再查詢（通過的帳號不受影響，清掉其他格即可單獨加入）。`; }
+  else { o.classList.remove('bad'); lineAddFound = { name: finalName, rows }; $line('lineAddOk').disabled = false; o.textContent = `✓ 全部查到了，會用「${finalName}」加入或更新 ${rows.length} 個帳號（${rows.map(r => lineWhoAcct(r.ch).replace('帳號', '')).join('、')}）。確認是對的人，再按「加入名單」。`; }
   $line('lineAddFind').disabled = false;
 });
 $line('lineAddOk').addEventListener('click', async () => {
-  if (!lineAddFound || lineAddFound.ch !== lineBoxCh()) return;
-  const { ch, uid, name } = lineAddFound;
-  $line('lineAddOk').disabled = true;
-  try {
-    const r = await s8Api('/line/testers/add', { channel: ch, userId: uid, name });
-    const w = lineWhoFor(ch); w.testers = r.testers || []; w.loaded = true; lineOpRevalidate();
-    const added = (r.found && r.found.name) || name || '';
-    $line('lineAddUid').value = ''; $line('lineAddName').value = ''; lineAddReset(`✓ 已加入「${added}」。`);
-    lineOpRender(); lineTesterListRender(); lineUpdateSteps();
-  } catch (e) { lineAddReset(`✗ ${e.message || e}`, true); }
+  const f = lineAddFound; if (!f) return;
+  $line('lineAddOk').disabled = true; $line('lineAddFind').disabled = true;
+  const done = [], fail = [];
+  for (const r of f.rows) {
+    try { const out = await s8Api('/line/testers/add', { channel: r.ch, userId: r.uid, name: f.name }); const w = lineWhoFor(r.ch); w.testers = out.testers || []; w.loaded = true; w.error = ''; done.push(r.ch); }
+    catch (e) { fail.push({ ch: r.ch, msg: String((e && e.message) || e) }); }
+  }
+  lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
+  $line('lineAddFind').disabled = false;
+  done.forEach(ch => { lineAddUidEl(ch).value = ''; });
+  if (!fail.length) { $line('lineAddName').value = ''; lineAddReset(`✓ 已把「${f.name}」加入或更新到：${done.map(lineWhoAcct).join('、')}。`); return; }
+  lineAddReset(`✗ ${done.length ? `已完成：${done.map(lineWhoAcct).join('、')}；` : ''}沒成功：${fail.map(x => lineWhoAcct(x.ch)).join('、')}。失敗的帳號還留在格子裡，修正後再按「查詢」。`, true);
+  fail.forEach(x => lineAddRow(x.ch, `✗ ${x.msg}`, true));
 });
 
 

@@ -787,6 +787,20 @@ test('testers/rename：要憑證；只改名字（userId 不變）、不呼叫 L
   } finally { line.restore(); }
 });
 
+test('testers/add（測試帳號）：也可以直接貼 userId 加入（跟新聞／娛樂一樣先向 LINE 驗證），名單互相獨立、同一個名字可以在三個帳號各有自己的 userId', async () => {
+  const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
+  try {
+    const r = await tReq(env, '/line/testers/add', { channel: 'test', userId: OFFICIAL_UID2, name: '主播小美' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.deepEqual(r.json.testers.map(t => [t.name, t.userId]), [['主播小美', OFFICIAL_UID2]]);
+    assert.ok(r2.store.has(`testers/${OTID2}.json`) && !r2.store.has(`testers/news/${OTID2}.json`), '存在測試帳號的名單，不在新聞名單');
+    const n = await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID3, name: '主播小美' });
+    assert.equal(n.status, 200); assert.deepEqual(n.json.testers.map(t => [t.name, t.userId]), [['主播小美', OFFICIAL_UID3]]);
+    assert.deepEqual((await tReq(env, '/line/testers/list', {})).json.testers.map(t => t.userId), [OFFICIAL_UID2]);
+    assert.equal(line.calls.filter(c => c.path.startsWith('/v2/bot/profile/')).length, 2, '每個帳號各向 LINE 驗證一次');
+  } finally { line.restore(); }
+});
+
 test('send（測試帳號）：沒選收件人、超過 1 位（只傳給操作者本人）、名單外的人 → 400，完全沒呼叫 LINE', async () => {
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {

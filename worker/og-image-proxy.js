@@ -1119,8 +1119,8 @@ async function handleLineSend(request, env) {
 //   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）。body.channel：test（預設）｜news｜ent
 //   POST /line/testers/remove  從名單移除（同上，可指定 channel）
 //   POST /line/testers/rename  改名單裡某位的名字（只改名字，不問 LINE；userId 不變。同一個帳號的名單裡名字不能重複）
-//   POST /line/testers/lookup  （只有 news／ent）貼上 LINE userId → 向該帳號查 profile 驗證有效，回暱稱，不存
-//   POST /line/testers/add     （只有 news／ent）同上，驗證通過才加入該帳號的測試名單（上限 20 人）
+//   POST /line/testers/lookup  貼上 LINE userId → 向該帳號查 profile 驗證有效，回暱稱，不存
+//   POST /line/testers/add     同上，驗證通過才加入該帳號的測試名單（上限 20 人）
 // 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰：正式帳號的測試名單不靠 webhook，而是管理者從 S8 客戶中心複製 userId 貼進來，再由 LINE 的 profile 驗證。
 // 「正式帳號的測試推播」：POST /line/send 帶 mode:'test'＋testers，只 multicast 給該帳號測試名單裡勾選的人（每次最多 1 位＝操作者本人）；
 // 它不需要 LINE_ALLOW_OFFICIAL，成功後一樣回 testToken；真正的 broadcast 閘門（旗標、testToken、人數確認）完全沒變。

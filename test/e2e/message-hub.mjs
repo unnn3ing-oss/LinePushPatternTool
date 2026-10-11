@@ -39,7 +39,7 @@ const db = { news: [A, B, C, D, E], ent: [ENT], test: [] };
 const reqs = { list: [], stats: [], rename: [], trename: [], cancel: [], status: [], testers: [], lookup: [], add: [], remove: [] };
 let heartbeat = NOW, statsMode = 'ok', statsFail = '';
 const testersDb = { news: [{ tid: '1'.repeat(16), name: '小編本人', userId: 'U0123456789abcdef0123456789abcdef', registeredAt: 1 }], ent: [], test: [{ tid: 'a'.repeat(16), name: '王小明', userId: 'U' + 'a'.repeat(32), registeredAt: 1 }] };
-const UID2 = 'U' + 'd'.repeat(32);
+const UID2 = 'U' + 'd'.repeat(32), UID_BAD = 'U' + 'e'.repeat(32), UID3 = 'U' + 'f'.repeat(32);
 const labAuthReqs = [];
 const findRec = id => Object.values(db).flat().find(r => r.id === id);
 await page.route(`${WORKER}/**`, async route => {
@@ -70,9 +70,10 @@ await page.route(`${WORKER}/**`, async route => {
   if (url.pathname === '/line/testers/remove') { reqs.remove.push(body); testersDb[body.channel] = testersDb[body.channel].filter(t => t.tid !== body.tid); return json({ ok: true, testers: testersDb[body.channel], maxPerSend: 2 }); }
   if (url.pathname === '/line/testers/lookup' || url.pathname === '/line/testers/add') {
     const add = url.pathname.endsWith('add'); (add ? reqs.add : reqs.lookup).push(body);
-    const name = (body.name || '').trim() || 'LINE暱稱小美';
-    if (add) testersDb[body.channel].push({ tid: '2'.repeat(16), name, userId: body.userId, registeredAt: 5 });
-    return json({ ok: true, channel: body.channel, found: { tid: '2'.repeat(16), name, lineName: 'LINE暱稱小美', already: false }, testers: testersDb[body.channel], maxPerSend: 2 });
+    if (body.userId === UID_BAD) return json({ error: `LINE 查不到這個 ID：他可能不是「${body.channel}」的好友。沒有加入名單。` }, 404);
+    const name = (body.name || '').trim() || 'LINE暱稱小美', tid = { news: '2', ent: '3', test: '4' }[body.channel].repeat(16);
+    if (add) testersDb[body.channel].push({ tid, name, userId: body.userId, registeredAt: 5 });
+    return json({ ok: true, channel: body.channel, found: { tid, name, lineName: 'LINE暱稱小美', already: false }, testers: testersDb[body.channel], maxPerSend: 2 });
   }
   return json({ error: `unexpected ${url.pathname}` }, 404);
 });
@@ -194,15 +195,26 @@ check(reqs.status.at(-1).channel === 'news', '連線狀態向 LINE 查的是目�
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
 check((await txt('#lineTesterTitle')).includes('權限管理') && (await txt('#lineTesterList')).includes('小編本人') && (await txt('#lineTesterList')).includes('U0123456789abcdef0123456789abcdef'), '權限管理：列表顯示名字＋對應的 userId');
 await page.locator('#hubBody').screenshot({ path: path.join(SHOTS, 'hub-3-settings.png') });
-// 新增成員：名字＋userId
-await page.fill('#lineAddUid', 'abc'); await page.click('#lineAddFind');
-check((await txt('#lineAddOut')).includes('格式不對') && reqs.lookup.length === 0, '貼了格式不對的 userId：直接擋掉，不問 LINE');
-await page.fill('#lineAddName', '主播小美'); await page.fill('#lineAddUid', UID2); await page.click('#lineAddFind');
-await page.waitForFunction(() => /會用「主播小美」（LINE 暱稱：LINE暱稱小美）加入/.test(document.getElementById('lineAddOut').textContent));
-check(reqs.lookup.at(-1).channel === 'news' && reqs.lookup.at(-1).name === '主播小美' && reqs.lookup.at(-1).userId === UID2 && !(await page.evaluate(() => document.getElementById('lineAddOk').disabled)), '「查詢」：帶名字與 userId，LINE 驗證通過才能按「加入名單」');
+// 新增／更新成員：同一個人一次設定所有帳號的 userId（新聞／娛樂／測試，沒填的跳過）
+check(await vis('#lineAddUid_news') && await vis('#lineAddUid_ent') && await vis('#lineAddUid_test') && (await txt('#lineAddRow')).includes('一次設定所有帳號'), '新增成員：新聞／娛樂／測試三個帳號各一格 userId，名字共用');
+await page.fill('#lineAddUid_news', 'abc'); await page.click('#lineAddFind');
+check((await txt('#lineAddRes_news')).includes('格式不對') && reqs.lookup.length === 0, '貼了格式不對的 userId：直接擋掉，不問 LINE');
+await page.fill('#lineAddUid_news', ''); await page.click('#lineAddFind');
+check((await txt('#lineAddOut')).includes('至少要填一個帳號') && reqs.lookup.length === 0, '三格都空：提示至少填一個');
+await page.fill('#lineAddName', '主播小美'); await page.fill('#lineAddUid_news', UID2); await page.fill('#lineAddUid_ent', UID_BAD); await page.click('#lineAddFind');
+await page.waitForFunction(() => document.getElementById('lineAddRes_ent').textContent.startsWith('✗'));
+check(reqs.lookup.length === 2 && reqs.lookup.every(r => r.name === '主播小美') && new Set(reqs.lookup.map(r => r.channel)).size === 2 && (await txt('#lineAddRes_news')).startsWith('✓') && (await txt('#lineAddRes_ent')).includes('LINE 查不到') && await page.evaluate(() => document.getElementById('lineAddOk').disabled), '「查詢」：每個有填的帳號各向 LINE 驗證；有一個沒過，整批不能加入，並逐帳號顯示原因');
+await page.fill('#lineAddUid_ent', ''); await page.fill('#lineAddUid_test', UID3); await page.click('#lineAddFind');
+await page.waitForFunction(() => !document.getElementById('lineAddOk').disabled);
+check((await txt('#lineAddOut')).includes('新聞、測試') && (await txt('#lineAddRes_test')).includes('LINE 暱稱「LINE暱稱小美」') && (await txt('#lineAddRes_ent')) === '', '全部通過：說明會加入哪幾個帳號，沒填的帳號不動');
+await page.locator('#hubBody').screenshot({ path: path.join(SHOTS, 'hub-3b-add-all.png') });
 await page.click('#lineAddOk');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
-check(reqs.add.at(-1).name === '主播小美' && (await txt('#lineTesterList')).includes('主播小美') && (await txt('#lineTesterList')).includes(UID2) && (await page.inputValue('#lineAddUid')) === '' && (await page.inputValue('#lineAddName')) === '', '「加入名單」：列表多一位（名字＋userId），輸入框清空');
+check(reqs.add.length === 2 && reqs.add.every(r => r.name === '主播小美') && reqs.add.map(r => r.channel).sort().join() === 'news,test' && (await txt('#lineTesterList')).includes(UID2) && (await page.inputValue('#lineAddUid_news')) === '' && (await page.inputValue('#lineAddUid_test')) === '' && (await page.inputValue('#lineAddName')) === '' && await page.evaluate(() => lineWhoFor('test').testers.length === 2), '「加入名單」：同一個名字寫進新聞與測試兩個帳號的名單，輸入框清空');
+await page.fill('#lineAddName', '小編本人'); await page.dispatchEvent('#lineAddName', 'change');
+await page.waitForFunction(() => document.getElementById('lineAddUid_news').value !== '');
+check((await page.inputValue('#lineAddUid_news')) === 'U0123456789abcdef0123456789abcdef' && (await page.inputValue('#lineAddUid_test')) === '' && (await page.inputValue('#lineAddUid_ent')) === '', '輸入現有成員的名字：把他已有的 userId 帶進對應格子，其他格子留空');
+await page.fill('#lineAddName', ''); await page.fill('#lineAddUid_news', '');
 // 改名：每位成員有「改名」與「移除」；改名是行內輸入，Enter／儲存送出，Esc／取消放棄
 check(await page.locator('#lineTesterList .line-trow:last-child button[data-act=rename]').count() === 1 && await page.locator('#lineTesterList .line-trow:last-child button[data-act=remove]').count() === 1, '每位成員有「改名」與「移除」兩個按鈕');
 await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');

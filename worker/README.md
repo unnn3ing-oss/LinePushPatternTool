@@ -114,7 +114,7 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 新聞／娛樂正式帳號的 webhook 屬於 S8，無法改，所以**不靠 webhook 取得 userId**：S8 客戶中心裡每位 LINE 客戶的客戶 ID 就是該帳號下的 LINE userId（`U` 加 32 碼）。
 
 1. **設定（一次性）**：Worker Secret 設 `LINE_CHANNEL_ID_NEWS`／`LINE_CHANNEL_SECRET_NEWS`（娛樂同理 `_ENT`）。**`LINE_ALLOW_OFFICIAL` 照樣不設**——這個功能不需要它，正式 broadcast 仍然鎖死。
-2. **建立名單**：網頁右上角「訊息推播」→「LINE推播設定」→ 上方選「TVBS新聞」→「權限管理」→ 填名字（可不填）、貼上 userId →「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
+2. **建立名單**：網頁右上角「訊息推播」→「LINE推播設定」→ 上方選「TVBS新聞」→「權限管理」→ 填名字（可不填）、貼上這個人在新聞／娛樂／測試各帳號的 userId（沒有的留空，一次設定所有帳號）→「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
 3. **測試推播**：第 3 步「推播測試」發到「新聞帳號（TVBS新聞）」，只傳給操作者一位 → `POST /line/send` 帶 `mode:"test"`＋`testers`（1 位），Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
 4. **安全**：`lineCall` 內強制正式帳號的 multicast 最多 1 位、每個都是合法 userId；reply 仍只有測試帳號能用；沒有 push／narrowcast；正式 broadcast 的所有閘門（旗標、先測試、輸入好友數、版型）完全沒變。
 
