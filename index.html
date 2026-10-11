@@ -6899,7 +6899,7 @@ hubEl('hubCloseBtn').addEventListener('click', closeS8Dialog);
 // ---- 推播列表 ----
 const hubData = {};   // 帳號 → { loaded, loading, records, error, heartbeatAt, serverNow, auto }
 const hubFor = ch => (hubData[ch] = hubData[ch] || { loaded: false, loading: false, records: [], error: '', heartbeatAt: 0, serverNow: 0, auto: false });
-let hubDetailId = '', hubRenaming = false, hubLastTable = null;
+let hubDetailId = '', hubRenaming = false;
 const hubStats = {};   // 推播 id → { busy, stats, message, error }
 const HUB_STATUS = { sent: '已發送', sending: '訊息推播中', scheduled: '排程', failed: '發送失敗', missed: '逾時未發', cancelled: '已取消' };
 const HUB_STATS_DAYS = 14;   // LINE 只保留發送後 14 天的統計
@@ -7084,7 +7084,7 @@ function hubDetailRender() {
   const box = hubEl('hubDetail'), main = hubEl('hubListMain');
   const rec = hubDetailId ? hubFindRec(hubDetailId) : null;
   box.hidden = !rec; main.hidden = !!rec; hubEl('hubAcct').hidden = hubTab === 's8';
-  if (!rec) { hubLastTable = null; return; }
+  if (!rec) return;
   box.textContent = '';
   const back = document.createElement('button'); back.type = 'button'; back.className = 'hub-back'; back.textContent = '← 返回列表'; back.addEventListener('click', hubCloseDetail);
   const head = document.createElement('div'); head.className = 'hub-d-name';
@@ -7125,14 +7125,27 @@ function hubDetailRender() {
 function hubStatsRender() {
   const box = hubEl('hubDStats'); if (!box) return;
   const rec = hubFindRec(hubDetailId); if (!rec) return;
-  box.textContent = ''; hubLastTable = null;
+  box.textContent = '';
   const st = hubStats[rec.id] || {}, data = st.stats || null;
   const normUrl = u => String(u || '').trim().replace(/\/+(?=[?#]|$)/, '');   // LINE 回的網址和我們存的可能差一個結尾斜線
   const byUrl = new Map();
   ((data && data.clicks) || []).forEach(c => { const o = byUrl.get(normUrl(c.url)); if (!o) byUrl.set(normUrl(c.url), { click: c.click, uniqueClick: c.uniqueClick }); else { if (Number.isFinite(c.click)) o.click = (o.click || 0) + c.click; if (Number.isFinite(c.uniqueClick)) o.uniqueClick = Math.max(o.uniqueClick || 0, c.uniqueClick); } });
   const used = new Set();
+  // 「複製點擊排序」：第一行「YYMMDD早間／晚間line新聞／娛樂推播排名」（15:00 前早間、15:00 起晚間），之後每行「★每格訊息標題 -當下累計點擊次數」，點擊多的在前；
+  // 同一個連結用在好幾格時 LINE 合併計算，只列一行；LINE 沒提供數字（小於 20、或沒有統計）的排最後，顯示「—」
+  const rankText = () => {
+    const iso = String((rec.status === 'sent' ? (rec.sentAt || rec.runAtIso) : rec.runAtIso) || '');
+    const head = `${iso.slice(2, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}${Number(iso.slice(11, 13)) < 15 ? '早間' : '晚間'}line${rec.org === 'ent' ? '娛樂' : '新聞'}推播排名`;
+    const seen = new Set(), items = [];
+    (rec.links || []).forEach((l, i) => {
+      const k = normUrl(l.url); if (seen.has(k)) return; seen.add(k);
+      const c = byUrl.get(k), t = String(l.title || '').trim() || '（沒有標題）';
+      items.push({ i, title: t.startsWith('★') ? t : `★${t}`, click: c && Number.isFinite(c.click) ? c.click : null });
+    });
+    items.sort((a, b) => (b.click === null ? -1 : b.click) - (a.click === null ? -1 : a.click) || a.i - b.i);
+    return [head, ...items.map(x => `${x.title} -${x.click === null ? '—' : x.click}`)].join('\n');
+  };
   const title = document.createElement('div'); title.className = 'line-sub'; title.style.margin = '16px 0 4px'; title.textContent = '每則訊息的點擊'; box.appendChild(title);
-  const rows = [['位置', '訊息標題', '連結', '點擊次數', '點擊人數']];
   const t = document.createElement('table'); t.className = 'line-tbl hub-tbl';
   const hr = document.createElement('tr'); ['訊息標題', '點擊次數', '點擊人數'].forEach((h, i) => { const th = document.createElement('th'); th.textContent = h; if (i) th.className = 'num'; hr.appendChild(th); }); t.appendChild(hr);
   const links = rec.links || [];
@@ -7149,23 +7162,21 @@ function hubStatsRender() {
     lk.append(go, cp); td.appendChild(lk); tr.appendChild(td);
     [c && c.click, c && c.uniqueClick].forEach(v => { const n = document.createElement('td'); n.className = `num${Number.isFinite(v) ? '' : ' dim'}`; n.textContent = hubNum(v); tr.appendChild(n); });
     t.appendChild(tr);
-    rows.push([`第 ${l.page} 頁 ${l.label}`, l.title, l.url, hubNum(c && c.click), hubNum(c && c.uniqueClick)]);
   });
   ((data && data.clicks) || []).filter(c => !used.has(normUrl(c.url))).forEach(c => {
     if (used.has(`#${normUrl(c.url)}`)) return; used.add(`#${normUrl(c.url)}`);
     const tr = document.createElement('tr'); const td = document.createElement('td'); td.className = 'ttl'; td.textContent = `（其他連結）${c.url}`; tr.appendChild(td);
     const v = byUrl.get(normUrl(c.url));
     [v.click, v.uniqueClick].forEach(x => { const n = document.createElement('td'); n.className = 'num'; n.textContent = hubNum(x); tr.appendChild(n); });
-    t.appendChild(tr); rows.push(['（其他連結）', '', c.url, hubNum(v.click), hubNum(v.uniqueClick)]);
+    t.appendChild(tr);
   });
   if (!links.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 3; td.className = 'dim'; td.textContent = '這筆沒有記下每則訊息的連結（早期排程沒有記錄）。'; tr.appendChild(td); t.appendChild(tr); }
   if (data) {
     const ov = data.overview || {}, sum = document.createElement('tr'); sum.className = 'sum';
     [`整則推播：送達 ${hubNum(ov.delivered)} 則訊息、開啟 ${hubNum(ov.uniqueImpression)} 人（右側＝點了任何連結的不重複人數）`, '', hubNum(ov.uniqueClick)].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i) td.className = 'num'; sum.appendChild(td); });
-    t.appendChild(sum); rows.push(['整則推播', `送達 ${hubNum(ov.delivered)} 則訊息、開啟 ${hubNum(ov.uniqueImpression)} 人`, '', '', hubNum(ov.uniqueClick)]);
+    t.appendChild(sum);
   }
   box.appendChild(t);
-  hubLastTable = rows;
   const msg = document.createElement('div'); msg.className = 'line-note'; msg.style.whiteSpace = 'pre-wrap';
   const lines = [];
   if (rec.status !== 'sent') lines.push(rec.status === 'scheduled' ? '還沒發送，發送後才有點擊統計。' : '這筆沒有發送成功，沒有點擊統計。');
@@ -7180,10 +7191,10 @@ function hubStatsRender() {
   const acts = document.createElement('div'); acts.className = 'hub-bar2';
   if (rec.status === 'sent') {
     const rf = document.createElement('button'); rf.type = 'button'; rf.id = 'hubStatsRefresh'; rf.textContent = '重新整理統計'; rf.disabled = !!st.busy; rf.addEventListener('click', () => hubStatsLoad(rec.id, true));
-    const cpy = document.createElement('button'); cpy.type = 'button'; cpy.id = 'hubStatsCopy'; cpy.textContent = '複製成表格';
+    const cpy = document.createElement('button'); cpy.type = 'button'; cpy.id = 'hubStatsCopy'; cpy.textContent = '複製點擊排序';
     cpy.addEventListener('click', async () => {
-      const tsv = hubLastTable.map(r => r.map(v => String(v).replace(/[\t\n]+/g, ' ')).join('\t')).join('\n');
-      try { await navigator.clipboard.writeText(tsv); cpy.textContent = '已複製'; setTimeout(() => { cpy.textContent = '複製成表格'; }, 1500); } catch (e) { statusEl.show('無法複製，請手動選取表格', 'error'); }
+      if (!data) { statusEl.show('目前還沒有點擊統計可以複製（按「重新整理統計」再試）', 'error'); return; }
+      try { await navigator.clipboard.writeText(rankText()); cpy.textContent = '已複製'; setTimeout(() => { cpy.textContent = '複製點擊排序'; }, 1500); } catch (e) { statusEl.show('無法複製，請手動選取表格', 'error'); }
     });
     acts.append(rf, cpy);
   }

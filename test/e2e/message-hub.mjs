@@ -75,7 +75,7 @@ await page.route(`${WORKER}/**`, async route => {
   }
   return json({ error: `unexpected ${url.pathname}` }, 404);
 });
-await page.addInitScript(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token', expiresAt: Date.now() + 3600e3 })); window.__opened = []; window.open = (u) => { window.__opened.push(u); return {}; }; });
+await page.addInitScript(() => { sessionStorage.setItem('labAuth', JSON.stringify({ token: 'lab-token', expiresAt: Date.now() + 3600e3 })); window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async t => { window.__copied.push(t); } } }); window.__opened = []; window.open = (u) => { window.__opened.push(u); return {}; }; });
 await page.goto(`${BASE}?imageProxy=${encodeURIComponent(WORKER)}`);
 await page.evaluate(() => { setLab(true); });
 const txt = id => page.textContent(id);
@@ -120,6 +120,13 @@ await page.locator('#hubDetail').screenshot({ path: path.join(SHOTS, 'hub-2-deta
 await page.click('#hubStatsRefresh');
 await page.waitForFunction(() => document.querySelectorAll('#hubDetail table tr').length === 6);
 check(reqs.stats.at(-1).force === true, '「重新整理統計」：force=true 重新向 LINE 查');
+// 複製點擊排序：第一行「YYMMDD早間／晚間line新聞推播排名」，之後每行「★每格訊息標題 -累計點擊次數」，點擊多的在前
+check((await txt('#hubStatsCopy')) === '複製點擊排序', '按鈕叫「複製點擊排序」');
+await page.click('#hubStatsCopy');
+const hh = Number(A.sentAt.slice(11, 13)), hd = A.sentAt.slice(2, 4) + A.sentAt.slice(5, 7) + A.sentAt.slice(8, 10);
+const copied1 = (await page.evaluate(() => window.__copied)).at(-1);
+check(copied1 === `${hd}${hh < 15 ? '早間' : '晚間'}line新聞推播排名\n★蔣萬安專訪 -1234\n★颱風動態 -—\n★賽事結果 -—`, `複製內容：${JSON.stringify(copied1)}`);
+check((await txt('#hubStatsCopy')) === '已複製', '複製後按鈕短暫顯示「已複製」');
 // 改名
 await page.click('#hubRenameBtn');
 await page.fill('#hubRenameInp', '10/09 晚間重點');
@@ -139,6 +146,9 @@ await page.evaluate(() => {
 });
 trs = await page.$$eval('#hubDetail table.hub-tbl tr', t => t.map(tr => [...tr.children].map(c => c.textContent)));
 check(trs[1][1] === '77' && trs[1][2] === '66' && trs[2][1] === '77' && trs[2][2] === '66' && trs[3][1] === '21' && trs[3][2] === '20', '每一格各自寫出對應的點擊次數與點擊人數（網址只差結尾斜線也對得上）');
+await page.click('#hubStatsCopy');
+const copied2 = (await page.evaluate(() => window.__copied)).at(-1).split('\n');
+check(copied2.slice(1).join('|') === '★格一 -77|★格三 -21', `同一個連結只列一行、點擊多的在前（星號自動補上）：${copied2.slice(1).join(' / ')}`);
 check(trs[1][0].includes('和另外 1 格是同一個連結') && trs[2][0].includes('和另外 1 格是同一個連結') && !trs[3][0].includes('同一個連結'), '同一個連結用在兩格時，註明 LINE 合併計算、數字相同');
 await page.evaluate(() => { hubFor('news').records = hubFor('news').records.filter(r => r.id !== 'f'.repeat(24)); hubCloseDetail(); });
 
