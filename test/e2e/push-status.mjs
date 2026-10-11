@@ -50,7 +50,7 @@ const st = await page.evaluate(() => {
   return { pos: getComputedStyle(document.getElementById('pushBubbles')).position, z: +getComputedStyle(document.getElementById('pushBubbles')).zIndex, bg: cs.backgroundColor, dbg: ds.backgroundColor, rad: cs.borderRadius, drad: ds.borderRadius, sh: cs.boxShadow, dsh: ds.boxShadow, pad: cs.padding, dpad: ds.padding, right: innerWidth - r.right, bottom: innerHeight - r.bottom, maxZ: Math.max(...[...document.querySelectorAll('body *')].map(e => +getComputedStyle(e).zIndex || 0).filter(n => n < 600)) };
 });
 check(st.pos === 'fixed' && st.z > st.maxZ, `泡泡固定在視窗上、層級 ${st.z} 高於其他所有元素（${st.maxZ}）`);
-check(st.bg === st.dbg && st.rad === st.drad && st.sh === st.dsh && st.pad === st.dpad, `外框跟底部工具列相同：底色 ${st.bg}、圓角 ${st.rad}、陰影、內距`);
+check(st.bg === 'rgb(255, 255, 255)' && st.rad === st.drad && st.pad === st.dpad, `白色底色（${st.bg}），圓角 ${st.rad}、內距跟底部工具列相同`);
 check(st.right < 40 && st.bottom < 40, `在網頁最右下角、蓋住操作提示（距右 ${Math.round(st.right)}px、距下 ${Math.round(st.bottom)}px）`);
 const spin = await page.evaluate(() => getComputedStyle(document.querySelector('#pushBubbles .pb-spin')).display);
 check(spin !== 'none', '「訊息推播中」帶轉圈圈');
@@ -66,16 +66,19 @@ check((await bubbles()).join(',') === '10/11新聞｜已發送', '泡泡更新�
 const callsAtSent = listCalls;
 await page.waitForTimeout(11000);
 check(listCalls === callsAtSent, '已發送之後不再輪詢（剩下的排程還沒到時間）');
-check((await bubbles()).length === 0, '已發送的泡泡約 8 秒後自動收起');
+check((await bubbles()).length === 0, '已發送的泡泡 5 秒後自動收起');
 
-// 失敗要留著、可以手動關
-const FAIL = { ...SCHED, id: 'x'.repeat(24), name: '10/13新聞', status: 'failed', lastError: 'x' };
+// 預設 5 秒自動消失；5 秒內也可以按 × 先關
 await page.evaluate(() => pushBubble('t', '10/13新聞', 'failed'));
-await page.waitForTimeout(9000);
-check((await bubbles()).join(',') === '10/13新聞｜發送失敗', '發送失敗的泡泡不會自己消失');
+await page.waitForTimeout(3500);
+check((await bubbles()).join(',') === '10/13新聞｜發送失敗', '3.5 秒時泡泡還在');
+await page.waitForTimeout(2300);
+check((await bubbles()).length === 0, '約 5 秒後自動消失（連發送失敗也一樣）');
+await page.evaluate(() => pushBubble('t2', '10/13新聞', 'failed')); await page.waitForTimeout(500);
 await page.click('#pushBubbles .pb-x');
 await page.waitForTimeout(500);
-check((await bubbles()).length === 0, '按 × 可以關掉');
+check((await bubbles()).length === 0, '按 × 可以馬上關掉');
+const FAIL = null;
 void FAIL;
 
 check(pageErrors.length === 0, `頁面沒有 JS 錯誤${pageErrors.length ? '：' + pageErrors.join(' | ') : ''}`);

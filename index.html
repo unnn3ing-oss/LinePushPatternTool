@@ -725,19 +725,19 @@
   }
   /* ---- 推播狀態泡泡：右下角彈出、蓋在所有視窗之上；外框跟底部工具列（.dock）一樣 ---- */
   #pushBubbles { position: fixed; right: 20px; bottom: 20px; transition: right .3s ease, bottom .3s ease; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
-  .push-bubble { display: flex; align-items: center; gap: 10px; max-width: 100%; box-sizing: border-box; background: #1f2328; color: #fff; padding: 10px 18px; border-radius: 36px; box-shadow: 0 8px 30px rgba(0, 0, 0, .35); font-size: 14px; font-weight: 600; opacity: 0; transform: translateX(32px); transition: opacity .3s ease, transform .3s ease; }
+  .push-bubble { display: flex; align-items: center; gap: 10px; max-width: 100%; box-sizing: border-box; background: #fff; color: #1f2328; border: 1px solid rgba(0, 0, 0, .08); padding: 10px 18px; border-radius: 36px; box-shadow: 0 8px 30px rgba(0, 0, 0, .2); font-size: 14px; font-weight: 600; opacity: 0; transform: translateX(32px); transition: opacity .3s ease, transform .3s ease; }
   .push-bubble.show { opacity: 1; transform: none; }
   .push-bubble .pb-name { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
-  .push-bubble .pb-sep { opacity: .45; }
-  .push-bubble .pb-st { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 12px; border-radius: 99px; font-size: 13px; font-weight: 700; background: rgba(255, 255, 255, .18); color: #fff; }
+  .push-bubble .pb-sep { opacity: .3; }
+  .push-bubble .pb-st { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 12px; border-radius: 99px; font-size: 13px; font-weight: 700; background: #eef0f3; color: #475569; }
   .push-bubble .pb-st.scheduled { background: #dbeafe; color: #1e40af; }
   .push-bubble .pb-st.sending { background: #fbf0cf; color: #854d0e; }
   .push-bubble .pb-st.sent { background: #dcfce7; color: #166534; }
   .push-bubble .pb-st.failed, .push-bubble .pb-st.missed { background: #fee2e2; color: #991b1b; }
   .push-bubble .pb-spin { display: none; width: 11px; height: 11px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pbspin .8s linear infinite; }
   .push-bubble .pb-st.sending .pb-spin { display: inline-block; }
-  .push-bubble .pb-x { pointer-events: auto; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .14); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; }
-  .push-bubble .pb-x:hover { background: rgba(255, 255, 255, .3); }
+  .push-bubble .pb-x { pointer-events: auto; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: #eef0f3; color: #475569; font-size: 14px; line-height: 1; cursor: pointer; }
+  .push-bubble .pb-x:hover { background: #dde1e7; color: #1f2328; }
   @keyframes pbspin { to { transform: rotate(360deg); } }
   .status-toast {
     position: fixed;
@@ -6975,7 +6975,7 @@ function hubListRender() {
 // 每個發送狀態都用「訊息名稱＋訊息狀態」從右下角彈出泡泡（外框跟底部工具列一樣，蓋在所有視窗之上）。
 // 排程訊息：時間一到就先顯示「訊息推播中」（不用等 Worker 的 Cron），之後約每 10 秒向 Worker 查一次發送狀態，直到「已發送」（或失敗、逾時、取消）。
 const PUSH_STATUS = { scheduled: '排程中', sending: '訊息推播中', sent: '已發送', failed: '發送失敗', missed: '逾時未發', cancelled: '已取消' };
-const PUSH_POLL_MS = 10000, PUSH_BUBBLE_LINGER_MS = 8000;
+const PUSH_POLL_MS = 10000, PUSH_BUBBLE_LINGER_MS = 5000;   // 泡泡預設停留 5 秒（狀態有變會重新彈出再計 5 秒），也可以按 × 先關
 const pushBubbleEls = new Map();   // key → { el, timer }
 function pushBubbleClose(key) {
   const b = pushBubbleEls.get(key); if (!b) return;
@@ -7027,7 +7027,7 @@ function pushBubble(key, name, status, label) {
   b.el.dataset.status = status;
   clearTimeout(b.timer);
   pushBubblePlace();   // 內容變了、寬度跟著變
-  if (status === 'sent' || status === 'cancelled') b.timer = setTimeout(() => pushBubbleClose(key), PUSH_BUBBLE_LINGER_MS);   // 失敗、逾時要看到才算數，自己按 × 關
+  b.timer = setTimeout(() => pushBubbleClose(key), PUSH_BUBBLE_LINGER_MS);
 }
 // 排程到時間就先當作「訊息推播中」。時間以 Worker 的時鐘為準（每次讀列表時記下與本機的差）；超過 3 分鐘還沒送出，就不再說「推播中」，改顯示「逾時未發」
 const PUSH_OVERDUE_MS = 3 * 60 * 1000, PUSH_LOCK_MS = 30 * 1000;

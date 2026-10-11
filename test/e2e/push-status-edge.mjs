@@ -102,13 +102,17 @@ check((await bubbles()).filter(x => x.startsWith('推播狀態查詢')).length =
 
 // 8. 位置：沒有彈窗時在「操作提示」左側（被底部工具列擠掉時靠右下角、壓到工具列就抬高）；有彈窗時蓋住操作提示（整個網頁最右下角）
 await page.evaluate(() => { for (const k of [...pushBubbleEls.keys()]) pushBubbleClose(k); document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open')); pushBubble('a', '10/11新聞', 'sending'); pushBubble('b', '10/11新聞（測試）', 'sent'); });
-const geo = () => page.evaluate(() => {
+const geo = async () => {
+  await page.evaluate(() => { pushBubble('a', '10/11新聞', 'sending'); pushBubble('b', '10/11新聞（測試）', 'sent'); });   // 泡泡 5 秒就消失，每次量位置前重新彈出
+  await page.waitForTimeout(900);
+  return page.evaluate(() => {
   const bx = document.getElementById('pushBubbles').getBoundingClientRect(), tip = document.getElementById('tipToast'), fab = document.getElementById('tipFab'), col = tip.classList.contains('tip-collapsed'), el = col ? fab : tip;
   const hid = el.classList.contains('tip-yield'), t = el.getBoundingClientRect(), d = document.getElementById('dock').getBoundingClientRect();
   const kids = [...document.querySelectorAll('#pushBubbles .push-bubble')].map(e => e.getBoundingClientRect());
   const L = Math.min(...kids.map(k => k.left)), R = Math.max(...kids.map(k => k.right)), T = Math.min(...kids.map(k => k.top)), B = Math.max(...kids.map(k => k.bottom));
   return { bR: innerWidth - R, bB: innerHeight - B, hid, col, tipL: t.left, overlapDock: L < d.right && R > d.left && T < d.bottom && B > d.top, overlapTip: !hid && L < t.right && R > t.left && T < t.bottom && B > t.top };
-});
+  });
+};
 await page.setViewportSize({ width: 2400, height: 900 }); await page.evaluate(() => setTipCollapsed(false)); await page.waitForTimeout(900);
 let g = await geo();
 check(!g.col && !g.hid && !g.overlapTip && !g.overlapDock && Math.abs(g.bB - 20) < 3 && g.bR > 20 + 372, `寬螢幕、操作提示展開：泡泡在它左側，不壓到操作提示與工具列（距右 ${Math.round(g.bR)}px、距下 ${Math.round(g.bB)}px）`);
