@@ -84,7 +84,7 @@
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
 | `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給操作者一位（每次最多 1 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
 | `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
-| `POST /line/testers/list`｜`remove` | 查看／移除成員名單（回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 權限管理」列表用，需要試驗功能憑證）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
+| `POST /line/testers/list`｜`remove`｜`rename` | 查看／移除／改名成員名單（`rename` 帶 `tid`＋`name`，只改名字、userId 不變、不問 LINE，同一個帳號內名字不能重複；回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 權限管理」列表用，需要試驗功能憑證）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
 | `POST /line/testers/lookup`｜`add` | 貼上對方的 LINE userId（`name` 可自己填，不填就用 LINE 暱稱）→ Worker 用該帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效；`add` 驗證通過才存（正式帳號上限 20 人、測試帳號 50 人）。測試帳號也能這樣加，不一定要傳「登記」 |
 | `POST /line/schedule/*` | 排程推播：建立、查看、變更時間、刪除（見下一節） |
 | `POST /line/clicks` | 用發送時 LINE 回的 request id，查這次群發每個連結的點擊次數與人數（`GET /v2/bot/insight/message/event`，唯讀） |

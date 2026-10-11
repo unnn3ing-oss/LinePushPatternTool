@@ -1118,6 +1118,7 @@ async function handleLineSend(request, env) {
 //                              使用者傳「登記」→ 記下 userId＋暱稱（回覆「已加入測試名單」，reply 不計額度）；加好友或傳別的字 → 回覆提示；封鎖／刪除好友 → 自動從名單移除
 //   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）。body.channel：test（預設）｜news｜ent
 //   POST /line/testers/remove  從名單移除（同上，可指定 channel）
+//   POST /line/testers/rename  改名單裡某位的名字（只改名字，不問 LINE；userId 不變。同一個帳號的名單裡名字不能重複）
 //   POST /line/testers/lookup  （只有 news／ent）貼上 LINE userId → 向該帳號查 profile 驗證有效，回暱稱，不存
 //   POST /line/testers/add     （只有 news／ent）同上，驗證通過才加入該帳號的測試名單（上限 20 人）
 // 新聞／娛樂帳號的 webhook 屬於 S8，這裡完全不碰：正式帳號的測試名單不靠 webhook，而是管理者從 S8 客戶中心複製 userId 貼進來，再由 LINE 的 profile 驗證。
@@ -1177,6 +1178,13 @@ async function handleLineTesters(request, env, action) {
       const rec = await lineTesterGet(env, body.tid, ch);
       if (!rec) throw Object.assign(new Error('名單裡找不到這位'), { status: 404 });
       await lineR2(env).delete(`${lineTesterDir(ch)}${rec.tid}.json`);
+    } else if (action === 'rename') {
+      const rec = await lineTesterGet(env, body.tid, ch);
+      if (!rec) throw Object.assign(new Error('名單裡找不到這位'), { status: 404 });
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 40) : '';
+      if (!name) throw badInput('名字不能是空的');
+      if ((await lineTesterAll(env, ch)).some(t => t.tid !== rec.tid && t.name === name)) throw Object.assign(new Error(`名單裡已經有「${name}」了，名字不能重複（操作人是用名字對應的）`), { status: 409 });
+      await lineR2(env).put(`${lineTesterDir(ch)}${rec.tid}.json`, JSON.stringify({ ...rec, name, updatedAt: Date.now() }), { httpMetadata: { contentType: 'application/json' } });
     } else if (action === 'lookup' || action === 'add') {
       // 管理者手動貼上 LINE userId（正式帳號可從 S8 客戶中心複製；測試帳號也可以不用傳「登記」直接貼），名字可自己填；Worker 先向 LINE 查 profile 驗證「這個 ID 在這個帳號有效」才存。
       const userId = String(body.userId || '').trim();
@@ -1500,6 +1508,7 @@ export default {
     if (path === '/line/webhook') return handleLineWebhook(request, env);
     if (path === '/line/testers/list') return handleLineTesters(request, env, 'list');
     if (path === '/line/testers/remove') return handleLineTesters(request, env, 'remove');
+    if (path === '/line/testers/rename') return handleLineTesters(request, env, 'rename');
     if (path === '/line/testers/lookup') return handleLineTesters(request, env, 'lookup');
     if (path === '/line/testers/add') return handleLineTesters(request, env, 'add');
     if (path === '/line/schedule/create') return handleLineScheduleCreate(request, env);

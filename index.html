@@ -272,6 +272,8 @@
   .line-trow span { font-size: 14px; color: var(--text); }
   .line-trow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; }
   .line-trow button { padding: 2px 12px; font-size: 13px; }
+  .line-tact { display: inline-flex; gap: 6px; flex: none; }
+  .line-trename { flex: 1 1 140px; min-width: 0; max-width: 220px; padding: 2px 8px; border: 1px solid rgba(0, 0, 0, .25); border-radius: 8px; font: inherit; font-size: 14px; }
   .line-chip { display: inline-block; padding: 1px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: rgba(0, 0, 0, .08); color: var(--text); }
   .line-chip.scheduled { background: #dbeafe; color: #1e40af; }
   .line-chip.sending { background: #fbf0cf; }
@@ -7459,15 +7461,42 @@ function lineTesterListRender() {
     const nm = document.createElement('span'); nm.textContent = t.name;
     const code = document.createElement('code'); code.textContent = t.userId || '';
     mem.append(nm, code);
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = '移除';
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.act = 'remove'; b.textContent = '移除';
     b.addEventListener('click', async () => {
       if (!window.confirm(`從「${lineWhoAcct(ch)}」的名單移除「${t.name}」嗎？\n\n移除後測試推播不會再發給他；${ch === 'test' ? '他可以再傳「登記」重新加入，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
       try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; lineOpRevalidate(); }
       catch (e) { window.alert(`移除失敗：${e.message || e}`); }
       lineOpRender(); lineTesterListRender(); lineUpdateSteps();
     });
-    row.append(mem, b); box.appendChild(row);
+    const rn = document.createElement('button'); rn.type = 'button'; rn.dataset.act = 'rename'; rn.textContent = '改名';
+    rn.addEventListener('click', () => lineTesterRenameEdit(row, mem, t, ch, w));
+    const acts = document.createElement('span'); acts.className = 'line-tact'; acts.append(rn, b);
+    row.append(mem, acts); box.appendChild(row);
   });
+}
+// 改名：只改這個帳號名單裡的名字（userId 不變）。操作人是用「名字」跨帳號對應的，所以改完要提醒其他帳號的名單也要同名
+function lineTesterRenameEdit(row, mem, t, ch, w) {
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'line-trename'; inp.maxLength = 40; inp.value = t.name; inp.setAttribute('aria-label', `「${t.name}」的新名字`);
+  const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = '儲存';
+  const no = document.createElement('button'); no.type = 'button'; no.textContent = '取消';
+  const acts = document.createElement('span'); acts.className = 'line-tact'; acts.append(ok, no);
+  const name = mem.firstChild; mem.replaceChild(inp, name); row.replaceChild(acts, row.lastChild);
+  const cancel = () => lineTesterListRender();
+  const save = async () => {
+    const v = inp.value.trim();
+    if (!v || v === t.name) { cancel(); return; }
+    ok.disabled = no.disabled = inp.disabled = true;
+    try {
+      const r = await s8Api('/line/testers/rename', { channel: ch, tid: t.tid, name: v });
+      w.testers = r.testers || [];
+      if (lineOp === t.name) lineOpSet(v);   // 目前的操作人被改名：跟著改，之前的測試推播會作廢、要重測
+      lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
+      const o = $line('lineAddOut'); if (o) { o.classList.remove('bad'); o.textContent = `✓ 已把「${t.name}」改名為「${v}」。同一個人在其他帳號的名單也要改成同名，才會被當成同一位操作人。`; }
+    } catch (e) { window.alert(`改名失敗：${e.message || e}`); ok.disabled = no.disabled = inp.disabled = false; inp.focus(); }
+  };
+  ok.addEventListener('click', save); no.addEventListener('click', cancel);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } else if (e.key === 'Escape') { e.stopPropagation(); cancel(); } });
+  inp.focus(); inp.select();
 }
 // 新增成員：先「查詢」（向 LINE 驗證並顯示暱稱），確認是對的人再「加入名單」
 let lineAddFound = null;

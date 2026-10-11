@@ -763,6 +763,30 @@ test('測試名單端點要試驗功能憑證；remove 只移除指定的人', a
   assert.equal((await req(env, '/line/testers/remove', { tid: '../x' })).status, 404);
 });
 
+test('testers/rename：要憑證；只改名字（userId 不變）、不呼叫 LINE；空白／重複／不存在／格式不對都擋', async () => {
+  const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
+  try {
+    assert.equal((await req(env, '/line/testers/rename', { tid: TID, name: 'x' }, { auth: false })).status, 401);
+    seedTester(env); seedTester(env, TESTER_UID2, '李小華');
+    const before = line.calls.length;
+    const r = await req(env, '/line/testers/rename', { tid: TID, name: '  王大明  ' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.testers.map(t => t.name), ['王大明', '李小華']);
+    assert.equal(r.json.testers[0].userId, TESTER_UID, 'userId 不變');
+    assert.equal(line.calls.length, before, '改名不問 LINE');
+    assert.equal((await req(env, '/line/testers/rename', { tid: TID, name: '李小華' })).status, 409, '同帳號名單內不能重名');
+    assert.equal((await req(env, '/line/testers/rename', { tid: TID, name: '王大明' })).status, 200, '改成自己現在的名字不算重複');
+    assert.equal((await req(env, '/line/testers/rename', { tid: TID, name: '   ' })).status, 400);
+    assert.equal((await req(env, '/line/testers/rename', { tid: TID })).status, 400);
+    assert.equal((await req(env, '/line/testers/rename', { tid: TID, name: 123 })).status, 400);
+    assert.equal((await req(env, '/line/testers/rename', { tid: '../x', name: 'a' })).status, 404);
+    assert.equal((await req(env, '/line/testers/rename', { tid: 'f'.repeat(16), name: 'a' })).status, 404);
+    assert.equal((await req(env, '/line/testers/rename', { channel: 'bad', tid: TID, name: 'a' })).status, 400);
+    const long = (await req(env, '/line/testers/rename', { tid: TID, name: 'z'.repeat(60) })).json.testers[0].name;
+    assert.equal(long.length, 40, '名字最長 40 字');
+  } finally { line.restore(); }
+});
+
 test('send（測試帳號）：沒選收件人、超過 1 位（只傳給操作者本人）、名單外的人 → 400，完全沒呼叫 LINE', async () => {
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {

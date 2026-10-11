@@ -36,7 +36,7 @@ const D = rec({ id: 'd'.repeat(24), name: '10/08新聞', test: true, altText: '�
 const E = rec({ id: 'e'.repeat(24), kind: 'sched', name: '10/07新聞', altText: '★失敗稿', status: 'failed', runAt: NOW - 2 * 86400e3, runAtIso: iso(NOW - 2 * 86400e3), lastError: '發送當下好友數差太多', links: [] });
 const ENT = rec({ id: '9'.repeat(24), channel: 'ent', org: 'ent', name: '10/09娛樂', altText: '★娛樂', runAt: NOW - 7200e3, runAtIso: iso(NOW - 7200e3), sentAt: iso(NOW - 7200e3), friends: 50000, requestId: '44444444-4444-4444-8444-444444444444' });
 const db = { news: [A, B, C, D, E], ent: [ENT], test: [] };
-const reqs = { list: [], stats: [], rename: [], cancel: [], status: [], testers: [], lookup: [], add: [], remove: [] };
+const reqs = { list: [], stats: [], rename: [], trename: [], cancel: [], status: [], testers: [], lookup: [], add: [], remove: [] };
 let heartbeat = NOW, statsMode = 'ok', statsFail = '';
 const testersDb = { news: [{ tid: '1'.repeat(16), name: '小編本人', userId: 'U0123456789abcdef0123456789abcdef', registeredAt: 1 }], ent: [], test: [{ tid: 'a'.repeat(16), name: '王小明', userId: 'U' + 'a'.repeat(32), registeredAt: 1 }] };
 const UID2 = 'U' + 'd'.repeat(32);
@@ -66,6 +66,7 @@ await page.route(`${WORKER}/**`, async route => {
     return json({ ok: true, channel: body.channel, r2Ready: true, heartbeatAt: heartbeat, serverNow: Date.now(), officialAllowed: false, bot: { displayName: body.channel === 'test' ? '測試官方帳號' : 'TVBS新聞', basicId: '@abc' }, quota: body.channel === 'test' ? { type: 'limited', value: 200 } : { type: 'none' }, used: body.channel === 'test' ? 36 : 17266349, followers: body.channel === 'test' ? null : { status: 'ready', followers: 287091 }, notes: [] });
   }
   if (url.pathname === '/line/testers/list') { reqs.testers.push(body); return json({ ok: true, channel: body.channel, testers: testersDb[body.channel], maxPerSend: 2 }); }
+  if (url.pathname === '/line/testers/rename') { reqs.trename.push(body); const t = testersDb[body.channel].find(x => x.tid === body.tid); if (!t) return json({ error: '名單裡找不到這位' }, 404); if (testersDb[body.channel].some(x => x.tid !== body.tid && x.name === body.name)) return json({ error: `名單裡已經有「${body.name}」了` }, 409); t.name = body.name; return json({ ok: true, testers: testersDb[body.channel], maxPerSend: 2 }); }
   if (url.pathname === '/line/testers/remove') { reqs.remove.push(body); testersDb[body.channel] = testersDb[body.channel].filter(t => t.tid !== body.tid); return json({ ok: true, testers: testersDb[body.channel], maxPerSend: 2 }); }
   if (url.pathname === '/line/testers/lookup' || url.pathname === '/line/testers/add') {
     const add = url.pathname.endsWith('add'); (add ? reqs.add : reqs.lookup).push(body);
@@ -202,9 +203,30 @@ check(reqs.lookup.at(-1).channel === 'news' && reqs.lookup.at(-1).name === '主�
 await page.click('#lineAddOk');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 2);
 check(reqs.add.at(-1).name === '主播小美' && (await txt('#lineTesterList')).includes('主播小美') && (await txt('#lineTesterList')).includes(UID2) && (await page.inputValue('#lineAddUid')) === '' && (await page.inputValue('#lineAddName')) === '', '「加入名單」：列表多一位（名字＋userId），輸入框清空');
-await page.click('#lineTesterList .line-trow:last-child button');
+// 改名：每位成員有「改名」與「移除」；改名是行內輸入，Enter／儲存送出，Esc／取消放棄
+check(await page.locator('#lineTesterList .line-trow:last-child button[data-act=rename]').count() === 1 && await page.locator('#lineTesterList .line-trow:last-child button[data-act=remove]').count() === 1, '每位成員有「改名」與「移除」兩個按鈕');
+await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+check(await page.inputValue('#lineTesterList .line-trename') === '主播小美' && await page.evaluate(() => document.activeElement.classList.contains('line-trename')), '按「改名」：名字變成輸入框（帶入原名、已聚焦）');
+await page.keyboard.press('Escape');
+check(await page.locator('#lineTesterList .line-trename').count() === 0 && reqs.trename.length === 0 && (await txt('#lineTesterList')).includes('主播小美'), 'Esc：放棄，沒有送出');
+await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+await page.fill('#lineTesterList .line-trename', '   ');
+await page.keyboard.press('Enter');
+check(reqs.trename.length === 0 && await page.locator('#lineTesterList .line-trename').count() === 0, '空白名字：不送出、回到列表');
+await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+await page.fill('#lineTesterList .line-trename', '主播美美');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('lineTesterList').textContent.includes('主播美美'));
+check(reqs.trename.at(-1).channel === 'news' && reqs.trename.at(-1).tid === '2'.repeat(16) && reqs.trename.at(-1).name === '主播美美' && (await txt('#lineTesterList')).includes(UID2) && !(await txt('#lineTesterList')).includes('主播小美') && (await txt('#lineAddOut')).includes('改名為「主播美美」'), '改名：只送這個帳號、這位的 tid 與新名字；userId 不變，並提醒其他帳號也要同名');
+await page.click('#lineTesterList .line-trow:last-child button[data-act=rename]');
+await page.fill('#lineTesterList .line-trename', '小編本人');
+await page.click('#lineTesterList .line-trow:last-child button:has-text("儲存")');
+await page.waitForTimeout(300);
+check(dialogs.at(-1).includes('改名失敗') && dialogs.at(-1).includes('已經有「小編本人」') && await page.locator('#lineTesterList .line-trename').count() === 1, '名字跟名單內其他人重複：Worker 擋下，顯示原因、輸入框保留可再改');
+await page.keyboard.press('Escape');
+await page.click('#lineTesterList .line-trow:last-child button[data-act=remove]');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
-check(reqs.remove.at(-1).channel === 'news' && reqs.remove.at(-1).tid === '2'.repeat(16) && dialogs.at(-1).includes('主播小美'), '移除成員：先確認，只動這個帳號的名單');
+check(reqs.remove.at(-1).channel === 'news' && reqs.remove.at(-1).tid === '2'.repeat(16) && dialogs.at(-1).includes('主播美美'), '移除成員：先確認，只動這個帳號的名單');
 // 快速回覆的「搜尋網站網址」在這個分頁設定（所有推播共用，記在瀏覽器）
 check(await vis('#qrTpl') && (await txt('#hubSet')).includes('快速回覆設定'), '「LINE推播設定」有「快速回覆設定 → 搜尋網站網址」');
 await page.fill('#qrTpl', 'https://news.example.com/search?q={keyword}');
