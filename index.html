@@ -724,7 +724,7 @@
     touch-action: none;
   }
   /* ---- 推播狀態泡泡：右下角彈出、蓋在所有視窗之上；外框跟底部工具列（.dock）一樣 ---- */
-  #pushBubbles { position: fixed; right: 20px; bottom: 82px; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
+  #pushBubbles { position: fixed; right: 20px; bottom: 82px; transition: bottom .2s ease; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
   .push-bubble { display: flex; align-items: center; gap: 10px; max-width: 100%; box-sizing: border-box; background: #1f2328; color: #fff; padding: 10px 18px; border-radius: 36px; box-shadow: 0 8px 30px rgba(0, 0, 0, .35); font-size: 14px; font-weight: 600; opacity: 0; transform: translateX(32px); transition: opacity .3s ease, transform .3s ease; }
   .push-bubble.show { opacity: 1; transform: none; }
   .push-bubble .pb-name { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
@@ -5303,6 +5303,7 @@ function setLab(on) {
   labToggle.setAttribute('aria-pressed', String(on));
   try { sessionStorage.setItem('labOn', on ? '1' : '0'); } catch (e) { /* tab-only convenience */ }
   cellSelected = false; headerSelected = false;
+  if (!on && typeof pushWatchStop === 'function') pushWatchStop();
   s8UpdatePill();
   syncChrome();
   render();
@@ -6596,7 +6597,7 @@ async function lineTestRun() {
   if (st.test === 'ok' || st.test === 'bad') st.retryKey.test = '';   // 再推一次是另一次發送，要換一把重試金鑰（否則 LINE 會當成同一筆而不發）
   const needPrep = !st.prep || Date.now() - st.prep.at > LINE_PREP_FRESH_MS;
   st.test = 'busy'; st.testMsg = needPrep ? '傳送資料中…（約數秒）' : '推播中…'; st.testNote = ''; lineWin('', ''); lineUpdateSteps();
-  const tKey = `test:${Date.now()}`, tName = `${pushMsgName(Date.now())}（測試）`;
+  const tKey = `test:${Date.now()}`, tName = `${pushMsgName(Date.now(), pushOrgOf(st))}（測試）`;
   try {
     if (needPrep) { await linePrepare(st); st.testMsg = '推播中…'; lineUpdateSteps(); }
     pushBubble(tKey, tName, 'sending');
@@ -6666,7 +6667,8 @@ $line('lineCfmTotal').addEventListener('keydown', e => { if (e.key === 'Enter' &
 async function lineFire() {
   const st = lineSt(), sched = st.way === 'sched'; if (st.step !== 4 || st.go === 'busy' || st.go === 'ok') return;
   st.go = 'busy'; st.goErr = ''; lineUpdateSteps();
-  let bubbleKey = '', bubbleName = '';
+  const org = pushOrgOf(st); let bubbleKey = '', bubbleName = '', called = false;
+  const fireKey = st.retryKey.official || (st.retryKey.official = crypto.randomUUID());   // 這次發送／排程的識別，同時用在重試金鑰與泡泡（重按會更新同一個泡泡）
   try {
     if (!st.prep || st.prep.sig !== lineSig()) throw new Error('內容有更動，請回到第 3 步重新推播測試');
     if (st.test !== 'ok' || !st.testToken) throw new Error('還沒有成功的測試推播');
@@ -6675,11 +6677,13 @@ async function lineFire() {
     let result;
     if (sched) {
       const when = lineWhenValue(); if (when.err) throw new Error(when.err);
-      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: st.acct, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow(), retryKey: st.retryKey.official || (st.retryKey.official = crypto.randomUUID()) });   // retryKey：回應遺失後重按，Worker 認得是同一筆，不會多排一筆
+      called = true;
+      const r = await s8Api('/line/schedule/create', { prepareToken: st.prep.prepareToken, channel: st.acct, runAt: when.iso, confirmTotal: typed, testToken: st.testToken, links: lineLinksNow(), retryKey: fireKey });   // retryKey：回應遺失後重按，Worker 認得是同一筆，不會多排一筆
       result = { kind: 'sched', when: `${when.text.slice(5, 10).replace('-', '/')} ${when.text.slice(11)}（台北時間）`, id: (r.schedule && r.schedule.id) || '' };
-      if (r.schedule && r.schedule.id) pushTrack({ id: r.schedule.id, channel: st.acct, name: r.schedule.name || pushMsgName(when.ms), runAt: Number.isFinite(r.schedule.runAt) ? r.schedule.runAt : when.ms, status: 'scheduled' });
+      pushBubbleClose(`sched-fail:${fireKey}`);
+      if (r.schedule && r.schedule.id) pushTrack({ id: r.schedule.id, channel: st.acct, name: r.schedule.name || pushMsgName(when.ms, org), runAt: Number.isFinite(r.schedule.runAt) ? r.schedule.runAt : when.ms, status: 'scheduled' });
     } else {
-      bubbleKey = `now:${st.retryKey.official || Date.now()}`; bubbleName = pushMsgName(Date.now());
+      bubbleKey = `now:${fireKey}`; bubbleName = pushMsgName(Date.now(), org); called = true;
       pushBubble(bubbleKey, bubbleName, 'sending');
       const r = await lineSend(st.acct, { confirmTotal: typed, testToken: st.testToken });
       pushBubble(bubbleKey, bubbleName, 'sent');
@@ -6689,8 +6693,11 @@ async function lineFire() {
     lineCfmClose(true);
   } catch (e) {
     st.go = 'bad';
-    if (sched) pushBubble(`sched-fail:${Date.now()}`, pushMsgName((lineWhenValue().ms) || Date.now()), 'failed', '排程失敗');
-    else if (bubbleKey) pushBubble(bubbleKey, bubbleName, 'failed');
+    if (called) {   // 還沒送到 Worker 就擋下的（內容有更動、沒測試…）不彈泡泡；網路斷掉這種「不知道有沒有成功」的要講清楚
+      const unsure = e && (e instanceof TypeError || e.name === 'AbortError' || /Failed to fetch|NetworkError|Load failed/i.test(String(e.message || '')));
+      const wm = sched ? ((lineWhenValue().ms) || Date.now()) : Date.now();
+      pushBubble(sched ? `sched-fail:${fireKey}` : bubbleKey, bubbleName || pushMsgName(wm, org), unsure ? 'missed' : 'failed', unsure ? '未確認，請至後台確認' : (sched ? '排程失敗' : undefined));
+    }
     st.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '\n\n若不確定有沒有建立，請到「訊息推播 → 推播列表」確認（同一次排程重按不會重複建立）。' : '\n\n若不確定有沒有發出去，請到 LINE 官方帳號後台確認（同一次發送重按不會重複發送）。'}`;
   }
   lineUpdateSteps();
@@ -6929,7 +6936,7 @@ async function hubListLoad(ch) {
   try {
     const r = await s8Api('/line/history/list', { channel: ch });
     d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true;
-    pushSyncList(ch, d.records);
+    pushSyncList(ch, d.records, d.serverNow, d.heartbeatAt);
   } catch (e) { d.error = String(e.message || e); }
   d.loading = false;
   if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
@@ -6975,8 +6982,18 @@ function pushBubbleClose(key) {
   clearTimeout(b.timer); pushBubbleEls.delete(key);
   b.el.classList.remove('show'); setTimeout(() => b.el.remove(), 350);
 }
+// 預設在右下角（工具列上方）；「排入LINE推播」視窗開著時，往上移到精靈底部按鈕列的上方，不蓋住「下一步」等按鈕
+function pushBubblePlace() {
+  const box = document.getElementById('pushBubbles'); if (!box) return;
+  const f = document.getElementById('lineFoot'); let bottom = 82;
+  if (f && f.offsetParent !== null) bottom = Math.min(Math.max(82, Math.round(innerHeight - f.getBoundingClientRect().top + 10)), Math.max(82, innerHeight - 140));
+  box.style.bottom = `${bottom}px`;
+}
+window.addEventListener('resize', pushBubblePlace);
+new MutationObserver(pushBubblePlace).observe(s8Overlay, { attributes: true, subtree: true, attributeFilter: ['class', 'hidden', 'data-view', 'style'] });
 function pushBubble(key, name, status, label) {
   const box = document.getElementById('pushBubbles'); if (!box) return;
+  pushBubblePlace();
   let b = pushBubbleEls.get(key);
   if (!b) {
     const el = document.createElement('div'); el.className = 'push-bubble';
@@ -6998,25 +7015,38 @@ function pushBubble(key, name, status, label) {
   clearTimeout(b.timer);
   if (status === 'sent' || status === 'cancelled') b.timer = setTimeout(() => pushBubbleClose(key), PUSH_BUBBLE_LINGER_MS);   // 失敗、逾時要看到才算數，自己按 × 關
 }
-// 排程到時間就先當作「訊息推播中」
-const pushEff = r => (r.status === 'scheduled' && Number.isFinite(r.runAt) && r.runAt <= Date.now() ? 'sending' : r.status);
-const pushWatch = new Map();   // 推播 id → { id, channel, name, runAt, status, shown }
-let pushWatchTimer = 0, pushWatchBusy = false;
+// 排程到時間就先當作「訊息推播中」。時間以 Worker 的時鐘為準（每次讀列表時記下與本機的差）；Cron 沒在跑、或超過 35 分鐘還沒送出，就不再說「推播中」，改顯示「逾時未發」
+const PUSH_OVERDUE_MS = 35 * 60 * 1000, PUSH_LOCK_MS = 60 * 1000;
+const pushClock = {};   // 帳號 → { skew: Worker 時間 − 本機時間, stale: Cron 心跳是否已中斷 }
+const pushNow = ch => Date.now() + ((pushClock[ch] && pushClock[ch].skew) || 0);
+function pushEff(r) {
+  if (r.status !== 'scheduled' || !Number.isFinite(r.runAt)) return r.status;
+  const now = pushNow(r.channel), over = now - r.runAt, c = pushClock[r.channel];
+  if (over < 0) return 'scheduled';
+  if (over > PUSH_OVERDUE_MS || (c && c.stale && over > 3 * 60 * 1000)) return 'missed';
+  return 'sending';
+}
+const pushLocked = r => r.status === 'scheduled' && Number.isFinite(r.runAt) && r.runAt - pushNow(r.channel) < PUSH_LOCK_MS;   // 距離發送不到 1 分鐘：Worker 不收取消
+const pushWatch = new Map();   // 推播 id → { id, channel, name, runAt, status, shown, locked }
+let pushWatchTimer = 0, pushWatchBusy = false, pushWatchPaused = false;
+const pushOrgOf = st => (st.acct === 'ent' || st.acct === 'news' ? st.acct : mode);   // 泡泡上的名稱用「推播帳號」的類別，不是目前畫面的模式
 function pushMsgName(ms, m) { const p = taipeiParts(ms); return `${pad2(p.mo)}/${pad2(p.d)}${(m || mode) === 'ent' ? '娛樂' : '新聞'}`; }
+function pushHubRefresh() { if (typeof hubIsOpen === 'function' && hubIsOpen()) { hubListRender(); if (hubDetailId) hubDetailRender(); } }
 function pushNotify(w, eff) {
   if (w.shown === eff) return;
   w.shown = eff; pushBubble(`rec:${w.id}`, w.name, eff);
-  if (typeof hubIsOpen === 'function' && hubIsOpen()) { hubListRender(); if (hubDetailId) hubDetailRender(); }
+  pushHubRefresh();
 }
 // 這次操作建立的排程：立刻彈「排程中」泡泡並開始追蹤
 function pushTrack(rec) {
   if (!rec || !rec.id) return;
   const prev = pushWatch.get(rec.id);
-  const w = { id: rec.id, channel: rec.channel, name: rec.name || rec.altText || '', runAt: rec.runAt, status: rec.status || 'scheduled', shown: prev ? prev.shown : null };
-  pushWatch.set(rec.id, w); pushNotify(w, pushEff(w)); pushWatchPlan();
+  const w = { id: rec.id, channel: rec.channel, name: rec.name || rec.altText || '', runAt: rec.runAt, status: rec.status || 'scheduled', shown: prev ? prev.shown : null, locked: false };
+  pushWatch.set(rec.id, w); pushWatchPaused = false; pushNotify(w, pushEff(w)); pushWatchPlan();
 }
 // 向 Worker 讀到最新的推播列表之後：更新追蹤中的狀態（有變就彈泡泡）；列表上還沒送出的排程也開始追蹤（不彈泡泡，等狀態變了才彈）
-function pushSyncList(ch, recs) {
+function pushSyncList(ch, recs, serverNow, heartbeatAt) {
+  pushClock[ch] = { skew: Number.isFinite(serverNow) && serverNow > 0 ? serverNow - Date.now() : 0, stale: !!(recs || []).some(r => r.status === 'scheduled' || r.status === 'sending') && (!heartbeatAt || serverNow - heartbeatAt > 3 * 60 * 1000) };
   const ids = new Set();
   (recs || []).forEach(r => {
     ids.add(r.id);
@@ -7025,19 +7055,39 @@ function pushSyncList(ch, recs) {
       w.status = r.status; w.runAt = r.runAt; w.name = r.name || r.altText || w.name; pushNotify(w, pushEff(w));
       if (r.status !== 'scheduled' && r.status !== 'sending') pushWatch.delete(r.id);
     } else if (r.status === 'scheduled' || r.status === 'sending') {
-      pushWatch.set(r.id, { id: r.id, channel: ch, name: r.name || r.altText || '', runAt: r.runAt, status: r.status, shown: pushEff(r) });
+      pushWatch.set(r.id, { id: r.id, channel: ch, name: r.name || r.altText || '', runAt: r.runAt, status: r.status, shown: pushEff(r), locked: pushLocked(r) });
     }
   });
-  [...pushWatch.values()].filter(w => w.channel === ch && !ids.has(w.id)).forEach(w => pushWatch.delete(w.id));   // 列表上已經沒有（被刪除）
+  [...pushWatch.values()].filter(w => w.channel === ch && !ids.has(w.id)).forEach(w => { pushWatch.delete(w.id); pushBubbleClose(`rec:${w.id}`); });   // 列表上已經沒有（被刪除）：泡泡一起收掉
+  pushWatchPaused = false;
   pushWatchPlan();
+}
+// 登出試驗功能、憑證過期：全部停掉，不留泡泡也不留計時器
+function pushWatchStop() {
+  clearTimeout(pushWatchTimer); pushWatchTimer = 0; pushWatch.clear(); pushWatchPaused = false;
+  [...pushBubbleEls.keys()].forEach(k => pushBubbleClose(k));
+}
+// 輪詢頻率：剛到時間 10 秒一次；2 分鐘後 30 秒；10 分鐘後 60 秒（Cron 壞掉時不要一直打 Worker）
+function pushPollGap(live) {
+  const over = Math.min(...live.filter(w => pushEff(w) === 'sending').map(w => pushNow(w.channel) - w.runAt));
+  return over < 2 * 60 * 1000 ? PUSH_POLL_MS : over < 10 * 60 * 1000 ? 30000 : 60000;
 }
 function pushWatchPlan() {
   clearTimeout(pushWatchTimer); pushWatchTimer = 0;
-  const live = [...pushWatch.values()]; if (!live.length) return;
-  live.forEach(w => pushNotify(w, pushEff(w)));   // 到時間的排程先換成「訊息推播中」，不用等網路
+  let relock = false;
+  [...pushWatch.values()].forEach(w => {
+    try {
+      pushNotify(w, pushEff(w));   // 到時間的排程先換成「訊息推播中」，不用等網路
+      const lk = pushLocked(w); if (lk !== w.locked) { w.locked = lk; relock = true; }
+      if (!['scheduled', 'sending'].includes(pushEff(w))) pushWatch.delete(w.id);   // 逾時或已結束：不用再追
+    } catch (e) { /* 單一泡泡出錯不能讓整個計時器停掉 */ }
+  });
+  try { if (relock) pushHubRefresh(); } catch (e) { /* ok */ }
+  const live = [...pushWatch.values()]; if (!live.length || pushWatchPaused || document.hidden) return;   // 分頁在背景就先不查，切回來會立刻查一次
   const due = live.some(w => pushEff(w) === 'sending');
-  const next = Math.min(...live.map(w => w.runAt).filter(Number.isFinite), Date.now() + 30000);
-  pushWatchTimer = setTimeout(pushWatchTick, due ? PUSH_POLL_MS : Math.max(500, next - Date.now()));
+  const marks = live.flatMap(w => [w.runAt, w.runAt - PUSH_LOCK_MS].filter(t => Number.isFinite(t) && t > pushNow(w.channel)).map(t => t - (pushNow(w.channel) - Date.now())));
+  const next = Math.min(...marks, Date.now() + 30000);
+  pushWatchTimer = setTimeout(pushWatchTick, due ? pushPollGap(live) : Math.max(500, next - Date.now()));
 }
 async function pushWatchTick() {
   pushWatchTimer = 0;
@@ -7046,19 +7096,24 @@ async function pushWatchTick() {
   if (!chs.size) { pushWatchPlan(); return; }
   pushWatchBusy = true;
   try {
-    if (labOn && readLabAuth()) {   // 沒登入或憑證過期就先不查（背景查詢不要跳登入視窗），下一輪再試
+    if (!(labOn && readLabAuth())) pushWatchPaused = true;   // 沒登入或憑證過期：背景查詢不跳登入視窗，等使用者重新登入、讀到列表後再繼續
+    else {
       for (const ch of chs) {
         try {
-          const r = await s8Api('/line/history/list', { channel: ch });
+          const r = await s8Api('/line/history/list', { channel: ch }, {}, false, true);
           const d = hubFor(ch); d.records = r.records || []; d.heartbeatAt = r.heartbeatAt || 0; d.serverNow = r.serverNow || Date.now(); d.loaded = true; d.error = '';
-          pushSyncList(ch, d.records);
+          pushSyncList(ch, d.records, d.serverNow, d.heartbeatAt);
           if (hubIsOpen() && ch === hubCh) { hubListRender(); if (hubDetailId) hubDetailRender(); }
-        } catch (e) { /* 這一輪查不到，10 秒後再試 */ }
+        } catch (e) { if (e && e.code === 'auth') { pushWatchPaused = true; break; } /* 其他錯誤：這一輪查不到，下一輪再試 */ }
       }
     }
   } finally { pushWatchBusy = false; }
   pushWatchPlan();
 }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !pushWatch.size || pushWatchPaused) return;
+  clearTimeout(pushWatchTimer); pushWatchTimer = setTimeout(pushWatchTick, 300);
+});
 hubEl('hubListRefresh').addEventListener('click', () => { if (hubDetailId) { hubStatsLoad(hubDetailId, true); return; } hubListLoad(hubCh); });
 async function hubStatsLoad(id, force) {
   const st = (hubStats[id] = hubStats[id] || {});
@@ -7085,11 +7140,13 @@ function hubDetailRender() {
   const rec = hubDetailId ? hubFindRec(hubDetailId) : null;
   box.hidden = !rec; main.hidden = !!rec; hubEl('hubAcct').hidden = hubTab === 's8';
   if (!rec) return;
+  const old = hubRenaming ? document.getElementById('hubRenameInp') : null;   // 背景自動更新重畫時，保留正在輸入的新名稱和游標
+  const keep = old ? { v: old.value, f: document.activeElement === old, s: old.selectionStart, e: old.selectionEnd } : null;
   box.textContent = '';
   const back = document.createElement('button'); back.type = 'button'; back.className = 'hub-back'; back.textContent = '← 返回列表'; back.addEventListener('click', hubCloseDetail);
   const head = document.createElement('div'); head.className = 'hub-d-name';
   if (hubRenaming) {
-    const inp = document.createElement('input'); inp.type = 'text'; inp.id = 'hubRenameInp'; inp.maxLength = 60; inp.value = rec.name || ''; inp.autocomplete = 'off';
+    const inp = document.createElement('input'); inp.type = 'text'; inp.id = 'hubRenameInp'; inp.maxLength = 60; inp.value = keep ? keep.v : (rec.name || ''); inp.autocomplete = 'off';
     const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'primary'; ok.textContent = '儲存';
     const no = document.createElement('button'); no.type = 'button'; no.textContent = '取消';
     const save = async () => {
@@ -7101,7 +7158,7 @@ function hubDetailRender() {
     ok.addEventListener('click', save); no.addEventListener('click', () => { hubRenaming = false; hubDetailRender(); });
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') { e.stopPropagation(); hubRenaming = false; hubDetailRender(); } });
     head.append(inp, ok, no);
-    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+    setTimeout(() => { if (!keep) { inp.focus(); inp.select(); } else if (keep.f) { inp.focus(); try { inp.setSelectionRange(keep.s, keep.e); } catch (e) { /* ok */ } } }, 0);
   } else {
     const nm = document.createElement('span'); nm.textContent = rec.name || rec.altText;
     if (rec.test) { const t = document.createElement('span'); t.className = 'test-tag'; t.textContent = '測試'; nm.appendChild(t); }
@@ -7198,7 +7255,7 @@ function hubStatsRender() {
     });
     acts.append(rf, cpy);
   }
-  if (rec.status === 'scheduled' && pushEff(rec) === 'scheduled') {   // 時間到了（訊息推播中）就不能取消
+  if (rec.status === 'scheduled' && pushEff(rec) === 'scheduled' && !pushLocked(rec)) {   // 時間到了（訊息推播中）、或不到 1 分鐘就要發送，就不能取消
     const del = document.createElement('button'); del.type = 'button'; del.id = 'hubCancelSched'; del.className = 'danger'; del.textContent = '取消這筆排程';
     del.addEventListener('click', async () => {
       if (!window.confirm(`確定要取消這筆排程嗎？\n\n${hubFmt(rec.runAtIso)}　${hubAcctName(rec.channel)}\n${rec.name || rec.altText}\n\n取消後不會發送。要改時間請到「排入LINE推播」視窗的「排程狀態」。`)) return;
@@ -7383,20 +7440,26 @@ function s8FriendlyError(msg) {
   parts.push('這是 S8 帳號的額度上限，重試也不會成功；請等額度重置，或聯絡 S8 增加額度。');
   return `${parts.join('')}\n（S8 原始訊息：${raw.slice(0, 300)}）`;
 }
-async function s8Api(path, body, headers = {}, retried = false) {
+async function s8Api(path, body, headers = {}, retried = false, silent = false) {   // silent：背景輪詢用——不跳登入視窗、不關試驗功能、15 秒沒回應就放棄；憑證過期時丟出 code='auth'
   const lab = readLabAuth();
   if (!lab) {
+    if (silent) { const e = new Error('試驗功能憑證已過期，請重新輸入密碼'); e.code = 'auth'; throw e; }
     if (!retried && await labReloginPrompt()) return s8Api(path, body, headers, true);   // 憑證過期：跳出密碼視窗，輸入後自動繼續剛剛的動作
     if (!s8Overlay.classList.contains('open')) setLab(false);
     throw new Error('試驗功能憑證已過期，請重新輸入密碼');
   }
-  const res = await fetch(`${workerBase()}${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${lab.token}`, ...headers }, body: JSON.stringify(body || {}),
-  });
+  const ctl = silent ? new AbortController() : null, tm = silent ? setTimeout(() => ctl.abort(), 15000) : 0;
+  let res;
+  try {
+    res = await fetch(`${workerBase()}${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${lab.token}`, ...headers }, body: JSON.stringify(body || {}), ...(ctl ? { signal: ctl.signal } : {}),
+    });
+  } finally { clearTimeout(tm); }
   let data = {};
   try { data = await res.json(); } catch (e) { /* not JSON */ }
   if (res.status === 401 && /試驗功能/.test(data.error || '')) {
     try { sessionStorage.removeItem(LAB_SESSION_KEY); } catch (e) { /* ok */ }
+    if (silent) { const e = new Error('試驗功能憑證已過期，請重新輸入密碼'); e.code = 'auth'; throw e; }
     if (!retried && await labReloginPrompt()) return s8Api(path, body, headers, true);
     if (!s8Overlay.classList.contains('open')) setLab(false);
   }
