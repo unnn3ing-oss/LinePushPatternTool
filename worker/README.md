@@ -96,8 +96,9 @@
 
 - 一定先 `validate`，沒通過就不發；每次帶 `X-Line-Retry-Key`（UUID），同一個 key 重送 LINE 不會重複發；
 - 本月額度（上限－已用）不夠好友數就不發；
-- **正式帳號**另外要求：Worker 設了 `LINE_ALLOW_OFFICIAL=1`；**同一份內容先成功發過測試帳號**（Worker 回的 `testToken`，1 小時有效）；內容的版型要和帳號對得上（新聞內容只能發新聞帳號）；使用者輸入的好友數和 LINE 回報的相差在 2%（至少 50 人）以內；查不到好友數就不發；
-- Worker 只允許呼叫 12 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate／broadcast，以及**只限測試帳號**的 validate／multicast、reply、profile），**沒有** push／narrowcast、不改頻道設定、不重發長效 token。程式寫死：測試帳號不能 broadcast；正式帳號不能 multicast／reply／profile。
+- **群發（不帶 `mode:"test"`）**一律要求：**同一個帳號先成功測試推播過**（Worker 回的 `testToken`，內含頻道 `ch`，1 小時有效，換帳號不能用）；使用者輸入的好友數和 LINE 回報的相差在 2%（至少 50 人）以內；查不到好友數就不發。**新聞／娛樂帳號**另外要求 Worker 設了 `LINE_ALLOW_OFFICIAL=1`，且內容版型要和帳號對得上（新聞內容只能發新聞帳號）。**測試帳號**可直接群發給它所有好友（不需旗標、版型不限）。
+- **測試推播**（`mode:"test"`＋`testers`）三個帳號都可以，只 multicast 給名單內 1 位。前端與 Worker 要一起部署：舊版 testToken 沒有 `ch`、測試推播現在一律要帶 `mode:"test"`。
+- Worker 只允許呼叫 12 個 LINE 端點（取 token、查帳號資訊、額度、已用、好友數、互動統計、validate／broadcast，以及 multicast（每次最多 1 位）、reply、profile），**沒有** push／narrowcast、不改頻道設定、不重發長效 token。程式寫死：正式帳號（新聞／娛樂）不能 reply／profile；正式帳號 broadcast 受上面的閘門限制。
 
 ### 測試名單（測試帳號只發給「選到的人」，省額度）
 
@@ -105,7 +106,7 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 1. **一次性設定（只動測試帳號，新聞／娛樂帳號的 webhook 屬於 S8，完全不碰）**：LINE Developers Console → 測試帳號頻道 → Messaging API → **Webhook URL** 填 `https://<你的 Worker 網址>/line/webhook`，開啟 **Use webhook**，按 **Verify**（要顯示 Success）。LINE Official Account Manager → 回應設定：建議關掉「加入好友的歡迎訊息」與「自動回應訊息」，避免和 Worker 的回覆重複。
 2. **登記**：用 LINE 傳送「登記」給測試帳號（也可傳「加入測試名單」）→ Worker 記下 userId 與暱稱（存在 R2 的 `testers/`），並回覆「已加入測試名單」。傳別的字或剛加好友只會收到提示；封鎖測試帳號會自動從名單移除；名單上限 50 人。
-3. **使用**：網頁「排入LINE推播」第 2 步「推播方式」選**操作者**（名單內的人，用名字對應不同帳號的同一個人），第 3 步「測試推播」只傳給操作者**一位**；Worker 強制每次最多 1 位、只能是名單內的人。操作者或帳號換了，會換一把重試金鑰。
+3. **使用**：網頁「排入LINE推播」第 2 步「推播設定」選**操作人**（名單內的人，用名字對應不同帳號的同一個人）與**推播帳號**，第 3 步「推播測試」只傳給操作人**一位**；Worker 強制每次最多 1 位、只能是名單內的人。操作者或帳號換了，會換一把重試金鑰。
 4. （已移除）網頁不再提供「測試帳號排程」；Worker 的 `POST /line/schedule/create` 仍然接受 `channel:"test"`＋`testers`，只是沒有畫面使用。
 
 ### 正式帳號的測試推播（不需要同事加測試帳號）
@@ -114,7 +115,7 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 1. **設定（一次性）**：Worker Secret 設 `LINE_CHANNEL_ID_NEWS`／`LINE_CHANNEL_SECRET_NEWS`（娛樂同理 `_ENT`）。**`LINE_ALLOW_OFFICIAL` 照樣不設**——這個功能不需要它，正式 broadcast 仍然鎖死。
 2. **建立名單**：網頁右上角「訊息推播」→「LINE推播設定」→ 上方選「TVBS新聞」→「權限管理」→ 填名字（可不填）、貼上 userId →「查詢」（Worker 向 LINE 查暱稱，顯示給你確認是不是對的人；LINE 查不到＝不是該帳號好友或不同 Provider，不能加）→「加入名單」。名單存 R2 `testers/<news|ent>/`，每帳號最多 20 人。
-3. **測試推播**：第 3 步「測試推播」發到「TVBS新聞（正式帳號）」，只傳給操作者一位 → `POST /line/send` 帶 `mode:"test"`＋`testers`（1 位），Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
+3. **測試推播**：第 3 步「推播測試」發到「新聞帳號（TVBS新聞）」，只傳給操作者一位 → `POST /line/send` 帶 `mode:"test"`＋`testers`（1 位），Worker 用該帳號的 token **multicast**（不是 broadcast）。只發給名單內的人；版型要和帳號對得上；成功回 `testToken`，之後正式推播的「先測試過」閘門一樣通過（測試帳號或正式帳號測試都算）。
 4. **安全**：`lineCall` 內強制正式帳號的 multicast 最多 1 位、每個都是合法 userId；reply 仍只有測試帳號能用；沒有 push／narrowcast；正式 broadcast 的所有閘門（旗標、先測試、輸入好友數、版型）完全沒變。
 
 ### 排程推播（LINE 本身沒有排程，所以由 Worker 自己排）
@@ -125,9 +126,9 @@ LINE 的額度是**以收件人數計**（發給 1 位＝1 則，不管幾頁圖
 
 | 端點 | 作用 |
 |---|---|
-| `POST /line/schedule/create` | 建立排程。條件與立即推播相同（正式帳號要 `LINE_ALLOW_OFFICIAL=1`、同一份內容先成功推播過測試帳號、輸入正確好友數）；時間要在 **5 分鐘後 ～ 14 天內**（台北時間，到分鐘）；待發送最多 30 筆 |
+| `POST /line/schedule/create` | 建立排程。條件與立即推播相同（新聞／娛樂帳號要 `LINE_ALLOW_OFFICIAL=1`、同一個帳號先成功測試推播過並帶 `testToken`、輸入正確好友數；排程一律是群發）；時間要在 **5 分鐘後 ～ 14 天內**（台北時間，到分鐘）；待發送最多 30 筆 |
 | `POST /line/schedule/list` | 查看排程（狀態、時間、嘗試次數、錯誤、發送後的 request id）與 Cron 心跳 |
-| `POST /line/schedule/update` | 變更時間（只有「待發送」的，且發送前不到 1 分鐘就來不及） |
+| `POST /line/schedule/update` | 變更時間（只有「待發送」的，且發送前不到 1 分鐘就來不及；網頁精靈已不提供，只能到推播列表取消） |
 | `POST /line/schedule/cancel` | 刪除（取消）排程（同上） |
 
 到時間時（`scheduled()`，每分鐘一次）Worker 會：先檢查格式（validate）、重新查好友數與額度、好友數和建立排程時確認的差距要在 10% 內（否則不發）、正式帳號的 `LINE_ALLOW_OFFICIAL` 還要是 1，才用建立排程時產生的 `retryKey` 發出（LINE 24 小時內同一個 key 不會重複發，所以重試或 Cron 重疊都不會發兩次）。LINE 暫時失敗（5xx／429／網路）會每分鐘重試；格式或額度問題直接標成「發送失敗」；**超過預定時間 30 分鐘還沒發出去就放棄**（標成「逾時未發送」，避免新聞過時才推）。狀態有：待發送、發送中、已發送、發送失敗、已取消、逾時未發送。

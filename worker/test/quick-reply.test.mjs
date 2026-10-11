@@ -76,7 +76,7 @@ test('LINE：快速回覆只附在「最後一則」訊息；傳送文字 → me
       { type: 'action', action: { type: 'uri', label: '看更多', uri: 'https://example.com/more' } },
     ] });
     // 測試推播（multicast）也帶得出去
-    const s = await call(env, '/line/send', { prepareToken: prep.json.prepareToken, channel: 'test', retryKey: '123e4567-e89b-12d3-a456-426614174000', testers: [tid] });
+    const s = await call(env, '/line/send', { prepareToken: prep.json.prepareToken, channel: 'test', mode: 'test', retryKey: '123e4567-e89b-12d3-a456-426614174000', testers: [tid] });
     assert.equal(s.status, 200, JSON.stringify(s.json));
     const sent = JSON.parse(line.calls.find(c => c.key === 'POST /v2/bot/message/multicast').body).messages;
     assert.equal(sent[1].quickReply.items.length, 3); assert.equal(sent[0].quickReply, undefined);
@@ -117,14 +117,16 @@ test('LINE 排程：快速回覆跟著排程存起來，時間到發出去的最
   try {
     const { r2, env, tid, prep } = await lineSetup(QUICK);
     const at = new Date(Math.floor((Date.now() + 3600e3) / 60000) * 60000 + 8 * 3600e3).toISOString().slice(0, 19).replace(/:\d{2}$/, ':00') + '+08:00';
-    const c = await call(env, '/line/schedule/create', { prepareToken: prep.json.prepareToken, channel: 'test', testers: [tid], runAt: at, links: [] });
+    const t = await call(env, '/line/send', { prepareToken: prep.json.prepareToken, channel: 'test', mode: 'test', retryKey: '123e4567-e89b-12d3-a456-426614174001', testers: [tid] });
+    assert.equal(t.status, 200, JSON.stringify(t.json));
+    const c = await call(env, '/line/schedule/create', { prepareToken: prep.json.prepareToken, channel: 'test', testToken: t.json.testToken, confirmTotal: 100, runAt: at, links: [] });
     assert.equal(c.status, 200, JSON.stringify(c.json));
     const key = `sched/${c.json.schedule.id}.json`, rec = JSON.parse(r2.store.get(key).bytes);
     assert.equal(rec.quick.length, 3);
     rec.runAt = Date.now() - 20000; r2.store.set(key, { bytes: JSON.stringify(rec), customMetadata: { status: 'scheduled', runAt: String(rec.runAt) } });
     let p; await worker.scheduled({}, env, { waitUntil: x => { p = x; } }); await p;
     assert.equal(JSON.parse(r2.store.get(key).bytes).status, 'sent');
-    const sent = JSON.parse(line.calls.find(c => c.key === 'POST /v2/bot/message/multicast').body).messages;
+    const sent = JSON.parse(line.calls.find(c => c.key === 'POST /v2/bot/message/broadcast').body).messages;
     assert.equal(sent.at(-1).quickReply.items[2].action.uri, 'https://example.com/more');
   } finally { line.restore(); }
 });

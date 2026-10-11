@@ -67,7 +67,7 @@ const tidOf = uid => createHash('sha256').update(uid).digest('hex').slice(0, 16)
 const TID = tidOf(TESTER_UID), TID2 = tidOf(TESTER_UID2), TID3 = tidOf(TESTER_UID3);
 function seedTester(env, uid = TESTER_UID, name = '王小明') { const tid = tidOf(uid); env.LINE_IMG.store.set(`testers/${tid}.json`, { bytes: JSON.stringify({ tid, userId: uid, name, registeredAt: Date.now() }), httpMetadata: {} }); return tid; }
 async function prepared(env, extra) { const r = await req(env, '/line/prepare', prepBody(extra)); assert.equal(r.status, 200, JSON.stringify(r.json)); if (env.LINE_IMG) seedTester(env); return r.json; }
-const sendBody = (prep, extra = {}) => ({ prepareToken: prep.prepareToken, channel: 'test', retryKey: UUID, testers: [TID], ...extra });
+const sendBody = (prep, extra = {}) => ({ prepareToken: prep.prepareToken, channel: 'test', mode: 'test', retryKey: UUID, testers: [TID], ...extra });   // 預設＝測試推播（三個帳號都一樣）；群發要把 mode 設成 undefined
 const FORBIDDEN_PATHS = /message\/push|narrowcast|richmenu|webhook|oauth2\/v2|revoke/i;
 
 test('所有 /line 端點都要試驗功能憑證', async () => {
@@ -272,7 +272,7 @@ test('正式帳號預設鎖住：沒設 LINE_ALLOW_OFFICIAL=1 → 403，什麼�
   const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
   try {
     const prep = await prepared(env);
-    const r = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 1000 }));
+    const r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 1000 }));
     assert.equal(r.status, 403); assert.match(r.json.error, /LINE_ALLOW_OFFICIAL/);
     assert.equal(line.calls.length, 0);
   } finally { line.restore(); }
@@ -284,31 +284,57 @@ test('正式帳號：要先成功發過測試帳號、輸入好友數、版型�
   try {
     const prep = await prepared(env);
     // 1. 沒有 testToken
-    let r = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 287091 }));
-    assert.equal(r.status, 400); assert.match(r.json.error, /先成功發到測試帳號/);
-    // 先發測試帳號取得 testToken
-    const t = await req(env, '/line/send', sendBody(prep, { retryKey: '123e4567-e89b-12d3-a456-426614174111' }));
+    let r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 287091 }));
+    assert.equal(r.status, 400); assert.match(r.json.error, /測試推播成功/);
+    // 先在「新聞帳號」測試推播（只發給操作人）取得 testToken
+    const t = await testPushOn(env, prep, 'news');
     assert.equal(t.status, 200);
+    // 1b. 在測試帳號測試推播的 testToken 不能拿去群發新聞帳號（測試與群發必須在同一個帳號）
+    const tTest = await testPushOn(env, prep, 'test');
+    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 287091, testToken: tTest.json.testToken }));
+    assert.equal(r.status, 400); assert.match(r.json.error, /TVBS新聞/);
     // 2. testToken 屬於別份內容 → 拒絕
     const other = await prepared(env);
-    r = await req(env, '/line/send', sendBody(other, { channel: 'news', confirmTotal: 287091, testToken: t.json.testToken }));
+    r = await req(env, '/line/send', sendBody(other, { channel: 'news', mode: undefined, confirmTotal: 287091, testToken: t.json.testToken }));
     assert.equal(r.status, 400);
     // 3. 版型不對（內容是 news，卻發 ent）
-    r = await req(env, '/line/send', sendBody(prep, { channel: 'ent', confirmTotal: 287091, testToken: t.json.testToken }));
+    r = await req(env, '/line/send', sendBody(prep, { channel: 'ent', mode: undefined, confirmTotal: 287091, testToken: t.json.testToken }));
     assert.equal(r.status, 400, '版型不對'); assert.match(r.json.error, /另一個版型/);
     // 4. 好友數不符
     const before = line.count('POST /v2/bot/message/broadcast');
-    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 100, testToken: t.json.testToken }));
+    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 100, testToken: t.json.testToken }));
     assert.equal(r.status, 409); assert.match(r.json.error, /確認人數不符/);
-    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', testToken: t.json.testToken }));
+    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, testToken: t.json.testToken }));
     assert.equal(r.status, 409);
     assert.equal(line.count('POST /v2/bot/message/broadcast'), before, '前面任何一關失敗都不能發送');
     // 5. 全部符合 → 發送，並且用的是 news 的憑證
-    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 287100, testToken: t.json.testToken }));
+    r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 287100, testToken: t.json.testToken }));
     assert.equal(r.status, 200, JSON.stringify(r.json));
     assert.equal(r.json.official, true); assert.equal(r.json.testToken, undefined);
     const last = line.calls.filter(c => c.path === '/v2/bot/message/broadcast').at(-1);
     assert.equal(last.headers.Authorization, 'Bearer tok-222');
+  } finally { line.restore(); }
+});
+
+test('測試帳號群發：不需要 LINE_ALLOW_OFFICIAL，但一樣要同帳號測試過、輸入確認人數；別的帳號的 testToken 不能拿來用', async () => {
+  const line = installFakeLine({ followers: 1000 }); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
+  try {
+    const prep = await prepared(env);
+    let r = await req(env, '/line/send', sendBody(prep, { mode: undefined, retryKey: freshKey() }));
+    assert.equal(r.status, 400); assert.match(r.json.error, /測試推播成功/);
+    const t = await testPushOn(env, prep, 'test');
+    assert.equal(t.status, 200, JSON.stringify(t.json));
+    r = await req(env, '/line/send', sendBody(prep, { mode: undefined, testers: undefined, testToken: t.json.testToken, confirmTotal: 5, retryKey: freshKey() }));
+    assert.equal(r.status, 409); assert.match(r.json.error, /確認人數不符/);
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
+    r = await req(env, '/line/send', sendBody(prep, { mode: undefined, testers: undefined, testToken: t.json.testToken, confirmTotal: 1000, retryKey: freshKey() }));
+    assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.official, true);
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 1);
+    // 其他帳號的 testToken 不能群發測試帳號
+    const env2 = { ...env, LINE_ALLOW_OFFICIAL: '1' };
+    const tn = await testPushOn(env2, prep, 'news');
+    r = await req(env2, '/line/send', sendBody(prep, { mode: undefined, testers: undefined, testToken: tn.json.testToken, confirmTotal: 1000, retryKey: freshKey() }));
+    assert.equal(r.status, 400); assert.equal(line.count('POST /v2/bot/message/broadcast'), 1);
   } finally { line.restore(); }
 });
 
@@ -317,9 +343,9 @@ test('正式帳號：查不到好友數 → 不發送', async () => {
   const env = { ...BASE_ENV, LINE_IMG: fakeR2(), LINE_ALLOW_OFFICIAL: '1' };
   try {
     const prep = await prepared(env);
-    const t = await req(env, '/line/send', sendBody(prep));
+    const t = await testPushOn(env, prep, 'news');
     assert.equal(t.status, 200);
-    const r = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 1000, testToken: t.json.testToken }));
+    const r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 1000, testToken: t.json.testToken }));
     assert.equal(r.status, 409); assert.match(r.json.error, /好友數/);
     assert.equal(line.count('POST /v2/bot/message/broadcast'), 0, '測試帳號用 multicast；正式帳號好友數查不到，沒有 broadcast');
   } finally { line.restore(); }
@@ -384,7 +410,19 @@ test('clicks：統計還沒好 → unavailable 並說明；requestId 格式不�
 const taipei = ms => new Date(Math.floor(ms / 60000) * 60000 + 8 * 3600e3).toISOString().slice(0, 19).replace(/:\d{2}$/, ':00') + '+08:00';
 const inMin = m => taipei(Date.now() + m * 60000);
 const LINKS = [{ page: 1, label: '左上', title: '★標題一', url: 'https://example.com/a' }, { page: 1, label: '中上', title: '★標題二', url: 'https://example.com/b' }];
-async function createSched(env, prep, extra = {}) { return req(env, '/line/schedule/create', { prepareToken: prep.prepareToken, channel: 'test', testers: [TID], runAt: inMin(60), links: LINKS, name: '261007早', ...extra }); }
+let keyN = 0; const freshKey = () => `123e4567-e89b-12d3-a456-4266141${String(++keyN).padStart(5, '0')}`;
+// 在某個帳號做一次「測試推播」（只發給操作人 1 位）：回傳的 testToken 才能讓同一個帳號群發／排程
+async function testPushOn(env, prep, channel = 'test') {
+  if (channel === 'test') return req(env, '/line/send', sendBody(prep, { retryKey: freshKey() }));
+  await req(env, '/line/testers/add', { channel, userId: OFFICIAL_UID });
+  return req(env, '/line/send', sendBody(prep, { channel, testers: [OTID], retryKey: freshKey() }));
+}
+// 預設：先在同一個帳號測試推播，再建立「群發」排程（確認人數 1000＝假 LINE 的預設好友數）。extra.testToken 明確給（含 undefined）就不自動測試
+async function createSched(env, prep, extra = {}) {
+  const channel = extra.channel || 'test';
+  const testToken = 'testToken' in extra ? extra.testToken : (await testPushOn(env, prep, channel)).json.testToken;
+  return req(env, '/line/schedule/create', { prepareToken: prep.prepareToken, channel: 'test', confirmTotal: 1000, runAt: inMin(60), links: LINKS, name: '261007早', ...extra, testToken });
+}
 // 把存在 R2 的排程改成「某個時間點到期」，模擬時間經過
 async function setRunAt(r2, id, ms, extra = {}) {
   const k = `sched/${id}.json`, o = r2.store.get(k), rec = { ...JSON.parse(o.bytes), runAt: ms, ...extra };
@@ -393,7 +431,7 @@ async function setRunAt(r2, id, ms, extra = {}) {
 const cron = async env => { let p; await worker.scheduled({}, env, { waitUntil: x => { p = x; } }); await p; };
 const recOf = (r2, id) => JSON.parse(r2.store.get(`sched/${id}.json`).bytes);
 
-test('排程：建立（測試帳號）→ 存進 R2，狀態待發送，帶出連結；還不會發送', async () => {
+test('排程：建立（測試帳號群發）→ 存進 R2，狀態待發送，帶出連結；還不會發送', async () => {
   const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   try {
     const prep = await prepared(env);
@@ -404,9 +442,9 @@ test('排程：建立（測試帳號）→ 存進 R2，狀態待發送，帶出�
     const stored = recOf(r2, s.id);
     assert.equal(stored.origin, 'https://worker.test'); assert.match(stored.retryKey, /^[0-9a-f-]{36}$/);
     assert.deepEqual(r2.store.get(`sched/${s.id}.json`).customMetadata, { status: 'scheduled', runAt: String(stored.runAt), channel: 'test' });
-    assert.equal(line.count('POST /v2/bot/message/multicast') + line.count('POST /v2/bot/message/broadcast'), 0, '建立排程不會發送');
-    assert.equal(line.count('POST /v2/bot/message/validate/multicast'), 1, '建立當下先請 LINE 檢查格式');
-    assert.deepEqual(s.recipientNames, ['王小明']); assert.deepEqual(stored.testerTids, [TID]);
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0, '建立排程不會發送');
+    assert.equal(line.count('POST /v2/bot/message/validate/broadcast'), 1, '建立當下先請 LINE 檢查格式');
+    assert.equal(stored.approvedFriends, 1000); assert.equal(stored.test, false); assert.equal(stored.testerTids, undefined, '排程是群發，沒有指定收件人');
   } finally { line.restore(); }
 });
 
@@ -414,9 +452,10 @@ test('排程：時間不合格（5 分鐘內、超過 14 天、格式錯、不�
   const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   try {
     const prep = await prepared(env);
+    const testToken = (await testPushOn(env, prep, 'test')).json.testToken;
     const before = r2.store.size;
     for (const runAt of [inMin(2), inMin(15 * 24 * 60), '2026-10-07 12:00', inMin(60).replace('+08:00', 'Z'), '2026-02-31T10:00:00+08:00', undefined, 12345]) {
-      const r = await createSched(env, prep, { runAt });
+      const r = await createSched(env, prep, { runAt, testToken });
       assert.equal(r.status, 400, String(runAt));
     }
     assert.equal(r2.store.size, before);
@@ -441,9 +480,9 @@ test('排程（正式帳號）：條件跟立即推播一樣——旗標、先�
     let r = await createSched(env, prep, { channel: 'news', confirmTotal: 287091 });
     assert.equal(r.status, 403); assert.match(r.json.error, /LINE_ALLOW_OFFICIAL/);
     const env2 = { ...env, LINE_ALLOW_OFFICIAL: '1' };
-    r = await createSched(env2, prep, { channel: 'news', confirmTotal: 287091 });
-    assert.equal(r.status, 400); assert.match(r.json.error, /先成功發到測試帳號/);
-    const t = await req(env2, '/line/send', sendBody(prep));
+    r = await createSched(env2, prep, { channel: 'news', confirmTotal: 287091, testToken: undefined });
+    assert.equal(r.status, 400); assert.match(r.json.error, /測試推播成功/);
+    const t = await testPushOn(env2, prep, 'news');
     r = await createSched(env2, prep, { channel: 'ent', confirmTotal: 287091, testToken: t.json.testToken });
     assert.equal(r.status, 400, '版型不對');
     r = await createSched(env2, prep, { channel: 'news', confirmTotal: 100, testToken: t.json.testToken });
@@ -493,10 +532,9 @@ test('Cron：到期的發出去一次（帶建立時的 retryKey 與 Worker 網�
     const later = (await createSched(env, prep, { runAt: inMin(600) })).json.schedule;
     await setRunAt(r2, due.id, Date.now() - 20000);
     await cron(env);
-    assert.equal(line.count('POST /v2/bot/message/multicast'), 1);
-    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
-    const b = line.calls.find(c => c.path === '/v2/bot/message/multicast');
-    assert.deepEqual(JSON.parse(b.body).to, [TESTER_UID]);
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 1);
+    const b = line.calls.find(c => c.path === '/v2/bot/message/broadcast');
+    assert.equal(JSON.parse(b.body).to, undefined, '群發沒有指定收件人');
     assert.equal(b.headers['X-Line-Retry-Key'], recOf(r2, due.id).retryKey);
     assert.match(JSON.parse(b.body).messages[0].baseUrl, /^https:\/\/worker\.test\/line-img\//);
     const rec = recOf(r2, due.id);
@@ -504,7 +542,7 @@ test('Cron：到期的發出去一次（帶建立時的 retryKey 與 Worker 網�
     assert.equal(recOf(r2, later.id).status, 'scheduled');
     assert.ok(JSON.parse(r2.store.get('meta/heartbeat.json').bytes).at > Date.now() - 5000);
     await cron(env); await cron(env);
-    assert.equal(line.count('POST /v2/bot/message/multicast'), 1, '已發送的不會再發');
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 1, '已發送的不會再發');
     const l = await req(env, '/line/schedule/list', {});
     assert.equal(l.json.schedules.find(x => x.id === due.id).requestId, 'req-1');
     assert.ok(l.json.heartbeatAt > 0);
@@ -519,40 +557,44 @@ test('Cron：超過預定時間 30 分鐘還沒發 → 逾時放棄，不發送'
     await setRunAt(r2, s.id, Date.now() - 31 * 60000);
     await cron(env);
     assert.equal(recOf(r2, s.id).status, 'missed'); assert.match(recOf(r2, s.id).lastError, /30 分鐘/);
-    assert.equal(line.count('POST /v2/bot/message/multicast'), 0);
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
   } finally { line.restore(); }
 });
 
 test('Cron：LINE 暫時失敗（5xx）→ 下一分鐘用同一個 retryKey 再試；格式／額度問題 → 直接失敗不重試', async () => {
   const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
-  let line = installFakeLine({ broadcastStatus: 503 });
+  let line = installFakeLine();
   let s;
   try {
     const prep = await prepared(env);
     s = (await createSched(env, prep)).json.schedule;
+    line.restore(); line = installFakeLine({ broadcastStatus: 503 });
     await setRunAt(r2, s.id, Date.now() - 30000);
     await cron(env);
     assert.equal(recOf(r2, s.id).status, 'scheduled'); assert.equal(recOf(r2, s.id).attempts, 1); assert.match(recOf(r2, s.id).lastError, /再試/);
-    const firstKey = line.calls.find(c => c.path === '/v2/bot/message/multicast').headers['X-Line-Retry-Key'];
+    const firstKey = line.calls.find(c => c.path === '/v2/bot/message/broadcast').headers['X-Line-Retry-Key'];
     line.restore(); line = installFakeLine();
     await cron(env);
     assert.equal(recOf(r2, s.id).status, 'sent'); assert.equal(recOf(r2, s.id).attempts, 2);
-    assert.equal(line.calls.find(c => c.path === '/v2/bot/message/multicast').headers['X-Line-Retry-Key'], firstKey, '重試用同一個 retryKey，LINE 不會重複發');
+    assert.equal(line.calls.find(c => c.path === '/v2/bot/message/broadcast').headers['X-Line-Retry-Key'], firstKey, '重試用同一個 retryKey，LINE 不會重複發');
     // 格式不合格 → failed
+    line.restore(); line = installFakeLine();
+    const prep2 = await prepared(env), t2 = await testPushOn(env, prep2, 'test');
     line.restore(); line = installFakeLine({ validateStatus: 400 });
-    const s2 = (await createSched(env, await prepared(env), { runAt: inMin(60) }));
+    const s2 = (await createSched(env, prep2, { runAt: inMin(60), testToken: t2.json.testToken }));
     assert.equal(s2.status, 400, '建立當下格式就不過，根本不會排');
   } finally { line.restore(); }
   line = installFakeLine();
   try {
     const s3 = (await createSched(env, await prepared(env))).json.schedule;
+    const prep4 = await prepared(env), t4 = await testPushOn(env, prep4, 'test');
     line.restore(); line = installFakeLine({ validateStatus: 400 });
     await setRunAt(r2, s3.id, Date.now() - 30000);
     await cron(env);
-    assert.equal(recOf(r2, s3.id).status, 'failed'); assert.equal(line.count('POST /v2/bot/message/multicast'), 0);
+    assert.equal(recOf(r2, s3.id).status, 'failed'); assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
     // 額度不夠 → failed
     line.restore(); line = installFakeLine({ followers: 5000, quota: { type: 'limited', value: 1000 }, used: 1000 });
-    const s4 = (await createSched(env, await prepared(env))).json.schedule;
+    const c4 = await createSched(env, prep4, { testToken: t4.json.testToken, confirmTotal: 5000 }); assert.equal(c4.status, 200, JSON.stringify(c4.json)); const s4 = c4.json.schedule;
     await setRunAt(r2, s4.id, Date.now() - 30000);
     await cron(env);
     assert.equal(recOf(r2, s4.id).status, 'failed'); assert.match(recOf(r2, s4.id).lastError, /額度不夠/);
@@ -564,7 +606,7 @@ test('Cron（正式帳號）：旗標被關掉、或發送當下好友數和確�
   let line = installFakeLine({ followers: 287091, quota: { type: 'limited', value: 100000000 } });
   try {
     const prep = await prepared(envOn);
-    const t = await req(envOn, '/line/send', sendBody(prep));
+    const t = await testPushOn(envOn, prep, 'news');
     const mk = async () => (await createSched(envOn, prep, { channel: 'news', confirmTotal: 287091, testToken: t.json.testToken })).json.schedule;
     const s1 = await mk(), s2 = await mk(), s3 = await mk();
     // 1. 旗標關掉
@@ -706,43 +748,41 @@ test('send：名單有人被移除之後再送 → 400（不是默默少發）',
   } finally { line.restore(); }
 });
 
-test('multicast／reply／profile 只用測試帳號的 token；正式帳號（news／ent）只會 broadcast', async () => {
+test('reply 只用測試帳號的 token；multicast 只用在測試推播，news 群發用 news 的 token', async () => {
   const line = installFakeLine({ followers: 287091, quota: { type: 'limited', value: 100000000 }, used: 1 });
   const env = { ...BASE_ENV, LINE_IMG: fakeR2(), LINE_ALLOW_OFFICIAL: '1' };
   try {
     const prep = await prepared(env);
     await hook(env, [msgEv(TESTER_UID, '登記')]);
-    const t = await req(env, '/line/send', sendBody(prep));
-    const o = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 287091, testToken: t.json.testToken, retryKey: '123e4567-e89b-12d3-a456-426614174333' }));
+    const t = await testPushOn(env, prep, 'news');
+    const o = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 287091, testToken: t.json.testToken, retryKey: '123e4567-e89b-12d3-a456-426614174333' }));
     assert.equal(o.status, 200, JSON.stringify(o.json));
-    for (const c of line.calls.filter(c => /multicast|reply|profile/.test(c.path))) assert.equal(c.headers.Authorization, 'Bearer tok-111', c.path);
+    for (const c of line.calls.filter(c => /reply/.test(c.path))) assert.equal(c.headers.Authorization, 'Bearer tok-111', c.path);
     const official = line.calls.filter(c => c.headers.Authorization === 'Bearer tok-222');
     assert.ok(official.length > 0);
-    for (const c of official) assert.ok(!/multicast|reply|profile/.test(c.path), `正式帳號不能呼叫 ${c.path}`);
-    assert.equal(line.calls.filter(c => c.path === '/v2/bot/message/broadcast').every(c => c.headers.Authorization === 'Bearer tok-222'), true, '測試帳號從不 broadcast');
+    for (const c of official) assert.ok(!/reply/.test(c.path), `正式帳號不能呼叫 ${c.path}`);
+    assert.equal(line.calls.filter(c => c.path === '/v2/bot/message/broadcast').every(c => c.headers.Authorization === 'Bearer tok-222'), true, '這次只群發了新聞帳號');
   } finally { line.restore(); }
 });
 
-test('測試排程：建立時必須指定收件人（最多 1 位）；時間到只 multicast 給他，名單被移除的就失敗不發', async () => {
+test('舊版測試排程（帶 testerTids 的紀錄）：時間到只 multicast 給他，名單被移除的就失敗不發；新建排程一律群發', async () => {
   const line = installFakeLine(); const r2 = fakeR2(); const env = { ...BASE_ENV, LINE_IMG: r2 };
   try {
     const prep = await prepared(env); seedTester(env, TESTER_UID2, '李小華'); seedTester(env, TESTER_UID3, '陳小美');
-    assert.equal((await createSched(env, prep, { testers: undefined })).status, 400);
-    assert.equal((await createSched(env, prep, { testers: [TID, TID2] })).status, 400);
-    assert.equal([...r2.store.keys()].filter(k => k.startsWith('sched/')).length, 0, '沒過的不會建立');
-    const a = (await createSched(env, prep, { testers: [TID2] })).json.schedule;
-    assert.deepEqual(a.recipientNames, ['李小華']);
-    await setRunAt(r2, a.id, Date.now() - 20000); await cron(env);
+    const n = (await createSched(env, prep, { testers: [TID2] })).json.schedule;
+    assert.equal(recOf(r2, n.id).testerTids, undefined); assert.equal(recOf(r2, n.id).test, false);
+    const a = (await createSched(env, prep)).json.schedule;
+    await setRunAt(r2, a.id, Date.now() - 20000, { test: true, testerTids: [TID2] }); await cron(env);
     assert.equal(recOf(r2, a.id).status, 'sent');
-    assert.deepEqual(JSON.parse(line.calls.find(c => c.path === '/v2/bot/message/multicast').body).to, [TESTER_UID2]);
-    // 全被移除 → failed，沒有發送
-    const b = (await createSched(env, prep, { testers: [TID3] })).json.schedule;
+    const mc = line.calls.filter(c => c.path === '/v2/bot/message/multicast');
+    assert.deepEqual(JSON.parse(mc[mc.length - 1].body).to, [TESTER_UID2]);
+    const b = (await createSched(env, prep)).json.schedule;
     await req(env, '/line/testers/remove', { tid: TID3 });
-    const sentBefore = line.count('POST /v2/bot/message/multicast');
-    await setRunAt(r2, b.id, Date.now() - 20000); await cron(env);
+    const sentBefore = line.count('POST /v2/bot/message/multicast'), bcBefore = line.count('POST /v2/bot/message/broadcast');
+    await setRunAt(r2, b.id, Date.now() - 20000, { test: true, testerTids: [TID3] }); await cron(env);
     assert.equal(recOf(r2, b.id).status, 'failed'); assert.match(recOf(r2, b.id).lastError, /不在測試名單/);
     assert.equal(line.count('POST /v2/bot/message/multicast'), sentBefore);
-    assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
+    assert.equal(line.count('POST /v2/bot/message/broadcast'), bcBefore);
   } finally { line.restore(); }
 });
 
@@ -842,7 +882,7 @@ test('正式帳號的 broadcast 閘門完全沒變：沒帶 mode:test 就走原�
     const prep = await prepared(env);
     await tReq(env, '/line/testers/add', { channel: 'news', userId: OFFICIAL_UID });
     // 沒旗標 → 403，multicast 不能繞過 broadcast
-    let r = await req(env, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 287091 }));
+    let r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 287091 }));
     assert.equal(r.status, 403); assert.match(r.json.error, /LINE_ALLOW_OFFICIAL/);
     r = await req(env, '/line/send', sendBody(prep, { channel: 'news', mode: 'nope', confirmTotal: 287091, testers: [OTID] }));
     assert.equal(r.status, 403, 'mode 不是 test 就是一般的正式發送，一樣被鎖');
@@ -850,9 +890,9 @@ test('正式帳號的 broadcast 閘門完全沒變：沒帶 mode:test 就走原�
     assert.equal(t.status, 200);
     assert.equal(line.count('POST /v2/bot/message/broadcast'), 0);
     const env2 = { ...env, LINE_ALLOW_OFFICIAL: '1' };
-    r = await req(env2, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 100, testToken: t.json.testToken, retryKey: '123e4567-e89b-12d3-a456-426614174444' }));
+    r = await req(env2, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 100, testToken: t.json.testToken, retryKey: '123e4567-e89b-12d3-a456-426614174444' }));
     assert.equal(r.status, 409, '人數不符照樣擋'); 
-    r = await req(env2, '/line/send', sendBody(prep, { channel: 'news', confirmTotal: 287091, testToken: t.json.testToken, retryKey: '123e4567-e89b-12d3-a456-426614174444' }));
+    r = await req(env2, '/line/send', sendBody(prep, { channel: 'news', mode: undefined, confirmTotal: 287091, testToken: t.json.testToken, retryKey: '123e4567-e89b-12d3-a456-426614174444' }));
     assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.official, true);
     assert.equal(line.count('POST /v2/bot/message/broadcast'), 1);
     assert.equal(JSON.parse(line.calls.find(c => c.path === '/v2/bot/message/broadcast').body).messages.length, 2);

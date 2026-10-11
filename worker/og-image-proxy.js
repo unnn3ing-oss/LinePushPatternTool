@@ -784,7 +784,7 @@ async function handleS8Status(request, env) {
 //   POST /line/clicks    → 用發送時的 request id 查這次群發每個連結的點擊次數／人數（唯讀）
 //   POST /line/history/list｜stats｜rename → 「訊息推播 → 推播列表」：發送紀錄（立即推播 hist/、排程 sched/）、點擊統計快照、改名
 //   POST /line/schedule/create｜list｜update｜cancel → 排程推播（Worker 自己排，需 R2 與 Cron Trigger，見下方「排程推播」）
-//   POST /line/send      → validate 通過後發送。測試帳號：multicast 給「測試名單」勾選的人（每次最多 1 位＝操作者本人，不 broadcast）；正式帳號：broadcast 給全部好友，要 LINE_ALLOW_OFFICIAL=1＋先成功發過測試帳號＋輸入好友數
+//   POST /line/send      → validate 通過後發送。body.mode:'test'＝測試推播（三個帳號都一樣：multicast 給該帳號測試名單裡指定的 1 位＝操作人）；沒帶 mode＝群發給該帳號全部好友（broadcast），要先在「同一個帳號」測試推播成功（testToken 綁帳號）＋輸入好友數；新聞／娛樂帳號另需 LINE_ALLOW_OFFICIAL=1，測試帳號不需要
 //   GET  /line-img/<id>/<寬度> → 公開提供圖片給 LINE 伺服器抓（imagemap 規定的 baseUrl/{240,300,460,700,1040}，網址不能有副檔名；五種寬度都回同一張 1040）
 // 憑證放 Worker Secret：LINE_CHANNEL_ID_TEST / LINE_CHANNEL_SECRET_TEST（測試帳號）、
 //   LINE_CHANNEL_ID_NEWS / _SECRET_NEWS、LINE_CHANNEL_ID_ENT / _SECRET_ENT（正式帳號）。
@@ -850,7 +850,6 @@ async function lineCall(env, key, method, path, body, extraHeaders) {
     const to = body && body.to;
     if (!Array.isArray(to) || to.length < 1 || to.length > LINE_TESTER_MAX_PER_SEND || !to.every(u => LINE_USER_ID.test(String(u)))) throw new Error(`正式帳號的 multicast 最多只能發給 ${LINE_TESTER_MAX_PER_SEND} 位指定的人`);
   }
-  if (key === 'test' && sig === 'POST /v2/bot/message/broadcast') throw new Error('測試帳號不能 broadcast（會發給所有好友、吃掉免費額度），只能用 multicast 發給測試名單內的人');
   const token = await lineAccessToken(env, key);
   const res = await fetch(`${LINE_API}${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(extraHeaders || {}) },
@@ -975,7 +974,7 @@ async function handleLineValidate(request, env) {
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '檢查失敗', request, env); }
 }
 
-// ---- 發送（使用者已明確授權）。預設只允許測試帳號；正式帳號要 Worker 設定 LINE_ALLOW_OFFICIAL=1，且同一份內容先成功發過測試帳號、輸入正確好友數 ----
+// ---- 發送（使用者已明確授權）。三個帳號都能群發，閘門都一樣（先在同一個帳號測試推播成功、輸入正確好友數）；新聞／娛樂帳號還要 Worker 設定 LINE_ALLOW_OFFICIAL=1，測試帳號不用（它的好友只有自己人） ----
 const LINE_OFFICIAL = new Set(['news', 'ent']);
 const LINE_TESTED_TTL_MS = 60 * 60 * 1000;
 const LINE_RETRY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -984,16 +983,13 @@ const LINE_RETRY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 // approve(friends)：正式帳號的人數把關（立即推播＝使用者輸入的人數；排程＝建立排程時確認過的人數），不通過就丟錯。
 async function lineBroadcastNow(env, key, prep, { origin, retryKey, approve }) {
   lineChannelCreds(env, key);
-  const official = LINE_OFFICIAL.has(key);
   const messages = lineBuildMessages(prep, origin);
   const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
   if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有發送任何東西。`), { status: 400 });
   const info = await lineAccountInfo(env, key);
   const friends = info.followers ? info.followers.followers : null;
-  if (official) {
-    if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不發送。沒有發送任何東西。'), { status: 409 });
-    if (approve) approve(friends);
-  }
+  if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全不群發。沒有發送任何東西。'), { status: 409 });
+  if (approve) approve(friends);
   if (info.quota && info.quota.type === 'limited' && info.quota.value !== null && info.used !== null && friends !== null && info.quota.value - info.used < friends) {
     throw Object.assign(new Error(`本月訊息額度不夠：上限 ${info.quota.value}、已用 ${info.used}，這次要發約 ${friends} 則。沒有發送任何東西。`), { status: 409 });
   }
@@ -1057,11 +1053,15 @@ async function lineMulticastTest(env, prep, { origin, retryKey, recs, key = 'tes
   return { requestId: sent.requestId, alreadyAccepted: sent.status === 409, friends: recs.length, recipients: recs.map(r => r.name || '（沒有暱稱）'), pages: messages.length, quota: info.quota && info.quota.value !== null && info.used !== null ? { limit: info.quota.value, used: info.used } : null };
 }
 // 正式帳號的共同前置條件（立即推播與建立排程都要過）
+// 群發（broadcast）的共同前置條件（立即推播與建立排程都要過）。新聞／娛樂帳號：要 LINE_ALLOW_OFFICIAL=1、內容版型要和帳號一致；
+// 測試帳號也能群發給它的全部好友（好友只有自己人），不受旗標限制。三個帳號一視同仁的條件：同一份內容要先在「同一個帳號」測試推播成功過（testToken 綁帳號）。
 async function lineOfficialGate(env, key, prep, testToken) {
-  if (!env || env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。'), { status: 403 });
-  if (key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能發到這個正式帳號。沒有發送任何東西。');
+  if (LINE_OFFICIAL.has(key)) {
+    if (!env || env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送尚未開啟（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1）。沒有發送任何東西。'), { status: 403 });
+    if (key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能發到這個正式帳號。沒有發送任何東西。');
+  }
   const tested = await s8Open(env, testToken);
-  if (!tested || tested.t !== 'line-tested' || tested.id !== prep.id || !tested.x || tested.x < Date.now()) throw badInput('發正式帳號前，同一份內容必須先成功發到測試帳號。沒有發送任何東西。');
+  if (!tested || tested.t !== 'line-tested' || tested.id !== prep.id || tested.ch !== key || !tested.x || tested.x < Date.now()) throw badInput(`群發前，同一份內容必須先在「${lineAcctLabel(key)}」測試推播成功（只發給操作人）。沒有發送任何東西。`);
 }
 const lineTypedApprove = typed => friends => {
   const n = Number(typed);
@@ -1093,17 +1093,16 @@ async function handleLineSend(request, env) {
     if (!LINE_CHANNEL_SUFFIX[key]) throw badInput('channel 只能是 test、news 或 ent');
     if (typeof body.retryKey !== 'string' || !LINE_RETRY_KEY.test(body.retryKey)) throw badInput('缺少 retryKey（UUID），用來避免重複發送。沒有發送任何東西。');
     const prep = await lineOpenPrep(env, body.prepareToken);
-    const official = LINE_OFFICIAL.has(key);
-    const officialTest = official && body.mode === 'test';   // 「正式帳號的測試推播」：只 multicast 給該帳號測試名單裡勾選的人，不是正式群發
-    if (official && !officialTest) await lineOfficialGate(env, key, prep, body.testToken);
-    if (officialTest && key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能測試發到這個正式帳號。沒有發送任何東西。');
+    const testPush = body.mode === 'test';   // 測試推播（三個帳號都一樣）：只 multicast 給該帳號測試名單裡指定的 1 位（操作人）；沒帶 mode:'test' 就是群發，要過 lineOfficialGate
+    if (!testPush) await lineOfficialGate(env, key, prep, body.testToken);
+    if (testPush && LINE_OFFICIAL.has(key) && key !== prep.org) throw badInput('這份內容是為另一個版型準備的，不能測試發到這個正式帳號。沒有發送任何東西。');
     const origin = new URL(request.url).origin;
-    const r = official && !officialTest
+    const r = !testPush
       ? await lineBroadcastNow(env, key, prep, { origin, retryKey: body.retryKey, approve: lineTypedApprove(body.confirmTotal) })
       : await lineMulticastTest(env, prep, { origin, retryKey: body.retryKey, recs: await lineResolveTesters(env, body.testers, key), key });
-    const out = { ok: true, channel: key, official: official && !officialTest, testOnly: !official || officialTest, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
+    const out = { ok: true, channel: key, official: !testPush, testOnly: testPush, sentAt: taipeiIso(Date.now()), requestId: r.requestId, retryKey: body.retryKey, alreadyAccepted: r.alreadyAccepted, friends: r.friends, pages: r.pages };
     if (!out.official) { out.recipients = r.recipients; out.quota = r.quota; }
-    if (!out.official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, x: Date.now() + LINE_TESTED_TTL_MS });
+    if (!out.official) out.testToken = await s8Seal(env, { t: 'line-tested', id: prep.id, ch: key, x: Date.now() + LINE_TESTED_TTL_MS });
     out.historySaved = await lineHistorySave(env, { key, prep, body, r, out });
     return jsonOk(out, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '發送失敗', request, env); }
@@ -1203,7 +1202,7 @@ async function handleLineTesters(request, env, action) {
 //   排程資料存在同一個 R2 bucket 的 sched/<id>.json（狀態與時間同時放在 customMetadata，Cron 一次 list 就能挑出到期的）。
 //   Cron Trigger（每分鐘一次）呼叫 scheduled()：把到期的排程用「建立排程時產生的 retryKey」發出去（LINE 24 小時內同 key 不會重複發）。
 //   要在 Cloudflare 後台設定：Worker → Settings → Triggers → Cron Triggers → 新增 `* * * * *`。沒設的話排程不會發送，所以網頁會讀「心跳」提醒。
-//   POST /line/schedule/create  建立（正式帳號的條件跟立即推播一樣：LINE_ALLOW_OFFICIAL=1、先成功發過測試帳號、輸入正確好友數）
+//   POST /line/schedule/create  建立（條件跟群發立即推播一樣：先在同一個帳號測試推播成功、輸入正確好友數；新聞／娛樂帳號另需 LINE_ALLOW_OFFICIAL=1）。時間到時群發給該帳號全部好友
 //   POST /line/schedule/list    查看（狀態、時間、嘗試次數、錯誤、發送後的 request id）
 //   POST /line/schedule/update  變更時間（只有「待發送」的）
 //   POST /line/schedule/cancel  刪除（取消）排程（只有「待發送」的）
@@ -1269,26 +1268,21 @@ async function handleLineScheduleCreate(request, env) {
     lineR2(env);
     const bad = checkLineRunAt(body.runAt); if (bad) throw badInput(`${bad}。沒有建立排程。`);
     const prep = await lineOpenPrep(env, body.prepareToken, '排程');
-    const official = LINE_OFFICIAL.has(key);
-    if (official) await lineOfficialGate(env, key, prep, body.testToken);
-    const recs = official ? null : await lineResolveTesters(env, body.testers);   // 測試帳號排程：建立時就要指定收件人（時間到只發給他們）
+    await lineOfficialGate(env, key, prep, body.testToken);   // 排程＝時間到時群發：三個帳號都一樣，要先在同一個帳號測試推播成功
     lineChannelCreds(env, key);
     const pending = (await lineSchedList(env)).filter(x => x.status === 'scheduled' || x.status === 'sending').length;
     if (pending >= LINE_SCHED_MAX_PENDING) throw Object.assign(new Error(`待發送的排程已經 ${pending} 筆，請先刪除不需要的再建立。沒有建立排程。`), { status: 409 });
     const origin = new URL(request.url).origin;
     // 建立當下就把格式檢查與人數確認做完（發送當下還會再檢查一次）
     const messages = lineBuildMessages(prep, origin);
-    const v = await lineCall(env, key, 'POST', official ? '/v2/bot/message/validate/broadcast' : '/v2/bot/message/validate/multicast', { messages });
+    const v = await lineCall(env, key, 'POST', '/v2/bot/message/validate/broadcast', { messages });
     if (v.status !== 200) throw Object.assign(new Error(`訊息格式沒有通過 LINE 檢查：${lineErrText(v)}。沒有建立排程。`), { status: 400 });
-    const info = official ? await lineAccountInfo(env, key) : null;
-    const friends = info && info.followers ? info.followers.followers : null;
-    if (official) {
-      if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全正式帳號不排程。沒有建立排程。'), { status: 409 });
-      lineTypedApprove(body.confirmTotal)(friends);
-    }
+    const info = await lineAccountInfo(env, key);
+    const friends = info.followers ? info.followers.followers : null;
+    if (friends === null) throw Object.assign(new Error('查不到這個帳號的好友數（LINE 的統計資料還沒好），為了安全不排程。沒有建立排程。'), { status: 409 });
+    lineTypedApprove(body.confirmTotal)(friends);
     const id = lineHex(12), now = Date.now();
-    const rec = { v: 1, id, channel: key, org: prep.org, name: lineCleanName(body.name, prep.org, Date.parse(body.runAt)), test: !official, altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
-    if (recs) { rec.testerTids = recs.map(r => r.tid); rec.recipientNames = recs.map(r => r.name || '（沒有暱稱）'); }
+    const rec = { v: 1, id, channel: key, org: prep.org, name: lineCleanName(body.name, prep.org, Date.parse(body.runAt)), test: false, altText: prep.altText, pages: prep.pages, quick: prep.quick || [], links: lineSanitizeLinks(body.links), origin, runAt: Date.parse(body.runAt), createdAt: now, status: 'scheduled', attempts: 0, retryKey: crypto.randomUUID(), approvedFriends: friends };
     await lineSchedPut(env, rec);
     return jsonOk({ ok: true, schedule: lineSchedPublic(rec) }, request, env);
   } catch (e) { return jsonError(lineStatusCode(e), e.message || '建立排程失敗', request, env); }
@@ -1343,15 +1337,15 @@ async function lineRunDue(env, now = Date.now()) {
     await lineSchedPut(env, rec);
     try {
       const prep = { org: rec.org, altText: rec.altText, pages: rec.pages, quick: rec.quick || [] };
-      const official = LINE_OFFICIAL.has(rec.channel);
-      if (official) {
+      const legacyTest = rec.channel === 'test' && Array.isArray(rec.testerTids) && rec.testerTids.length > 0;   // 舊版的測試帳號排程：只發給建立時指定的人
+      if (LINE_OFFICIAL.has(rec.channel)) {
         if (env.LINE_ALLOW_OFFICIAL !== '1') throw Object.assign(new Error('正式帳號發送已關閉（Worker 沒有設定 LINE_ALLOW_OFFICIAL=1），沒有發送'), { status: 403 });
         if (rec.channel !== rec.org) throw badInput('排程內容與帳號不符，沒有發送');
       }
       const approve = friends => { const a = rec.approvedFriends; if (a && Math.abs(friends - a) > Math.max(100, Math.round(a * LINE_SCHED_DRIFT))) throw Object.assign(new Error(`發送當下好友數約 ${friends} 人，和建立排程時確認的 ${a} 人差太多，為了安全沒有發送`), { status: 409 }); };
       let r;
-      if (official) r = await lineBroadcastNow(env, rec.channel, prep, { origin: rec.origin, retryKey: rec.retryKey, approve });
-      else {   // 測試帳號：只發給建立排程時指定的人（名單裡已被移除的就略過；一個都不剩就失敗）
+      if (!legacyTest) r = await lineBroadcastNow(env, rec.channel, prep, { origin: rec.origin, retryKey: rec.retryKey, approve });
+      else {   // 舊版測試帳號排程：只發給建立排程時指定的人（名單裡已被移除的就略過；一個都不剩就失敗）
         const recs = []; for (const tid of rec.testerTids || []) { const t = await lineTesterGet(env, tid); if (t) recs.push(t); }
         if (!recs.length) throw badInput('這筆測試排程指定的收件人都已不在測試名單裡，沒有發送任何東西');
         r = await lineMulticastTest(env, prep, { origin: rec.origin, retryKey: rec.retryKey, recs });
