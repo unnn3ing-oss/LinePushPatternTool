@@ -4,10 +4,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
-import worker, { makeLabToken } from '../og-image-proxy.js';
+import worker, { makeLabToken, makeLineAdminToken } from '../og-image-proxy.js';
 
 const ORIGIN = 'http://localhost:8960';
-const BASE_ENV = { LAB_PASSWORD: 'test-password', ALLOWED_ORIGINS: ORIGIN, LINE_CHANNEL_ID_TEST: '111', LINE_CHANNEL_SECRET_TEST: 'sec-test', LINE_CHANNEL_ID_NEWS: '222', LINE_CHANNEL_SECRET_NEWS: 'sec-news' };
+const BASE_ENV = { LAB_PASSWORD: 'test-password', LINE_ADMIN_USER: 'admin', LINE_ADMIN_PASS: 'admin-pass', ALLOWED_ORIGINS: ORIGIN, LINE_CHANNEL_ID_TEST: '111', LINE_CHANNEL_SECRET_TEST: 'sec-test', LINE_CHANNEL_ID_NEWS: '222', LINE_CHANNEL_SECRET_NEWS: 'sec-news' };
 const UUID = '123e4567-e89b-12d3-a456-426614174000';
 const enc = new TextEncoder();
 
@@ -55,9 +55,10 @@ function installFakeLine({ clicks = 'ok', followers = 1000, quota = { type: 'lim
   return { calls, restore: () => { globalThis.fetch = realFetch; }, count: k => calls.filter(c => `${c.method} ${c.path}` === k).length };
 }
 
-async function req(env, path, body, { method = 'POST', auth = true } = {}) {
+async function req(env, path, body, { method = 'POST', auth = true, admin = true } = {}) {
   const headers = { 'Content-Type': 'application/json', Origin: ORIGIN };
   if (auth) headers.Authorization = `Bearer ${(await makeLabToken(env)).token}`;
+  if (auth && admin && /^\/line\/testers\/(add|remove|rename|lookup)$/.test(path) && env.LINE_ADMIN_USER && env.LINE_ADMIN_PASS) headers['X-Line-Admin'] = (await makeLineAdminToken(env)).token;   // 這幾個端點要管理者憑證；測試預設帶上，要測沒帶的情況傳 admin:false
   const res = await worker.fetch(new Request(`https://worker.test${path}`, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body) }), env);
   let json = null; try { json = await res.clone().json(); } catch { /* not json */ }
   return { status: res.status, json, res };
@@ -798,6 +799,37 @@ test('testers/add（測試帳號）：也可以直接貼 userId 加入（跟新�
     assert.equal(n.status, 200); assert.deepEqual(n.json.testers.map(t => [t.name, t.userId]), [['主播小美', OFFICIAL_UID3]]);
     assert.deepEqual((await tReq(env, '/line/testers/list', {})).json.testers.map(t => t.userId), [OFFICIAL_UID2]);
     assert.equal(line.calls.filter(c => c.path.startsWith('/v2/bot/profile/')).length, 2, '每個帳號各向 LINE 驗證一次');
+  } finally { line.restore(); }
+});
+
+test('管理者登入：要試驗功能憑證＋帳號密碼都對才發憑證；add／remove／rename／lookup 沒有（或過期、被竄改）的管理者憑證一律擋，list 不用', async () => {
+  const line = installFakeLine(); const env = { ...BASE_ENV, LINE_IMG: fakeR2() };
+  try {
+    assert.equal((await req(env, '/line/admin/login', { user: 'admin', pass: 'admin-pass' }, { auth: false })).status, 401, '沒有試驗功能憑證');
+    for (const b of [{ user: 'admin', pass: 'x' }, { user: 'x', pass: 'admin-pass' }, { user: '', pass: '' }, { user: 1, pass: 2 }, {}]) assert.equal((await req(env, '/line/admin/login', b)).status, 401, JSON.stringify(b));
+    const ok = await req(env, '/line/admin/login', { user: 'admin', pass: 'admin-pass' });
+    assert.equal(ok.status, 200); assert.ok(ok.json.token && ok.json.expiresAt > Date.now() && ok.json.expiresAt <= Date.now() + 30 * 60 * 1000 + 1000);
+    seedTester(env);
+    assert.equal((await req(env, '/line/testers/list', {}, { admin: false })).status, 200, '看名單不需要管理者登入');
+    for (const [path, body] of [['/line/testers/add', { userId: TESTER_UID2 }], ['/line/testers/lookup', { userId: TESTER_UID2 }], ['/line/testers/remove', { tid: TID }], ['/line/testers/rename', { tid: TID, name: 'x' }]]) {
+      const r = await req(env, path, body, { admin: false });
+      assert.equal(r.status, 403, path); assert.match(r.json.error, /管理者登入/);
+    }
+    assert.equal((await testersOf(env)).testers.length, 1, '被擋的請求沒有動到名單');
+    // 憑證：換帳號密碼、過期、亂改都不行
+    const call = async (tok, env2 = env) => { const headers = { 'Content-Type': 'application/json', Origin: ORIGIN, Authorization: `Bearer ${(await makeLabToken(env2)).token}`, 'X-Line-Admin': tok }; return (await worker.fetch(new Request('https://worker.test/line/testers/rename', { method: 'POST', headers, body: JSON.stringify({ tid: TID, name: '改好了' }) }), env2)).status; };
+    const t = (await makeLineAdminToken(env)).token;
+    assert.equal(await call(t), 200);
+    assert.equal(await call(t, { ...env, LINE_ADMIN_PASS: 'changed' }), 403, '改了密碼，舊憑證失效');
+    assert.equal(await call((await makeLineAdminToken(env, Date.now() - 31 * 60 * 1000)).token), 403, '過期');
+    assert.equal(await call(t.slice(0, -2) + 'xx'), 403, '簽章被改');
+    assert.equal(await call(''), 403); assert.equal(await call('abc'), 403);
+    assert.equal(await call((await makeLabToken(env)).token), 403, '試驗功能憑證不能拿來當管理者憑證');
+    // 沒設帳號密碼：一律關閉（不會變成沒鎖）
+    const bare = { ...BASE_ENV, LINE_ADMIN_USER: undefined, LINE_ADMIN_PASS: undefined, LINE_IMG: fakeR2() };
+    assert.equal((await req(bare, '/line/admin/login', { user: '', pass: '' })).status, 503);
+    assert.equal((await req(bare, '/line/testers/add', { userId: TESTER_UID2 })).status, 503);
+    assert.equal((await req(bare, '/line/testers/list', {})).status, 200);
   } finally { line.restore(); }
 });
 

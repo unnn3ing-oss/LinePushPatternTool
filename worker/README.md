@@ -70,6 +70,7 @@
    | `LINE_CHANNEL_ID_NEWS`、`LINE_CHANNEL_SECRET_NEWS` | TVBS新聞正式帳號（先不要設，測試穩定後再說） |
    | `LINE_CHANNEL_ID_ENT`、`LINE_CHANNEL_SECRET_ENT` | TVBS娛樂頭條正式帳號（同上） |
    | `LINE_ALLOW_OFFICIAL` | 填 `1` 才允許發正式帳號；**沒設就一律拒絕** |
+   | `LINE_ADMIN_USER`、`LINE_ADMIN_PASS`（Secret） | 「LINE推播設定 → 進階設定」的管理者帳號與密碼（自己取，兩個都要設）。**沒設＝成員名單與快速回覆的進階修改整個關閉**；改了任何一個，已登入的憑證立刻失效 |
 
    **Channel secret 等同密碼，不要貼在對話或程式碼裡。**
 2. **R2 圖片空間**：Cloudflare → R2 → 建立一個 bucket（名稱隨意）；再到 Worker → Settings → Bindings → Add → **R2 bucket**，**變數名稱必須填 `LINE_IMG`**，選剛建的 bucket → Deploy。LINE 的 imagemap 要求圖片放在你自己的 HTTPS 網址，且 `baseUrl/{240,300,460,700,1040}` 五種寬度的網址都要能下載（網址不能有副檔名）。網頁只上傳「與 S8 同一張」的 1040 圖（位元組完全相同），Worker 存進 R2，並由 `GET /line-img/<id>/<寬度>`（公開）對**五種寬度的網址都回這一張 1040**：LINE 不管挑哪種寬度，抓到的都是完整畫質，由手機自己縮小，不經過我們的縮圖。**圖片要一直留著**（使用者每次開啟訊息 LINE 都會抓），不要清掉 bucket。
@@ -84,6 +85,7 @@
 | `POST /line/validate` | 交給 LINE 的 `validate/broadcast` 檢查格式，**只檢查、不發送** |
 | `POST /line/send` | 再 validate 一次、確認額度與人數後發送。**測試帳號：`multicast` 只發給操作者一位（每次最多 1 位），不 broadcast**；正式帳號：`broadcast` 給全部好友 |
 | `POST /line/webhook` | 測試帳號的 webhook（LINE 呼叫，不用試驗功能憑證，驗 `X-Line-Signature`）：同事傳「登記」就加入測試名單（見下一節） |
+| `POST /line/admin/login` | 管理者帳號密碼登入（`{user, pass}`，要先有試驗功能憑證）→ 30 分鐘憑證；帳號密碼放 Worker Secret `LINE_ADMIN_USER`、`LINE_ADMIN_PASS`（沒設＝進階權限修改整個關閉，回 503）。之後 `testers/add｜remove｜rename｜lookup` 都要帶 `X-Line-Admin`，沒帶或過期回 403；`testers/list` 只要試驗功能憑證 |
 | `POST /line/testers/list`｜`remove`｜`rename` | 查看／移除／改名成員名單（`rename` 帶 `tid`＋`name`，只改名字、userId 不變、不問 LINE，同一個帳號內名字不能重複；回 tid、名字與 LINE userId，給「訊息推播 → LINE推播設定 → 權限管理」列表用，需要試驗功能憑證）；`channel` 可帶 `test`（預設）｜`news`｜`ent` |
 | `POST /line/testers/lookup`｜`add` | 貼上對方的 LINE userId（`name` 可自己填，不填就用 LINE 暱稱）→ Worker 用該帳號的 token 查 `GET /v2/bot/profile/{userId}` 驗證有效；`add` 驗證通過才存（正式帳號上限 20 人、測試帳號 50 人）。測試帳號也能這樣加，不一定要傳「登記」 |
 | `POST /line/schedule/*` | 排程推播：建立、查看、變更時間、刪除（見下一節） |

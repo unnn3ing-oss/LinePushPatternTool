@@ -272,6 +272,13 @@
   .line-trow span { font-size: 14px; color: var(--text); }
   .line-trow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; }
   .line-trow button { padding: 2px 12px; font-size: 13px; }
+  .adm-box { margin-top: 22px; padding: 14px 16px; border: 1px solid rgba(0, 0, 0, .14); border-radius: 14px; background: #fafafa; }
+  .adm-box > .hub-bar { margin-top: 0; }
+  .adm-state { margin-right: auto; margin-left: 10px; padding: 1px 10px; border: 1px solid #facc15; border-radius: 99px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; }
+  .adm-state.on { border-color: #86efac; background: #dcfce7; color: #166534; }
+  .adm-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .adm-form input { flex: 1 1 160px; min-width: 0; }
+  #lineAdminBody[hidden], #lineAdminLock[hidden] { display: none; }
   .line-adduids { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; margin-top: 8px; }
   .line-adduids label { font-size: 13px; font-weight: 700; white-space: nowrap; }
   .line-adduids input { min-width: 0; }
@@ -1726,7 +1733,19 @@
       <section class="hub-sec" id="hubSet" data-hub="set" hidden>
         <div class="hub-bar"><span class="line-sub" id="hubStatusTitle">連線狀態</span><button type="button" id="hubStatusBtn">重新檢查</button></div>
         <div id="hubStatusBox" class="hub-kv"><div class="line-note">讀取中…</div></div>
-        <div class="hub-bar" style="margin-top:20px"><span class="line-sub" id="lineTesterTitle">權限管理</span></div>
+        <div class="adm-box" id="lineAdminBox">
+          <div class="hub-bar"><span class="line-sub">進階設定</span><span class="adm-state" id="lineAdminState">需要管理者登入</span><button type="button" id="lineAdminOut" hidden>登出</button></div>
+          <div id="lineAdminLock">
+            <div class="line-note" style="margin-top:0">成員名單（新增、改名、移除、各帳號的 userId）與快速回覆設定，要先用管理者的帳號密碼登入才能查看與修改。登入只在這個頁面有效（30 分鐘，重新整理或關閉頁面就要再登入）；上面的連線狀態不用登入。</div>
+            <div class="adm-form">
+              <input type="text" id="lineAdminUser" autocomplete="off" spellcheck="false" placeholder="管理者帳號" aria-label="管理者帳號">
+              <input type="password" id="lineAdminPass" autocomplete="off" placeholder="管理者密碼" aria-label="管理者密碼">
+              <button type="button" class="primary" id="lineAdminIn">登入</button>
+            </div>
+            <div class="line-note" id="lineAdminMsg" style="margin-top:6px"></div>
+          </div>
+          <div id="lineAdminBody" hidden>
+        <div class="hub-bar" style="margin-top:8px"><span class="line-sub" id="lineTesterTitle">權限管理</span></div>
         <div class="line-note" style="margin-top:0" id="lineTesterHint"></div>
         <div id="lineTesterList" class="line-note">讀取中…</div>
         <div id="lineAddRow">
@@ -1744,6 +1763,8 @@
         <div class="hub-bar" style="margin-top:20px"><span class="line-sub">快速回覆設定</span></div>
         <div class="line-note" style="margin-top:0">快速回覆按鈕每次推播都不同，在「排入LINE推播」第 1 步新增。連結留空的按鈕，會把「顯示文字」當關鍵字，到這裡設定的搜尋網站去搜尋。這個網址所有推播共用，記在這個瀏覽器。</div>
         <div class="qr-tpl"><label for="qrTpl">搜尋網站網址</label><input type="text" id="qrTpl" autocomplete="off" spellcheck="false" placeholder="https://example.com/search?q={keyword}（{keyword} 會換成按鈕文字）"></div>
+          </div>
+        </div>
       </section>
       <section class="hub-sec" id="hubS8" data-hub="s8" hidden>
         <p class="s8c-state" id="s8cState">尚未連結</p>
@@ -7419,7 +7440,7 @@ const hubStatusBy = {};   // 帳號 → { busy, data, error }
 function hubSetShow() {
   hubEl('hubStatusTitle').textContent = `連線狀態（${hubAcctName(hubCh)}）`;
   hubStatusRender(); hubStatusLoad(hubCh);
-  const w = lineWhoFor(hubCh); lineTesterListRender();
+  const w = lineWhoFor(hubCh); lineAdminRender($line('lineAdminMsg').textContent, $line('lineAdminMsg').classList.contains('bad')); lineTesterListRender();
   if (!w.loaded && !w.loading) lineWhoLoad(hubCh);
 }
 async function hubStatusLoad(ch, force) {
@@ -7454,10 +7475,47 @@ function hubStatusRender() {
 }
 hubEl('hubStatusBtn').addEventListener('click', () => { hubStatusLoad(hubCh, true); const w = lineWhoFor(hubCh); if (!w.loading) lineWhoLoad(hubCh); });
 
+// ---- 進階設定：管理者帳號密碼登入（Worker 的 LINE_ADMIN_USER／LINE_ADMIN_PASS）。憑證只放在記憶體：重新整理就要重新登入，不寫進任何瀏覽器儲存 ----
+let lineAdminTok = null, lineAdminTimer = 0;
+const lineAdminOn = () => !!(lineAdminTok && lineAdminTok.exp > Date.now());
+function lineAdminRender(msg, bad) {
+  const on = lineAdminOn();
+  $line('lineAdminLock').hidden = on; $line('lineAdminBody').hidden = !on; $line('lineAdminOut').hidden = !on;
+  const st = $line('lineAdminState'); st.textContent = on ? '管理者已登入' : '需要管理者登入'; st.classList.toggle('on', on);
+  const m = $line('lineAdminMsg'); m.textContent = msg || ''; m.classList.toggle('bad', !!bad);
+}
+function lineAdminLogout(msg, bad) {
+  clearTimeout(lineAdminTimer); lineAdminTok = null; $line('lineAdminPass').value = '';
+  $line('lineTesterList').textContent = ''; LINE_ADD_CHS.forEach(ch => { lineAddUidEl(ch).value = ''; }); $line('lineAddName').value = '';   // 登出就把畫面上的名單與沒送出的 userId 一併清掉
+  lineAddReset(''); lineAdminRender(msg, bad);
+}
+async function lineAdminApi(path, body) {   // 進階的 Worker 呼叫：帶管理者憑證；Worker 說沒登入或過期就退回登入畫面
+  if (!lineAdminOn()) { lineAdminLogout('管理者登入已過期，請重新登入。', true); throw new Error('需要管理者登入，請先登入'); }
+  try { return await s8Api(path, body, { 'X-Line-Admin': lineAdminTok.token }); }
+  catch (e) { if (/需要管理者登入/.test(String((e && e.message) || e))) lineAdminLogout('管理者登入已過期，請重新登入。', true); throw e; }
+}
+async function lineAdminLogin() {
+  const user = $line('lineAdminUser').value.trim(), pass = $line('lineAdminPass').value;
+  if (!user || !pass) { lineAdminRender('請輸入管理者帳號與密碼。', true); return; }
+  const btn = $line('lineAdminIn'); btn.disabled = true; lineAdminRender('登入中…');
+  try {
+    const r = await s8Api('/line/admin/login', { user, pass });
+    lineAdminTok = { token: r.token, exp: Date.now() + 29 * 60e3 };   // Worker 發 30 分鐘；本機少算 1 分鐘，不拿自己的時鐘去跟 Worker 的到期時間硬對
+    clearTimeout(lineAdminTimer); lineAdminTimer = setTimeout(() => lineAdminLogout('管理者登入已超過 30 分鐘，請重新登入。', true), 29 * 60e3);
+    $line('lineAdminPass').value = ''; $line('lineAdminUser').value = '';
+    lineAdminRender(''); lineTesterListRender();
+  } catch (e) { lineAdminRender(`✗ ${e.message || e}`, true); }
+  btn.disabled = false;
+}
+$line('lineAdminIn').addEventListener('click', lineAdminLogin);
+$line('lineAdminOut').addEventListener('click', () => lineAdminLogout(''));
+[$line('lineAdminUser'), $line('lineAdminPass')].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lineAdminLogin(); } }));
+
 // 權限管理：這個帳號「可以被選為測試推播收件人」的成員（名字＋對應的 LINE userId）
 const lineBoxCh = () => hubCh;
 function lineTesterListRender() {
   const ch = lineBoxCh(), w = lineWhoFor(ch), box = $line('lineTesterList'); box.textContent = '';
+  if (!lineAdminOn()) return;   // 沒登入管理者：名單與 userId 不放進畫面
   $line('lineTesterTitle').textContent = `權限管理（${lineWhoAcct(ch)}）`;
   hubEl('lineTesterHint').textContent = ch === 'test' ? '名單內的成員可以被選為「操作人」，測試推播只會傳給操作人本人。對方傳「登記」給測試帳號會自動加入，也可以在下面直接貼 userId 新增。同一個人在不同帳號的 userId 不同，名字要一致才算同一人。' : '名單內的成員可以被選為「操作人」，測試推播只會傳給操作人本人，群發不受名單影響。同一個人在不同帳號的 userId 不同，名字要一致才算同一人。';
   if (w.error) { box.textContent = `✗ ${w.error}`; return; }
@@ -7472,7 +7530,7 @@ function lineTesterListRender() {
     const b = document.createElement('button'); b.type = 'button'; b.dataset.act = 'remove'; b.textContent = '移除';
     b.addEventListener('click', async () => {
       if (!window.confirm(`從「${lineWhoAcct(ch)}」的名單移除「${t.name}」嗎？\n\n移除後測試推播不會再發給他；${ch === 'test' ? '他可以再傳「登記」重新加入，' : ''}也可以貼他的 LINE userId 再加回來。`)) return;
-      try { const r = await s8Api('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; lineOpRevalidate(); }
+      try { const r = await lineAdminApi('/line/testers/remove', { channel: ch, tid: t.tid }); w.testers = r.testers || []; lineOpRevalidate(); }
       catch (e) { window.alert(`移除失敗：${e.message || e}`); }
       lineOpRender(); lineTesterListRender(); lineUpdateSteps();
     });
@@ -7495,7 +7553,7 @@ function lineTesterRenameEdit(row, mem, t, ch, w) {
     if (!v || v === t.name) { cancel(); return; }
     ok.disabled = no.disabled = inp.disabled = true;
     try {
-      const r = await s8Api('/line/testers/rename', { channel: ch, tid: t.tid, name: v });
+      const r = await lineAdminApi('/line/testers/rename', { channel: ch, tid: t.tid, name: v });
       w.testers = r.testers || [];
       if (lineOp === t.name) lineOpSet(v);   // 目前的操作人被改名：跟著改，之前的測試推播會作廢、要重測
       lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();
@@ -7534,7 +7592,7 @@ $line('lineAddFind').addEventListener('click', async () => {
   if (badFmt.length) { badFmt.forEach(r => lineAddRow(r.ch, '✗ 格式不對：應該是 U 開頭加 32 個小寫英數字（0-9、a-f）。', true)); $line('lineAddOut').textContent = '✗ 有格式不對的 userId，沒有向 LINE 查詢。'; $line('lineAddOut').classList.add('bad'); return; }
   $line('lineAddFind').disabled = true; $line('lineAddOut').textContent = '向 LINE 查詢中…'; rows.forEach(r => lineAddRow(r.ch, '查詢中…'));
   await Promise.all(rows.map(r => { const w = lineWhoFor(r.ch); return w.loaded || w.loading ? 0 : lineWhoLoad(r.ch); }));   // 先讀名單，才檢查得出名字重複
-  const res = await Promise.allSettled(rows.map(r => s8Api('/line/testers/lookup', { channel: r.ch, userId: r.uid, name })));
+  const res = await Promise.allSettled(rows.map(r => lineAdminApi('/line/testers/lookup', { channel: r.ch, userId: r.uid, name })));
   const firstOk = res.find(x => x.status === 'fulfilled'), finalName = name || (firstOk ? firstOk.value.found.lineName : '');
   let bad = 0;
   rows.forEach((r, i) => {
@@ -7553,7 +7611,7 @@ $line('lineAddOk').addEventListener('click', async () => {
   $line('lineAddOk').disabled = true; $line('lineAddFind').disabled = true;
   const done = [], fail = [];
   for (const r of f.rows) {
-    try { const out = await s8Api('/line/testers/add', { channel: r.ch, userId: r.uid, name: f.name }); const w = lineWhoFor(r.ch); w.testers = out.testers || []; w.loaded = true; w.error = ''; done.push(r.ch); }
+    try { const out = await lineAdminApi('/line/testers/add', { channel: r.ch, userId: r.uid, name: f.name }); const w = lineWhoFor(r.ch); w.testers = out.testers || []; w.loaded = true; w.error = ''; done.push(r.ch); }
     catch (e) { fail.push({ ch: r.ch, msg: String((e && e.message) || e) }); }
   }
   lineOpRevalidate(); lineOpRender(); lineTesterListRender(); lineUpdateSteps();

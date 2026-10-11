@@ -36,9 +36,10 @@ const D = rec({ id: 'd'.repeat(24), name: '10/08新聞', test: true, altText: '�
 const E = rec({ id: 'e'.repeat(24), kind: 'sched', name: '10/07新聞', altText: '★失敗稿', status: 'failed', runAt: NOW - 2 * 86400e3, runAtIso: iso(NOW - 2 * 86400e3), lastError: '發送當下好友數差太多', links: [] });
 const ENT = rec({ id: '9'.repeat(24), channel: 'ent', org: 'ent', name: '10/09娛樂', altText: '★娛樂', runAt: NOW - 7200e3, runAtIso: iso(NOW - 7200e3), sentAt: iso(NOW - 7200e3), friends: 50000, requestId: '44444444-4444-4444-8444-444444444444' });
 const db = { news: [A, B, C, D, E], ent: [ENT], test: [] };
-const reqs = { list: [], stats: [], rename: [], trename: [], cancel: [], status: [], testers: [], lookup: [], add: [], remove: [] };
+const reqs = { list: [], stats: [], rename: [], trename: [], alogin: [], cancel: [], status: [], testers: [], lookup: [], add: [], remove: [] };
 let heartbeat = NOW, statsMode = 'ok', statsFail = '';
 const testersDb = { news: [{ tid: '1'.repeat(16), name: '小編本人', userId: 'U0123456789abcdef0123456789abcdef', registeredAt: 1 }], ent: [], test: [{ tid: 'a'.repeat(16), name: '王小明', userId: 'U' + 'a'.repeat(32), registeredAt: 1 }] };
+let adminTok = '';   // 假 Worker：管理者登入後發的憑證
 const UID2 = 'U' + 'd'.repeat(32), UID_BAD = 'U' + 'e'.repeat(32), UID3 = 'U' + 'f'.repeat(32);
 const labAuthReqs = [];
 const findRec = id => Object.values(db).flat().find(r => r.id === id);
@@ -65,6 +66,8 @@ await page.route(`${WORKER}/**`, async route => {
     if (body.channel === 'ent') return json({ error: 'Worker 尚未設定 TVBS娛樂頭條 的 LINE 憑證' }, 503);
     return json({ ok: true, channel: body.channel, r2Ready: true, heartbeatAt: heartbeat, serverNow: Date.now(), officialAllowed: false, bot: { displayName: body.channel === 'test' ? '測試官方帳號' : 'TVBS新聞', basicId: '@abc' }, quota: body.channel === 'test' ? { type: 'limited', value: 200 } : { type: 'none' }, used: body.channel === 'test' ? 36 : 17266349, followers: body.channel === 'test' ? null : { status: 'ready', followers: 287091 }, notes: [] });
   }
+  if (url.pathname === '/line/admin/login') { reqs.alogin.push(body); if (body.user !== 'boss' || body.pass !== 'pw123') return json({ error: '帳號或密碼不正確' }, 401); adminTok = 'adm-' + reqs.alogin.length; return json({ ok: true, token: adminTok, expiresAt: Date.now() + 30 * 60e3 }); }
+  if (/^\/line\/testers\/(add|remove|rename|lookup)$/.test(url.pathname) && route.request().headers()['x-line-admin'] !== adminTok) return json({ error: '需要管理者登入（尚未登入或登入已過期）' }, 403);
   if (url.pathname === '/line/testers/list') { reqs.testers.push(body); return json({ ok: true, channel: body.channel, testers: testersDb[body.channel], maxPerSend: 2 }); }
   if (url.pathname === '/line/testers/rename') { reqs.trename.push(body); const t = testersDb[body.channel].find(x => x.tid === body.tid); if (!t) return json({ error: '名單裡找不到這位' }, 404); if (testersDb[body.channel].some(x => x.tid !== body.tid && x.name === body.name)) return json({ error: `名單裡已經有「${body.name}」了` }, 409); t.name = body.name; return json({ ok: true, testers: testersDb[body.channel], maxPerSend: 2 }); }
   if (url.pathname === '/line/testers/remove') { reqs.remove.push(body); testersDb[body.channel] = testersDb[body.channel].filter(t => t.tid !== body.tid); return json({ ok: true, testers: testersDb[body.channel], maxPerSend: 2 }); }
@@ -192,6 +195,18 @@ await page.waitForFunction(() => /已連線/.test(document.getElementById('hubSt
 const st = await txt('#hubStatusBox');
 check(st.includes('TVBS新聞（@abc）') && st.includes('287,091') && st.includes('無上限') && st.includes('已綁定') && st.includes('運作中') && st.includes('LINE_ALLOW_OFFICIAL'), '連線狀態：帳號、好友數、訊息額度、圖片空間、排程引擎、正式群發開關');
 check(reqs.status.at(-1).channel === 'news', '連線狀態向 LINE 查的是目前選的帳號');
+// 進階設定：要管理者帳號密碼登入才看得到名單與快速回覆設定；上面的連線狀態不用登入
+check(await vis('#lineAdminBox') && await vis('#lineAdminUser') && await vis('#lineAdminPass') && !(await vis('#lineAdminBody')) && (await txt('#lineAdminState')).includes('需要管理者登入') && !(await vis('#lineTesterList')) && !(await vis('#qrTpl')) && !(await page.evaluate(() => document.getElementById('lineTesterList').textContent.includes('U0123'))), '進階設定（下方框）：沒登入只看得到帳號密碼欄；成員名單、userId、快速回覆設定都收起來，userId 也不在畫面上');
+check((await page.evaluate(() => { const b = document.getElementById('lineAdminBox').getBoundingClientRect(), h = document.getElementById('hubStatusBox').getBoundingClientRect(); return b.top > h.bottom; })), '進階設定在連線狀態的下方');
+await page.click('#lineAdminIn');
+check((await txt('#lineAdminMsg')).includes('請輸入管理者帳號與密碼') && reqs.alogin.length === 0, '沒填就按登入：提示，不送出');
+await page.fill('#lineAdminUser', 'boss'); await page.fill('#lineAdminPass', 'wrong'); await page.click('#lineAdminIn');
+await page.waitForFunction(() => document.getElementById('lineAdminMsg').textContent.includes('不正確'));
+check(reqs.alogin.at(-1).user === 'boss' && !(await vis('#lineAdminBody')), '密碼錯：顯示原因，仍然鎖著');
+await page.fill('#lineAdminPass', 'pw123'); await page.press('#lineAdminPass', 'Enter');
+await page.waitForFunction(() => !document.getElementById('lineAdminBody').hidden);
+check((await txt('#lineAdminState')).includes('管理者已登入') && await vis('#lineAdminOut') && (await page.inputValue('#lineAdminPass')) === '' && await vis('#qrTpl') && await vis('#lineAddRow'), '登入成功：顯示「管理者已登入」與登出；權限管理、快速回覆設定展開，密碼欄清空');
+check(await page.evaluate(() => { const t = JSON.stringify([sessionStorage, localStorage]); return !t.includes('adm-'); }), '管理者憑證只在記憶體，沒寫進 sessionStorage／localStorage');
 await page.waitForFunction(() => document.querySelectorAll('#lineTesterList .line-trow').length === 1);
 check((await txt('#lineTesterTitle')).includes('權限管理') && (await txt('#lineTesterList')).includes('小編本人') && (await txt('#lineTesterList')).includes('U0123456789abcdef0123456789abcdef'), '權限管理：列表顯示名字＋對應的 userId');
 await page.locator('#hubBody').screenshot({ path: path.join(SHOTS, 'hub-3-settings.png') });
@@ -253,6 +268,18 @@ check((await txt('#hubStatusBox')).includes('上限 200') && (await txt('#hubSta
 check(await vis('#lineAddRow'), '測試帳號也能直接貼 userId 新增');
 await page.click('#hubStatusBtn');
 check(reqs.status.filter(r => r.channel === 'test').length >= 2, '「重新檢查」：重新向 LINE 查');
+// 登出：名單與沒送出的 userId 一併清掉；登入過期（Worker 不認憑證）：退回登入畫面
+await page.fill('#lineAddName', '暫存'); await page.fill('#lineAddUid_news', UID2);
+await page.click('#lineAdminOut');
+check(!(await vis('#lineAdminBody')) && (await txt('#lineAdminState')).includes('需要管理者登入') && (await page.inputValue('#lineAddUid_news')) === '' && (await txt('#lineTesterList')) === '' && (await vis('#hubStatusBox')), '登出：回到鎖定狀態，名單與沒送出的 userId 清掉，連線狀態還在');
+await page.fill('#lineAdminUser', 'boss'); await page.fill('#lineAdminPass', 'pw123'); await page.click('#lineAdminIn');
+await page.waitForFunction(() => !document.getElementById('lineAdminBody').hidden);
+adminTok = 'rotated-by-worker';
+await page.click('#lineTesterList .line-trow:first-child button[data-act=rename]');
+await page.fill('#lineTesterList .line-trename', '改不成');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('lineAdminMsg').textContent.includes('過期'));
+check(!(await vis('#lineAdminBody')) && dialogs.at(-1).includes('需要管理者登入') && (await txt('#lineAdminMsg')).includes('重新登入'), '憑證過期（Worker 回 403）：改名失敗、自動退回登入畫面並提示重新登入');
 
 // ===== 8. 憑證過期 → 密碼視窗 → 自動繼續 =====
 await page.click('#hubTabList'); await page.click('#hubAcctNews');

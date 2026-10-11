@@ -53,7 +53,7 @@ function corsHeaders(request, env) {
   const h = {
     'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-S8-Session',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-S8-Session, X-Line-Admin',
     'Access-Control-Expose-Headers': 'X-Image-Url',
   };
   if (origin && allowed.includes(origin)) h['Access-Control-Allow-Origin'] = origin;
@@ -1116,6 +1116,7 @@ async function handleLineSend(request, env) {
 // 測試名單（只有測試帳號）
 //   POST /line/webhook         LINE 呼叫的 webhook（要在測試帳號的 Developers Console 設定，並開啟 Use webhook）。不需要試驗功能憑證，改驗 X-Line-Signature。
 //                              使用者傳「登記」→ 記下 userId＋暱稱（回覆「已加入測試名單」，reply 不計額度）；加好友或傳別的字 → 回覆提示；封鎖／刪除好友 → 自動從名單移除
+//   POST /line/admin/login     管理者帳號密碼（Secret：LINE_ADMIN_USER／LINE_ADMIN_PASS）→ 30 分鐘憑證，之後 add／remove／rename／lookup 要帶 X-Line-Admin
 //   POST /line/testers/list    查看名單（只回 tid＋暱稱，不給網頁 LINE userId）。body.channel：test（預設）｜news｜ent
 //   POST /line/testers/remove  從名單移除（同上，可指定 channel）
 //   POST /line/testers/rename  改名單裡某位的名字（只改名字，不問 LINE；userId 不變。同一個帳號的名單裡名字不能重複）
@@ -1165,9 +1166,38 @@ async function handleLineWebhook(request, env) {
   for (const ev of events) { try { await lineHandleEvent(env, ev); } catch (e) { console.error('line webhook event failed', e && e.message); } }
   return plain(200, { ok: true });
 }
+// ---- 進階權限：管理者帳號密碼 --------------------------------------------------
+// 「LINE推播設定」下方的進階設定（成員名單新增／改名／移除、userId、快速回覆）要先用管理者帳號密碼登入。
+// 帳號密碼只放在 Worker 的 Secret：LINE_ADMIN_USER、LINE_ADMIN_PASS（兩個都要設；沒設就一律拒絕，不會因為忘了設而變成沒鎖）。
+// 登入成功發一張 30 分鐘的憑證（簽章金鑰含帳號與密碼，改了任何一個舊憑證立刻失效），網頁只放在記憶體、用 X-Line-Admin 帶上來。
+// 試驗功能密碼是「能不能進試驗功能」；管理者登入是「能不能改名單」，兩層都要過。查看名單與連線狀態只需要前者。
+const LINE_ADMIN_TTL_MS = 30 * 60 * 1000;
+const lineAdminConfigured = env => !!(env && env.LINE_ADMIN_USER && env.LINE_ADMIN_PASS);
+const lineAdminKey = env => `${labSigningKey(env)}|line-admin|${env.LINE_ADMIN_USER}|${env.LINE_ADMIN_PASS}`;
+export async function makeLineAdminToken(env, now = Date.now()) {
+  const exp = String(now + LINE_ADMIN_TTL_MS);
+  return { token: `${exp}.${toBase64Url(await hmacBytes(lineAdminKey(env), `line-admin|${exp}`))}`, expiresAt: Number(exp) };
+}
+async function requireLineAdmin(request, env) {
+  if (!lineAdminConfigured(env)) return jsonError(503, '尚未設定管理者帳號密碼（Worker 缺少 LINE_ADMIN_USER／LINE_ADMIN_PASS），進階權限修改暫時關閉', request, env);
+  const [exp, sig] = String(request.headers.get('X-Line-Admin') || '').split('.');
+  const ok = !!exp && !!sig && /^\d+$/.test(exp) && Number(exp) >= Date.now() && await safeEqual(sig, toBase64Url(await hmacBytes(lineAdminKey(env), `line-admin|${exp}`)));
+  return ok ? null : jsonError(403, '需要管理者登入（尚未登入或登入已過期）', request, env);
+}
+async function handleLineAdminLogin(request, env) {
+  if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
+  const denied = await requireLab(request, env); if (denied) return denied;
+  if (!lineAdminConfigured(env)) return jsonError(503, '尚未設定管理者帳號密碼（Worker 缺少 LINE_ADMIN_USER／LINE_ADMIN_PASS）', request, env);
+  const { body, error } = await lineReadBody(request, env, 1024); if (error) return error;
+  const user = typeof body.user === 'string' ? body.user : '', pass = typeof body.pass === 'string' ? body.pass : '';
+  const okUser = await safeEqual(user, env.LINE_ADMIN_USER), okPass = await safeEqual(pass, env.LINE_ADMIN_PASS);   // 兩個都比，不因帳號錯就提早結束
+  if (!user || !pass || !okUser || !okPass) { await new Promise(r => setTimeout(r, LAB_FAIL_DELAY_MS)); return jsonError(401, '帳號或密碼不正確', request, env); }
+  return jsonOk(await makeLineAdminToken(env), request, env);
+}
 async function handleLineTesters(request, env, action) {
   if (request.method !== 'POST') return jsonError(405, '只支援 POST', request, env);
   const denied = await requireLab(request, env); if (denied) return denied;
+  if (action !== 'list') { const noAdmin = await requireLineAdmin(request, env); if (noAdmin) return noAdmin; }   // 新增／改名／移除／查詢 userId 要管理者登入；單純查看名單不用
   const { body, error } = await lineReadBody(request, env); if (error) return error;
   try {
     lineR2(env);
@@ -1506,6 +1536,7 @@ export default {
     if (path === '/line/history/stats') return handleLineHistoryStats(request, env);
     if (path === '/line/history/rename') return handleLineHistoryRename(request, env);
     if (path === '/line/webhook') return handleLineWebhook(request, env);
+    if (path === '/line/admin/login') return handleLineAdminLogin(request, env);
     if (path === '/line/testers/list') return handleLineTesters(request, env, 'list');
     if (path === '/line/testers/remove') return handleLineTesters(request, env, 'remove');
     if (path === '/line/testers/rename') return handleLineTesters(request, env, 'rename');
