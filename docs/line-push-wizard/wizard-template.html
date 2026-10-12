@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推播精靈範本（五步驟）</title>
+<!--
+  推播精靈範本：從「Line推播套版產生器」的「LINE原生推播」流程抽出來的、可獨立執行的範本。
+  單一檔案、零依賴，雙擊就能跑；後端是內建的假後端（見 ② Mock 與 ③ Api），不會連到任何真的服務。
+
+  搬到別的專案時：
+    ① 先看 SPEC.md（設計規格、狀態機、擋關規則、API 契約、搬運步驟）。
+    ② 改 CONFIG（步驟名稱、帳號、排程限制）。
+    ③ 把「Api」換成你自己的後端（6 個函式，契約寫在 SPEC.md 第 7 節），整段「Mock」連同上方「DEMO ONLY」可以刪掉。
+    ④ 內容編輯（第 1 步）與預覽（第 3～5 步右側）是這個範本的示範內容，換成你自己的資料模型即可；
+       流程骨架（步驟列、擋關、測試作廢、確認人數、鎖定）不用動。
+  樣式與 ID 都用 wz 開頭，避免跟你的專案撞名。
+-->
+<style>
+  /* ═══════════ 設計 token（淺色／深色）═══════════ */
+  :root {
+    --stage: #e9ebf0; --bg: #f4f5f7; --card: #ffffff; --text: #1f2328; --muted: #6b7280; --border: #e2e4e9;
+    --track: #dcdfe5;   /* 膠囊底（滑桿、分段控制的凹槽） */
+    --knob: #ffffff;    /* 凸起的白色圓鈕 */
+    --accent: #004aad; --accent-dark: #003a87; --success: #16a34a; --danger: #dc2626;
+    --ctl-h: 48px; --inset: 5px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --stage: #0f1115; --bg: #16181d; --card: #21242b; --text: #e6e8eb; --muted: #9aa0aa; --border: #333844;
+      --track: #2b2f38; --knob: #4a505c; --accent: #3d7fe0; --accent-dark: #004aad; --success: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--stage); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  button, input { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ═══════════ 視窗外框：標題列／內容／底部工具列（步驟列放在底部）═══════════ */
+  .wz-stage { padding: 20px 16px 60px; }
+  .wz-modal { display: flex; flex-direction: column; width: min(860px, 100%); margin: 0 auto; border-radius: 20px; background: var(--card); box-shadow: 0 20px 60px rgba(0, 0, 0, .25); overflow: hidden; }
+  .wz-head { display: flex; align-items: center; gap: 12px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
+  .wz-head h2 { margin: 0; font-size: 17px; }
+  .wz-head small { color: var(--muted); }
+  .wz-body { position: relative; padding: 20px 24px 24px; min-height: 420px; max-height: 70vh; overflow-y: auto; }
+  .wz-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; padding: 12px 20px 12px 24px; border-top: 1px solid var(--border); }
+
+  /* 訊息窗：換頁就清掉；黏在內容最上方 */
+  .wz-win { position: sticky; top: 0; z-index: 6; margin: 0 0 14px; padding: 12px 16px; border: 1px solid transparent; border-radius: 14px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: var(--track); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
+  .wz-win.ok { background: #dcfce7; color: #14532d; border-color: #86efac; }
+  .wz-win.bad { background: #fef3c7; color: #78350f; border-color: #facc15; }
+
+  /* ═══════════ 底部步驟列（圓圈編號＋名稱＋連接線）═══════════ */
+  .wz-bar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+  .wz-sb { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 4px; border: 0; border-radius: 99px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; cursor: default; }
+  .wz-sb i { width: 24px; height: 24px; border-radius: 50%; background: rgba(128, 128, 128, .25); color: var(--muted); display: inline-grid; place-items: center; font-style: normal; font-size: 12px; transition: background .25s, color .25s; }
+  .wz-sb.on { color: var(--accent); }  .wz-sb.on i { background: var(--accent); color: #fff; }
+  .wz-sb.done { color: var(--text); }  .wz-sb.done i { background: var(--success); color: #fff; }
+  .wz-sb:not(:disabled) { cursor: pointer; }
+  .wz-sb:not(:disabled):hover i { filter: brightness(.92); }
+  .wz-sl { width: 12px; height: 2px; border-radius: 2px; background: rgba(128, 128, 128, .3); }
+  .wz-sl.done { background: var(--success); }
+
+  /* 右側動作按鈕：上一步／推播列表／下一步（第 4 步變紅色的「立即推播」） */
+  .wz-act { position: relative; display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .wz-btn { border: 0; border-radius: 99px; padding: 9px 22px; font-weight: 700; background: var(--track); color: var(--text); cursor: pointer; }
+  .wz-btn:hover { filter: brightness(.96); }
+  .wz-btn:disabled { opacity: .5; cursor: default; }
+  .wz-btn.primary { background: var(--accent); color: #fff; }
+  .wz-btn.primary:hover { background: var(--accent-dark); filter: none; }
+  .wz-btn.red { background: var(--danger); color: #fff; }
+  .wz-btn.red:hover { background: #b91c1c; filter: none; }
+  /* 「下一步」還沒完成：反灰＋游標移上去（或按一下）從上方彈出泡泡，說明缺什麼。注意用 is-disabled 不用 disabled，這樣還能 hover／點擊 */
+  .wz-btn.is-disabled, .wz-btn.is-disabled:hover { background: #cfd3d9; color: #8a919a; cursor: not-allowed; filter: none; }
+  .wz-next.is-disabled::after { content: attr(data-tip); display: none; position: absolute; right: 0; bottom: calc(100% + 12px); width: max-content; max-width: min(320px, 80vw); padding: 10px 16px; border-radius: 16px; background: #1f2328; color: #fff; font-size: 13px; font-weight: 600; line-height: 1.5; text-align: left; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); pointer-events: none; z-index: 8; }
+  .wz-next.is-disabled:hover::after, .wz-next.is-disabled:focus-visible::after, .wz-next.is-disabled.tip::after { display: block; }
+
+  /* ═══════════ 共用小元件 ═══════════ */
+  .wz-title { margin: 0 0 12px; font-size: 16px; font-weight: 800; }
+  .wz-tag { margin-left: 10px; padding: 1px 8px; border: 1px solid #facc15; border-radius: 99px; background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; }
+  .wz-sec { margin: 0 0 22px; }
+  .wz-note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+  .wz-note.bad { color: #b91c1c; font-weight: 600; }
+  .wz-note.ok { color: var(--success); font-weight: 600; }
+  .wz-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .wz-pill { display: inline-flex; align-items: baseline; gap: 8px; padding: 8px 16px; border: 1px solid rgba(128, 128, 128, .35); border-radius: 99px; background: var(--card); font-weight: 600; cursor: pointer; }
+  .wz-pill small { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .wz-pill.on { background: #dbeafe; border-color: #93c5fd; color: #1e40af; font-weight: 800; }
+  .wz-pill.on small { color: #1e40af; }
+  .wz-pill:disabled { cursor: default; opacity: .55; }
+  .wz-box { border: 1px solid var(--border); border-radius: 14px; background: rgba(128, 128, 128, .06); padding: 10px 14px; }
+  .wz-h { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; font-size: 14px; font-weight: 800; }
+  .wz-h small { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .wz-kv { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 4px 10px; margin: 0; font-size: 13px; }
+  .wz-kv dt { color: var(--muted); } .wz-kv dd { margin: 0; font-weight: 700; word-break: break-all; } .wz-kv dd.n { font-weight: 600; }
+  .wz-list { margin: 0; padding: 0; list-style: none; font-size: 13px; }   /* 每則訊息標題：全部直接列出，不捲動 */
+  .wz-list li { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--border); }
+  .wz-list li:last-child { border-bottom: 0; }
+  .wz-list li b { flex: none; width: 20px; color: var(--muted); font-weight: 700; }
+  .wz-qr { display: grid; gap: 6px; font-size: 13px; }
+  .wz-qr div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .wz-qr .pill { padding: 2px 12px; border-radius: 99px; background: #6f89bd; color: #fff; font-size: 12px; font-weight: 700; }
+  .wz-qr .how { padding: 1px 8px; border-radius: 6px; background: #e5e7eb; color: #374151; font-size: 11px; font-weight: 700; }
+  .wz-qr .how.link { background: #dbeafe; color: #1e40af; }
+  .wz-qr .val { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+  .wz-stat { display: grid; gap: 6px; }
+  .wz-stat .row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.5; }
+  .wz-stat .dot { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; display: grid; place-items: center; background: rgba(128, 128, 128, .25); color: var(--muted); font-size: 11px; font-weight: 800; }
+  .wz-stat .ok { font-weight: 700; } .wz-stat .ok .dot { background: var(--success); color: #fff; }
+  .wz-stat .busy .dot { background: #facc15; color: #1f2328; }
+  .wz-stat .bad { color: #b91c1c; font-weight: 700; } .wz-stat .bad .dot { background: var(--danger); color: #fff; }
+  .wz-stat .wait { color: var(--muted); }
+  .wz-small { margin-top: 8px; padding: 4px 14px; border: 1px solid var(--border); border-radius: 99px; background: var(--card); font-size: 13px; cursor: pointer; }
+  .wz-shot { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(128, 128, 128, .35); border-radius: 99px; background: var(--card); padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .wz-shot:disabled { opacity: .6; cursor: default; }
+  .wz-shot.ok { border-color: #86efac; background: #dcfce7; color: #14532d; }
+  .wz-shot.bad { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
+
+  /* 第 3～5 步共用版面：左邊資訊與操作，右邊手機預覽 */
+  .wz-split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; align-items: start; }
+  .wz-ctl { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-self: stretch; }
+  .wz-ctl > .wz-push { margin-top: auto; }
+  .wz-chatcap { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+  @media (max-width: 680px) { .wz-split { grid-template-columns: 1fr; } .wz-chatwrap { max-width: 320px; } }
+
+  /* ═══════════ 第 1 步：內容編輯（示範內容，換成你自己的）═══════════ */
+  .wz-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 32px; gap: 8px; margin: 0 0 8px; }
+  .wz-field.alt { grid-template-columns: minmax(0, 1fr); }
+  .wz-in { width: 100%; padding: 8px 14px; border: 1px solid rgba(128, 128, 128, .4); border-radius: 99px; background: var(--card); font-size: 14px; }
+  .wz-in:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .wz-x { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--track); cursor: pointer; }
+  .wz-x:hover { background: var(--border); }
+  .wz-add { padding: 6px 16px; border: 1px dashed rgba(128, 128, 128, .6); border-radius: 99px; background: transparent; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+  /* ═══════════ 第 2 步：分段控制（立即／排程）、日期時間選擇 ═══════════ */
+  .wz-seg { position: relative; display: flex; align-items: stretch; gap: 14px; width: 100%; min-height: var(--ctl-h); padding: var(--inset); border-radius: 99px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); font-size: 14px; font-weight: 700; }
+  .wz-seg-knob { position: absolute; z-index: 0; left: 0; top: var(--inset); bottom: var(--inset); width: 0; border-radius: 99px; background: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .22); pointer-events: none; opacity: 0; }
+  .wz-seg.has .wz-seg-knob { opacity: 1; }
+  .wz-seg.ready .wz-seg-knob { transition: transform .3s cubic-bezier(.3, .9, .3, 1), width .3s cubic-bezier(.3, .9, .3, 1), opacity .2s; }
+  .wz-segbtn { position: relative; z-index: 1; flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 99px; background: var(--knob); box-shadow: 0 1px 3px rgba(0, 0, 0, .22); font-weight: 700; white-space: nowrap; cursor: pointer; transition: background .25s, color .25s; }
+  .wz-segbtn.pill { flex: 1 1 auto; }
+  .wz-segbtn.active { background: transparent; box-shadow: none; color: #fff; }   /* 被選中的那段變透明，底下的藍色旋鈕滑過去 */
+  .wz-pk { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 28px; padding: 0 14px; border-radius: 99px; background: var(--card); color: var(--text); font-weight: 700; cursor: pointer; }
+  .wz-pk input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+  .wz-whenmsg { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .wz-whenmsg.bad { color: #b91c1c; font-weight: 600; }
+
+  /* ═══════════ 第 3 步：滑動才送出的測試推播（像 iPhone 滑動關機）═══════════ */
+  .wz-slider { position: relative; height: var(--ctl-h); padding: var(--inset); border-radius: 99px; background: var(--track); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .wz-fill { position: absolute; left: var(--inset); top: var(--inset); bottom: var(--inset); width: 0; border-radius: 99px; background: #16a34a; opacity: .9; pointer-events: none; }
+  .wz-slabel { position: absolute; inset: 0; display: grid; place-items: center; padding-left: calc(var(--ctl-h) - 8px); font-size: 14px; font-weight: 700; letter-spacing: .02em; pointer-events: none; color: transparent; background: linear-gradient(100deg, var(--muted) 35%, var(--text) 50%, var(--muted) 65%) 0 0 / 220% 100% no-repeat; -webkit-background-clip: text; background-clip: text; animation: wz-shine 2.4s linear infinite; }
+  @keyframes wz-shine { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  .wz-knob { position: absolute; z-index: 2; left: var(--inset); top: var(--inset); width: calc(var(--ctl-h) - var(--inset) * 2); height: calc(var(--ctl-h) - var(--inset) * 2); border-radius: 50%; background: var(--knob); color: var(--text); display: grid; place-items: center; font-size: 22px; font-weight: 800; line-height: 1; box-shadow: 0 1px 3px rgba(0, 0, 0, .28), 0 0 0 .5px rgba(0, 0, 0, .08); cursor: grab; touch-action: none; }
+  .wz-knob:active { cursor: grabbing; }
+  .wz-slider.back .wz-knob, .wz-slider.back .wz-fill { transition: transform .25s cubic-bezier(.3, .9, .3, 1), width .25s cubic-bezier(.3, .9, .3, 1); }
+  .wz-slider.locked { opacity: .6; } .wz-slider.locked .wz-knob { cursor: default; }
+  .wz-slider.done { background: #bbf7d0; }
+  .wz-slider.done .wz-slabel { background: none; color: #fff; -webkit-text-fill-color: #fff; animation: none; }
+  .wz-slider.done .wz-knob { left: auto; right: var(--inset); transform: none !important; cursor: default; }
+
+  /* ═══════════ 手機聊天室預覽（示範：圖文訊息＋快速回覆；每一格、每顆按鈕都能點）═══════════ */
+  .wz-chat { border-radius: 24px; overflow: hidden; border: 1px solid rgba(0, 0, 0, .18); background: #8ea4d3; font-size: 13px; color: #1b2540; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); }
+  .wz-chat-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; color: #111; font-weight: 800; font-size: 15px; }
+  .wz-chat-bar .back { font-size: 22px; line-height: 1; font-weight: 400; }
+  .wz-chat-bar .vf { flex: none; width: 16px; height: 16px; border-radius: 50%; background: #06c755; color: #fff; display: inline-grid; place-items: center; font-size: 10px; }
+  .wz-chat-bar .ic { margin-left: auto; font-size: 17px; font-weight: 400; }
+  .wz-chat-body { padding: 12px 8px 6px; background: linear-gradient(#9cb2dd, #c7d4ee); max-height: 420px; overflow-y: auto; }
+  .wz-msg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; border-radius: 10px; overflow: hidden; }
+  .wz-cell { display: grid; place-items: center; min-height: 92px; padding: 8px; color: #fff; font-size: 13px; font-weight: 800; line-height: 1.35; text-align: center; text-decoration: none; word-break: break-all; }
+  .wz-cell[href]:hover, .wz-cell[href]:focus-visible { box-shadow: inset 0 0 0 2px #fff; filter: brightness(1.08); outline: 0; }
+  .wz-cell:not([href]) { opacity: .75; cursor: default; }
+  .wz-time { text-align: right; font-size: 11px; color: #46567a; padding: 4px 2px 0 0; }
+  .wz-chat-qr { display: flex; gap: 8px; overflow-x: auto; padding: 8px 10px 10px; background: #c7d4ee; scrollbar-width: none; }
+  .wz-chat-qr::-webkit-scrollbar { display: none; }
+  .wz-chip { flex: none; padding: 7px 16px; border-radius: 99px; background: #6f89bd; color: #1b2540; font-size: 14px; white-space: nowrap; text-decoration: none; }
+  a.wz-chip:hover, a.wz-chip:focus-visible { background: #5b77ad; color: #fff; }
+
+  /* ═══════════ 確認視窗（蓋住整個畫面，輸入人數才能按紅色按鈕）═══════════ */
+  .wz-overlay { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, .5); }
+  .wz-overlay.open { display: flex; }
+  .wz-dialog { width: min(440px, 100%); border-radius: 20px; background: var(--card); box-shadow: 0 20px 60px rgba(0, 0, 0, .4); overflow: hidden; }
+  .wz-dialog .wz-d-head { padding: 14px 24px; border-bottom: 1px solid var(--border); } .wz-dialog h2 { margin: 0; font-size: 17px; }
+  .wz-dialog .wz-d-body { padding: 18px 24px 22px; }
+  .wz-warn { display: grid; gap: 6px; margin: 12px 0 14px; padding: 12px 14px; border-radius: 14px; background: #fef3c7; border: 1px solid #facc15; color: #78350f; font-size: 13px; font-weight: 600; }
+  .wz-warn div::before { content: '•'; margin-right: 6px; }
+  .wz-confirm { display: flex; align-items: center; gap: 10px; }
+  .wz-confirm label { font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .wz-confirm input { flex: 1; min-width: 0; padding: 9px 16px; border: 1px solid rgba(128, 128, 128, .4); border-radius: 99px; background: var(--card); font-size: 14px; }
+  .wz-mark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff; }
+  .wz-mark:empty { display: none; } .wz-mark.ok { background: var(--success); } .wz-mark.bad { background: var(--danger); }
+  .wz-cfm-err { margin-top: 12px; padding: 10px 14px; border-radius: 14px; background: #fee2e2; color: #991b1b; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .wz-d-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .wz-go { background: var(--danger); color: #fff; }
+  .wz-go:disabled { background: #cfd3d9; color: #8a919a; opacity: 1; cursor: not-allowed; }
+
+  /* ═══════════ 右下角狀態泡泡：「訊息名稱｜狀態」，蓋在所有視窗之上 ═══════════ */
+  #wzBubbles { position: fixed; right: 20px; bottom: 20px; z-index: 600; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: calc(100vw - 32px); pointer-events: none; }
+  .wz-bubble { display: flex; align-items: center; gap: 10px; max-width: 100%; background: #fff; color: #1f2328; border: 1px solid rgba(0, 0, 0, .08); padding: 10px 18px; border-radius: 36px; box-shadow: 0 8px 30px rgba(0, 0, 0, .2); font-size: 14px; font-weight: 600; opacity: 0; transform: translateX(32px); transition: opacity .3s, transform .3s; }
+  .wz-bubble.show { opacity: 1; transform: none; }
+  .wz-bubble .nm { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+  .wz-bubble .sep { opacity: .3; }
+  .wz-bubble .st { flex: none; padding: 2px 12px; border-radius: 99px; font-size: 13px; font-weight: 700; background: #eef0f3; color: #475569; }
+  .wz-bubble .st.sending { background: #fbf0cf; color: #854d0e; } .wz-bubble .st.sent { background: #dcfce7; color: #166534; }
+  .wz-bubble .st.failed, .wz-bubble .st.missed { background: #fee2e2; color: #991b1b; } .wz-bubble .st.scheduled { background: #dbeafe; color: #1e40af; }
+  .wz-bubble .x { pointer-events: auto; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: #eef0f3; color: #475569; cursor: pointer; }
+
+  /* ═══════════ DEMO ONLY：示範控制列（搬走時整段刪掉）═══════════ */
+  .demo-bar { max-width: 860px; margin: 0 auto 14px; padding: 12px 16px; border-radius: 14px; background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); font-size: 13px; }
+  .demo-bar h1 { margin: 0 0 6px; font-size: 15px; }
+  .demo-bar label { display: inline-flex; align-items: center; gap: 4px; margin: 2px 14px 2px 0; white-space: nowrap; }
+  .demo-bar button { margin: 2px 6px 2px 0; padding: 3px 12px; border: 1px solid var(--border); border-radius: 99px; background: var(--card); cursor: pointer; }
+  .demo-bar details { margin-top: 6px; } .demo-bar pre { margin: 6px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--bg); font-size: 12px; overflow: auto; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ DEMO ONLY：示範控制列（搬走時整段刪掉）═══════════ -->
+<div class="wz-stage">
+<div class="demo-bar" id="demoBar">
+  <h1>推播精靈範本｜示範控制列（這一整塊只是示範用，搬走時刪掉）</h1>
+  <div>
+    <label><input type="checkbox" id="dfFailTest"> 測試推播失敗</label>
+    <label><input type="checkbox" id="dfFailOfficial"> 正式推播失敗（LINE 拒絕）</label>
+    <label><input type="checkbox" id="dfNetLost"> 正式推播送出後網路中斷（已送出但回應遺失）</label>
+    <label><input type="checkbox" id="dfNoFriends"> 查不到好友數</label>
+    <label><input type="checkbox" id="dfBadFormat"> 格式檢查不通過</label>
+  </div>
+  <div>
+    <button type="button" id="dfDropOp">把目前的操作人移出名單（示範名單變動）</button>
+    <button type="button" id="dfReset">重置範例</button>
+  </div>
+  <details><summary>目前狀態（精靈的 state 物件）</summary><pre id="dfState"></pre></details>
+</div>
+
+<!-- ═══════════ 範本本體 ═══════════ -->
+<div class="wz-modal" id="wz" role="dialog" aria-label="排入推播">
+  <div class="wz-head"><h2>排入推播</h2><small id="wzAcctTag"></small></div>
+  <div class="wz-body" id="wzBody">
+    <div class="wz-win" id="wzWin" hidden role="status"></div>
+
+    <!-- 第 1 步：推播內容 -->
+    <section id="wzP1">
+      <div class="wz-sec">
+        <div class="wz-title">推播通知<span class="wz-tag">手機鎖定畫面與聊天列表看到的文字</span></div>
+        <div class="wz-field alt"><input class="wz-in" id="wzAlt" maxlength="60" autocomplete="off" placeholder="例如：今日重點新聞" aria-label="推播通知文字"></div>
+      </div>
+      <div class="wz-sec">
+        <div class="wz-title">訊息格子（1～6 格）</div>
+        <div id="wzCards"></div>
+        <button type="button" class="wz-add" id="wzAddCard">＋ 新增一格</button>
+      </div>
+      <div class="wz-sec">
+        <div class="wz-title">快速回覆（0～5 顆）</div>
+        <div id="wzQuicks"></div>
+        <button type="button" class="wz-add" id="wzAddQuick">＋ 新增快速回覆</button>
+        <div class="wz-note">連結留空的按鈕，會用「顯示文字」當關鍵字（示範：之後交給搜尋）。</div>
+      </div>
+      <div class="wz-note" id="wzContentNote" aria-live="polite"></div>
+    </section>
+
+    <!-- 第 2 步：推播設定 -->
+    <section id="wzP2" hidden>
+      <div class="wz-sec">
+        <div class="wz-title">操作人<span class="wz-tag">目前手動選擇；接上登入系統後改成自動帶入</span></div>
+        <div class="wz-pills" id="wzOps" role="radiogroup" aria-label="操作人"></div>
+        <div class="wz-note" id="wzOpNote"></div>
+      </div>
+      <div class="wz-sec">
+        <div class="wz-title">推播帳號</div>
+        <div class="wz-pills" id="wzAccts" role="radiogroup" aria-label="推播帳號"></div>
+        <div class="wz-note">測試推播與正式推播都在這個帳號內完成。</div>
+      </div>
+      <div class="wz-sec">
+        <div class="wz-title">推播方式</div>
+        <div class="wz-seg" id="wzSeg"><span class="wz-seg-knob" aria-hidden="true"></span>
+          <button type="button" class="wz-segbtn" id="wzNow">立即推播</button>
+          <div class="wz-segbtn pill" id="wzSched" role="group" tabindex="0" aria-label="排程推播時間">排程推播
+            <label class="wz-pk"><span id="wzDateTxt">MM/DD</span><input type="date" id="wzDate" aria-label="日期"></label>
+            <label class="wz-pk"><span id="wzTimeTxt">HH:MM</span><input type="time" id="wzTime" step="60" aria-label="時間"></label>
+          </div>
+        </div>
+        <div class="wz-whenmsg" id="wzWhenMsg" hidden></div>
+      </div>
+    </section>
+
+    <!-- 第 3～5 步共用：左邊資訊／操作，右邊手機預覽 -->
+    <section id="wzP3" hidden>
+      <div class="wz-split">
+        <div class="wz-ctl">
+          <div class="wz-box" id="wzInfoBox"><dl class="wz-kv" id="wzInfoKv"></dl></div>
+          <div class="wz-box"><div class="wz-h">每則訊息標題<small id="wzTitlesCount"></small></div><ul class="wz-list" id="wzTitles"></ul></div>
+          <div class="wz-box"><div class="wz-h">快速回覆<small id="wzQuickCount"></small></div><div class="wz-qr" id="wzQuick"></div></div>
+          <div class="wz-box" id="wzTestBox"><div class="wz-h">測試推播狀態<small id="wzTestWho"></small></div><div class="wz-stat" id="wzTestStat" aria-live="polite"></div><button type="button" class="wz-small" id="wzTestAgain" hidden>再發送一次測試</button></div>
+          <div class="wz-box" id="wzStatBox"><div class="wz-h">推播狀態</div><div class="wz-stat" id="wzStatList" aria-live="polite"></div></div>
+          <div class="wz-push" id="wzShotRow"><button type="button" class="wz-shot" id="wzShotBtn"><span id="wzShotTxt"></span></button></div>
+          <div class="wz-slider wz-push" id="wzSlider">
+            <span class="wz-fill" aria-hidden="true"></span>
+            <span class="wz-slabel" id="wzSlabel" aria-hidden="true">滑動以發送測試推播</span>
+            <span class="wz-knob" id="wzKnob" role="slider" tabindex="0" aria-label="滑到右側發送測試推播" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">›</span>
+          </div>
+        </div>
+        <div class="wz-chatwrap">
+          <div class="wz-chatcap">推播預覽（手機聊天室模擬）：點每一格或快速回覆，會另開分頁查看連結</div>
+          <div class="wz-chat" id="wzChat" aria-label="聊天室預覽"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wz-foot">
+    <div class="wz-bar" id="wzBar" role="group" aria-label="推播步驟">
+      <button type="button" class="wz-sb on" data-n="1"><i>1</i><b>推播內容</b></button><span class="wz-sl" id="wzSl1"></span>
+      <button type="button" class="wz-sb" data-n="2"><i>2</i><b>推播設定</b></button><span class="wz-sl" id="wzSl2"></span>
+      <button type="button" class="wz-sb" data-n="3"><i>3</i><b>推播測試</b></button><span class="wz-sl" id="wzSl3"></span>
+      <button type="button" class="wz-sb" data-n="4"><i>4</i><b>推播預覽</b></button><span class="wz-sl" id="wzSl4"></span>
+      <button type="button" class="wz-sb" data-n="5"><i>5</i><b>推播狀態</b></button>
+    </div>
+    <div class="wz-act">
+      <button type="button" class="wz-btn" id="wzPrev" hidden>上一步</button>
+      <button type="button" class="wz-btn" id="wzList" hidden>推播列表</button>
+      <button type="button" class="wz-btn wz-next primary" id="wzNext">下一步</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 確認推播視窗 -->
+<div class="wz-overlay" id="wzCfm">
+  <div class="wz-dialog" role="dialog" aria-labelledby="wzCfmTitle">
+    <div class="wz-d-head"><h2 id="wzCfmTitle">確認推播</h2></div>
+    <div class="wz-d-body">
+      <dl class="wz-kv" id="wzCfmKv"></dl>
+      <div class="wz-warn" id="wzCfmWarn"></div>
+      <div class="wz-confirm"><label for="wzCfmTotal">確認人數</label><input type="text" id="wzCfmTotal" inputmode="numeric" autocomplete="off"><span class="wz-mark" id="wzCfmMark" aria-live="polite"></span></div>
+      <div class="wz-cfm-err" id="wzCfmErr" role="alert" hidden></div>
+      <div class="wz-d-btns"><button type="button" class="wz-btn" id="wzCfmCancel">取消</button><button type="button" class="wz-btn wz-go" id="wzCfmGo" disabled>確認推播</button></div>
+    </div>
+  </div>
+</div>
+<div id="wzBubbles" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════════
+   ① 設定：搬到別的專案時，先改這裡
+   ══════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  tz: 'Asia/Taipei',                                   // 排程時間用的時區
+  stepNames: ['推播內容', '推播設定', '推播測試', '推播預覽', '推播狀態'],
+  // 推播帳號：kind 是「這個帳號能發哪一種內容」（'*' = 都可以，例如測試帳號）
+  accounts: { A: { label: '正式帳號 A', kind: 'A' }, B: { label: '正式帳號 B', kind: 'B' }, test: { label: '測試帳號', kind: '*' } },
+  contentKind: 'A',                                    // 這份內容的種類（示範：內容只能發同種類的帳號，或測試帳號）
+  scheduleLeadMin: 5, scheduleMaxDays: 14,             // 排程要在「幾分鐘後～幾天內」（後端才是最後把關）
+  prepFreshMs: 20 * 60e3,                              // 準備資料超過 20 分鐘就重傳（後端只保留 30 分鐘）
+  prepExpireMs: 28 * 60e3,                             // 超過 28 分鐘一律不准正式推播，退回重測
+  limits: { alt: 60, cardTitle: 30, quickLabel: 20, cards: [1, 6], quicks: [0, 5] },
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   小工具
+   ══════════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = text; return e; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));   // 重試金鑰；非 HTTPS 環境沒有 randomUUID 時的後備
+const pad2 = n => String(n).padStart(2, '0');
+const digits = v => Number(String(v || '').replace(/[,\s]/g, ''));                      // 「287,091」「 287091 」都算 287091
+const okUrl = u => (/^https?:\/\/\S+$/i.test(String(u || '')) ? String(u) : '');         // 只放 http(s)，不讓 javascript: 之類的進預覽
+const acctLabel = ch => (CONFIG.accounts[ch] || {}).label || ch;
+function tzParts(ms) {
+  const o = {}; new Intl.DateTimeFormat('en-CA', { timeZone: CONFIG.tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(ms).forEach(p => { o[p.type] = p.value; });
+  return { y: +o.year, mo: +o.month, d: +o.day, h: +o.hour, mi: +o.minute };
+}
+function fromTz(y, mo, d, h, mi) {                      // 指定時區的牆上時間 → UTC 毫秒
+  const want = Date.UTC(y, mo - 1, d, h, mi); let g = want;
+  for (let i = 0; i < 2; i++) { const p = tzParts(g); g += want - Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi); }
+  return g;
+}
+const ymd = p => `${p.y}-${pad2(p.mo)}-${pad2(p.d)}`, hm = p => `${pad2(p.h)}:${pad2(p.mi)}`;
+const clockText = ms => { const p = tzParts(ms); return `${p.h < 12 ? '上午' : '下午'}${p.h % 12 === 0 ? 12 : p.h % 12}:${pad2(p.mi)}`; };
+function isoWithOffset(ms) {                            // 2026-10-12T08:30:00+08:00
+  const p = tzParts(ms), off = Math.round((Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi) - Math.floor(ms / 60e3) * 60e3) / 60e3), a = Math.abs(off);
+  return `${ymd(p)}T${hm(p)}:00${off < 0 ? '-' : '+'}${pad2(Math.floor(a / 60))}:${pad2(a % 60)}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   內容資料模型（示範：通知文字＋格子＋快速回覆）與驗證
+   「內容簽章」contentSig()：內容有任何更動，簽章就變，已上傳的準備資料與測試推播全部作廢
+   ══════════════════════════════════════════════════════════════════ */
+const defaultContent = () => ({
+  alt: '今日重點新聞',
+  cards: [{ title: '颱風最新動態', url: 'https://example.com/typhoon' }, { title: '明日天氣預報', url: 'https://example.com/weather' }, { title: '賽事結果速報', url: 'https://example.com/sports' }],
+  quicks: [{ label: '更多新聞', url: 'https://example.com/news' }, { label: '颱風', url: '' }],
+});
+let content = defaultContent();
+const contentSig = () => JSON.stringify([CONFIG.contentKind, content]);
+function validateContent(c) {
+  const L = CONFIG.limits, errs = [];
+  if (!c.alt.trim()) errs.push('推播通知還沒填。'); else if (c.alt.length > L.alt) errs.push(`推播通知最多 ${L.alt} 字。`);
+  if (c.cards.length < L.cards[0] || c.cards.length > L.cards[1]) errs.push(`格子要 ${L.cards[0]}～${L.cards[1]} 格。`);
+  c.cards.forEach((x, i) => {
+    if (!x.title.trim()) errs.push(`第 ${i + 1} 格還沒填標題。`); else if (x.title.length > L.cardTitle) errs.push(`第 ${i + 1} 格標題最多 ${L.cardTitle} 字。`);
+    if (!okUrl(x.url)) errs.push(`第 ${i + 1} 格的連結要是 http(s):// 開頭的完整網址。`);
+  });
+  if (c.quicks.length > L.quicks[1]) errs.push(`快速回覆最多 ${L.quicks[1]} 顆。`);
+  c.quicks.forEach((q, i) => {
+    if (!q.label.trim()) errs.push(`第 ${i + 1} 顆快速回覆還沒填顯示文字。`); else if (q.label.length > L.quickLabel) errs.push(`第 ${i + 1} 顆快速回覆文字最多 ${L.quickLabel} 字。`);
+    if (q.url.trim() && !okUrl(q.url)) errs.push(`第 ${i + 1} 顆快速回覆的連結格式不對（留空就是用關鍵字）。`);
+  });
+  return errs;
+}
+const contentIssue = () => { const e = validateContent(content); return e.length ? `${e[0]}${e.length > 1 ? `（另外還有 ${e.length - 1} 項）` : ''}` : ''; };
+const quickRows = () => content.quicks.filter(q => q.label.trim()).map(q => { const url = q.url.trim(); return { label: q.label.trim(), link: !!url, value: url || `搜尋「${q.label.trim()}」` }; });
+
+/* ══════════════════════════════════════════════════════════════════
+   ② Mock：內建假後端（搬走時整段連同 DEMO 控制列刪掉；規則刻意跟真後端一致，見 SPEC.md 第 7 節）
+   ══════════════════════════════════════════════════════════════════ */
+const Mock = {
+  delay: 600,
+  friends: { A: 287091, B: 120450, test: 18 },
+  rosters: { A: [{ tid: 'a1', name: '小明' }, { tid: 'a2', name: '小美' }], B: [{ tid: 'b1', name: '小明' }], test: [{ tid: 't1', name: '小明' }, { tid: 't2', name: '小美' }, { tid: 't3', name: '阿華' }] },
+  seen: new Set(), prepared: new Map(), history: [],
+  flags: { failTest: false, failOfficial: false, netLost: false, noFriends: false, badFormat: false },
+};
+const mockSign = ch => `tt.${ch}.${Date.now() + 3600e3}`;                   // 測試通過憑證：綁帳號、1 小時有效
+function mockCheckToken(tok, ch) { const m = /^tt\.([^.]+)\.(\d+)$/.exec(String(tok || '')); return !!m && m[1] === ch && Number(m[2]) > Date.now(); }
+function mockFriendsOk(typed, actual) {                                       // 輸入的好友數要跟後端查到的差不多（防手滑、防亂填）
+  if (!Number.isFinite(typed) || typed <= 0) return false;
+  if (actual <= 50) return Math.abs(typed - actual) <= 1;
+  return Math.abs(typed - actual) <= Math.max(50, Math.round(actual * 0.02));
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ③ Api：精靈只透過這 6 個函式跟後端溝通。換成真的 fetch 即可（回傳格式見 SPEC.md 第 7 節）
+   ══════════════════════════════════════════════════════════════════ */
+const Api = {
+  // 名單：某個帳號裡「可以當操作人／測試收件人」的人
+  async roster(ch) { await sleep(250); return { testers: (Mock.rosters[ch] || []).map(x => ({ ...x })) }; },
+  // 上傳內容（圖片、連結…）存成一份「準備資料」，30 分鐘有效。還沒發送任何東西
+  async prepare(c) {
+    await sleep(Mock.delay);
+    const errs = validateContent(c); if (errs.length) throw new Error(errs.join('；'));
+    const prepareToken = 'prep-' + Math.random().toString(36).slice(2, 10);
+    Mock.prepared.set(prepareToken, { at: Date.now(), kind: CONFIG.contentKind });
+    return { prepareToken };
+  },
+  // 請平台檢查格式（只檢查、不發送）
+  async validate({ prepareToken }) {
+    await sleep(300);
+    if (!Mock.prepared.has(prepareToken)) throw new Error('準備資料不存在或已過期，請重新推播測試');
+    return Mock.flags.badFormat ? { valid: false, message: '第 2 格的連結不是 HTTPS（示範用的錯誤）' } : { valid: true };
+  },
+  // 好友數（唯讀）。查不到就回 null，前端要擋下正式推播
+  async friends(ch) { await sleep(400); return { followers: Mock.flags.noFriends ? null : Mock.friends[ch] }; },
+  // 發送。mode:'test'＝只傳給 testers（1 位）；沒有 mode＝正式（群發），要 confirmTotal 與同帳號的 testToken
+  async send(b) {
+    await sleep(Mock.delay);
+    const prep = Mock.prepared.get(b.prepareToken);
+    if (!prep || Date.now() - prep.at > 30 * 60e3) throw new Error('準備資料已過期（只保留 30 分鐘），請回到第 3 步重新推播測試');
+    const acct = CONFIG.accounts[b.channel]; if (!acct) throw new Error('沒有這個帳號');
+    if (acct.kind !== '*' && acct.kind !== prep.kind) throw new Error(`這份內容不能發到「${acct.label}」（種類不符）`);
+    const key = `${b.channel}|${b.retryKey}`;
+    if (b.mode === 'test') {
+      if (Mock.flags.failTest) throw new Error('平台回 400：示範用的測試推播失敗');
+      if (!b.testers || b.testers.length !== 1) throw new Error('測試推播一次只能傳給 1 位');
+      const who = Mock.rosters[b.channel].find(x => x.tid === b.testers[0]); if (!who) throw new Error('收件人不在這個帳號的名單內');
+      const dup = Mock.seen.has(key); Mock.seen.add(key);
+      return dup ? { alreadyAccepted: true, friends: 1, recipients: [who.name] }                 // 這把重試金鑰以前收過：沒有真的發出，所以不簽 testToken
+                 : { testToken: mockSign(b.channel), friends: 1, recipients: [who.name] };
+    }
+    if (!mockCheckToken(b.testToken, b.channel)) throw new Error('這個帳號還沒有成功的測試推播（或已超過 1 小時），請回到第 3 步重新測試');
+    const actual = Mock.friends[b.channel];
+    if (!mockFriendsOk(b.confirmTotal, actual)) throw new Error('輸入的好友數跟平台回報的不一致，沒有發送');
+    if (Mock.flags.failOfficial) throw new Error('平台回 400：示範用的正式推播失敗');
+    const dup = Mock.seen.has(key); Mock.seen.add(key);
+    if (Mock.flags.netLost) { Mock.flags.netLost = false; $('dfNetLost').checked = false; throw new TypeError('Failed to fetch'); }   // 已送出，但回應遺失
+    Mock.history.push({ key, at: Date.now() });
+    return { sentAt: new Date().toISOString(), friends: actual, alreadyAccepted: dup, requestId: 'req-' + key.length };
+  },
+  // 排程：時間到由後端自己發。同樣要 testToken、確認人數；retryKey 讓「回應遺失後重按」不會多排一筆
+  async scheduleCreate(b) {
+    await sleep(Mock.delay);
+    const prep = Mock.prepared.get(b.prepareToken); if (!prep) throw new Error('準備資料已過期，請回到第 3 步重新推播測試');
+    const t = Date.parse(b.runAt), now = Date.now();
+    if (!(t >= now + CONFIG.scheduleLeadMin * 60e3 - 1000)) throw new Error(`排程時間要在 ${CONFIG.scheduleLeadMin} 分鐘之後`);
+    if (t > now + CONFIG.scheduleMaxDays * 86400e3) throw new Error(`排程時間最晚只能設在 ${CONFIG.scheduleMaxDays} 天之內`);
+    if (!mockCheckToken(b.testToken, b.channel)) throw new Error('這個帳號還沒有成功的測試推播，請回到第 3 步重新測試');
+    if (!mockFriendsOk(b.confirmTotal, Mock.friends[b.channel])) throw new Error('輸入的好友數跟平台回報的不一致，沒有排程');
+    if (Mock.flags.failOfficial) throw new Error('平台回 400：示範用的排程失敗');
+    return { schedule: { id: 'sch-' + b.retryKey.slice(0, 6), runAt: t } };
+  },
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   ④ 精靈狀態
+   ══════════════════════════════════════════════════════════════════ */
+const OP_KEY = 'wz.op';
+const loadOp = () => { try { return localStorage.getItem(OP_KEY) || ''; } catch (e) { return ''; } };
+const saveOp = n => { try { n ? localStorage.setItem(OP_KEY, n) : localStorage.removeItem(OP_KEY); } catch (e) { /* 無痕視窗等：這次有效就好 */ } };
+const newState = () => ({
+  step: 1,
+  prep: null,                       // { prepareToken, sig, at }：已上傳的準備資料（內容簽章對不上就作廢）
+  acct: 'A', way: 'now', whenDate: '', whenTime: '',
+  test: '', testMsg: '', testNote: '', testNames: '', testToken: '',    // test：'' | 'busy' | 'ok' | 'bad'
+  friends: null, friendsErr: '', friendsBusy: false,
+  go: '', goErr: '', result: null,  // go：'' | 'busy' | 'ok' | 'bad'；'ok' ＝ 已送出，整個流程鎖定
+  retryKey: { test: '', official: '' },   // 同一次發送重送要用同一把，換收件人／帳號／內容就要換新的
+  win: { text: '', kind: '' }, confirmVal: '', shot: '',
+});
+let S = newState();
+S.op = loadOp();
+const roster = {};
+const rosterFor = ch => (roster[ch] = roster[ch] || { loaded: false, loading: false, list: [], error: '' });
+const opTid = ch => { const t = rosterFor(ch).list.find(x => x.name === S.op); return t ? t.tid : ''; };   // 操作人用「名字」對應各帳號的名單
+const busyNow = () => S.test === 'busy' || S.go === 'busy';
+const resetKeys = () => { S.retryKey = { test: '', official: '' }; };
+
+async function rosterLoad(ch) {
+  const r = rosterFor(ch); if (r.loading) return;
+  r.loading = true; r.error = ''; render();
+  try { r.list = (await Api.roster(ch)).testers || []; r.loaded = true; } catch (e) { r.error = String(e.message || e); r.loaded = false; }
+  r.loading = false; opRevalidate(); render();
+}
+const rosterEnsure = () => Object.keys(CONFIG.accounts).forEach(ch => { const r = rosterFor(ch); if (!r.loaded && !r.loading) rosterLoad(ch); });
+const opNames = () => [...new Set(Object.keys(CONFIG.accounts).flatMap(ch => rosterFor(ch).list.map(x => x.name)))];
+
+/* ── 作廢規則：換了什麼，下游就要重來 ── */
+function testDrop() {              // 測試作廢：預覽與狀態那幾步不能再停著，退回推播測試
+  S.test = ''; S.testMsg = ''; S.testNote = ''; S.testNames = ''; S.testToken = ''; S.retryKey.test = '';   // 只換測試用的金鑰；正式的金鑰跟內容與帳號綁，不能因為換操作人就清掉（否則上次已受理的群發，重按會再發一次）
+  if (S.step > 3) { S.step = 3; cfmClose(true); }
+}
+function testInvalidate() { if (S.go !== 'ok' && S.go !== 'busy' && S.test !== 'busy') testDrop(); }   // 傳送中的測試不在這裡清：回應回來時再比對操作人與帳號，不符就丟棄
+function opRevalidate() { if (S.test !== 'ok' || S.go === 'ok') return; const r = rosterFor(S.acct); if (r.loaded && !r.error && !opTid(S.acct)) testDrop(); }   // 名單變動後，測試過的操作人已不在名單裡
+function opSet(name) { if (name === S.op || S.go === 'ok' || busyNow()) return; S.op = name; saveOp(name); testInvalidate(); render(); }
+function acctSet(a) {
+  if (a === S.acct || S.go === 'ok' || busyNow() || !acctAllowed(a)) return;
+  S.acct = a; S.friends = null; S.friendsErr = ''; S.confirmVal = '';
+  resetKeys(); testDrop();         // 帳號換了就是另一次發送：兩把金鑰都換
+  render();
+}
+const acctAllowed = a => { const k = (CONFIG.accounts[a] || {}).kind; return k === '*' || k === CONFIG.contentKind; };
+function resetFlow(msg, kind) {    // 內容有更動：整個流程作廢，從第 1 步重來（帳號、方式、操作人保留）
+  Object.assign(S, { confirmVal: '', step: 1, prep: null, test: '', testMsg: '', testNote: '', testNames: '', testToken: '', friends: null, friendsErr: '', friendsBusy: false, go: '', goErr: '', result: null, shot: '', win: { text: msg || '', kind: kind || '' } });
+  resetKeys(); cfmClose(true); sliderReset();
+}
+function onContentChanged() {      // 每次內容變動都呼叫
+  if (S.prep && S.prep.sig !== contentSig() && !busyNow()) { const done = S.go === 'ok'; resetFlow(done ? '內容有更動：上一則推播已完成並鎖定，這是新的一則，請從第 1 步重新開始。' : '內容有更動，已作廢上傳的資料，請重新「推播測試」。', done ? '' : 'bad'); }
+  render();
+}
+
+/* ── 排程時間 ── */
+function whenFor(d, t) {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d), tm = /^(\d{2}):(\d{2})$/.exec(t);
+  if (!dm || !tm) return { ms: NaN, iso: '', text: '', err: !dm ? '請選擇日期' : '請選擇時間' };
+  const y = +dm[1], mo = +dm[2], dd = +dm[3], h = +tm[1], mi = +tm[2], now = Date.now();
+  const ms = fromTz(y, mo, dd, h, mi), p = tzParts(ms), out = { ms, iso: isoWithOffset(ms), text: `${d} ${t}`, err: '' };
+  if (p.y !== y || p.mo !== mo || p.d !== dd) out.err = `${mo} 月沒有 ${dd} 日，請重選`;
+  else if (ms < now + CONFIG.scheduleLeadMin * 60e3) out.err = `排程時間要在 ${CONFIG.scheduleLeadMin} 分鐘之後`;
+  else if (ms > now + CONFIG.scheduleMaxDays * 86400e3) out.err = `排程時間最晚只能設在 ${CONFIG.scheduleMaxDays} 天之內`;
+  return out;
+}
+const whenValue = () => whenFor($('wzDate').value, $('wzTime').value);
+const wayText = () => { if (S.way !== 'sched') return '立即'; const w = whenValue(); return w.err ? '排程（時間未設定好）' : `排程　${w.text.slice(5, 10).replace('-', '/')}　${w.text.slice(11)}`; };
+function whenShow() {
+  const d = $('wzDate').value, t = $('wzTime').value;
+  $('wzDateTxt').textContent = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}` : 'MM/DD';
+  $('wzTimeTxt').textContent = /^\d{2}:\d{2}$/.test(t) ? t : 'HH:MM';
+}
+function whenSet(ms) {
+  const p = tzParts(ms), now = Date.now();
+  $('wzDate').min = ymd(tzParts(now)); $('wzDate').max = ymd(tzParts(now + CONFIG.scheduleMaxDays * 86400e3));
+  $('wzDate').value = ymd(p); $('wzTime').value = hm(p); whenShow();
+}
+const whenDefault = () => Math.ceil((Date.now() + 3 * 3600e3) / 60e3) * 60e3;   // 預設現在＋3 小時
+function whenTouched() { whenShow(); S.whenDate = $('wzDate').value; S.whenTime = $('wzTime').value; if (S.go === 'ok' || S.go === 'busy') return; S.way = 'sched'; render(); }
+function waySet(w) { if (S.way === w || busyNow() || S.go === 'ok') return; S.way = w; render(); }
+
+/* ══════════════════════════════════════════════════════════════════
+   ⑤ 步驟擋關：每一步「完成」的條件，與「下一步」反灰時的原因
+   ══════════════════════════════════════════════════════════════════ */
+function setupIssue() {
+  if (!S.op) return '還沒選擇操作人。';
+  const r = rosterFor(S.acct);
+  if (r.error) return `「${acctLabel(S.acct)}」的名單讀取失敗：${r.error}`;
+  if (!r.loaded) return `「${acctLabel(S.acct)}」的名單讀取中，請稍候。`;
+  if (!opTid(S.acct)) return `「${acctLabel(S.acct)}」的名單裡找不到操作人「${S.op}」，請換人、換帳號，或先把他加進名單。`;
+  if (S.way === 'sched') { const w = whenValue(); if (w.err) return w.err; }
+  return '';
+}
+function stepDone(n) {
+  if (n === 1) return !contentIssue();
+  if (n === 2) return !setupIssue();
+  if (n === 3) return S.test === 'ok';
+  return S.go === 'ok';            // 第 4、5 步：要「確認推播」成功才算
+}
+function stepWhy(n) {
+  if (n === 1) return contentIssue();
+  if (n === 2) return setupIssue();
+  if (n === 3) return S.test === 'busy' ? '測試推播傳送中，請稍候。' : '請先滑動發送測試推播，先推給操作人自己確認內容。';
+  return '';
+}
+function goTo(n) {
+  if (n < 1 || n > 5) return;
+  if (S.go === 'ok' || busyNow()) return;        // 正式推播完成後鎖定；傳送中不能換頁
+  if (n === S.step || n === 5) return;           // 第 5 步只能由「確認推播」成功後進入
+  if (n > S.step && (n > S.step + 1 || !stepDone(S.step))) return;   // 只能回頭，或前一步完成才能往前一步
+  S.step = n; S.win = { text: '', kind: '' };    // 上一步留下的結果訊息，換頁就清掉
+  if (n === 2 || n === 3) rosterEnsure();
+  render(); $('wzBody').scrollTop = 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ⑥ 渲染：每次狀態變動都呼叫 render()，畫面完全由 state 決定（冪等）
+   ══════════════════════════════════════════════════════════════════ */
+function statRows(box, rows) {
+  box.textContent = '';
+  rows.forEach(([k, t]) => { const r = el('div', `row ${k}`); r.append(el('span', 'dot', { ok: '✓', busy: '…', bad: '!', wait: '·' }[k] || '·'), el('span', '', t)); box.appendChild(r); });
+}
+function renderWin() { const w = $('wzWin'); w.hidden = !S.win.text; w.textContent = S.win.text; w.className = `wz-win${S.win.kind ? ' ' + S.win.kind : ''}`; }
+let chatSig = '';
+function renderChat() {
+  const box = $('wzChat'), time = clockText(S.way === 'sched' && !whenValue().err ? whenValue().ms : Date.now());
+  const sig = JSON.stringify([S.acct, content, time]); if (sig === chatSig) return; chatSig = sig;
+  box.textContent = '';
+  const bar = el('div', 'wz-chat-bar'); bar.append(el('span', 'back', '‹'), el('span', '', acctLabel(S.acct)), el('span', 'vf', '✓'), el('span', 'ic', '⌕'), el('span', 'ic', '≡'));
+  const body = el('div', 'wz-chat-body'), msg = el('div', 'wz-msg');
+  content.cards.forEach((c, i) => {
+    const href = okUrl(c.url), a = el(href ? 'a' : 'span', 'wz-cell', c.title || `（第 ${i + 1} 格）`);
+    a.style.background = `hsl(${(i * 57 + 210) % 360} 45% 42%)`;
+    if (href) { a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = href; }   // 點了另開分頁，不影響目前的推播流程
+    msg.appendChild(a);
+  });
+  body.append(msg, el('div', 'wz-time', time)); box.append(bar, body);
+  const q = content.quicks.filter(x => x.label.trim());
+  if (q.length) { const qr = el('div', 'wz-chat-qr'); q.forEach(x => { const href = okUrl(x.url), c = el(href ? 'a' : 'span', 'wz-chip', x.label); if (href) { c.href = href; c.target = '_blank'; c.rel = 'noopener noreferrer'; } qr.appendChild(c); }); box.appendChild(qr); }
+}
+function renderOps() {
+  const list = $('wzOps'); list.textContent = '';
+  const names = opNames(), locked = S.go === 'ok' || busyNow();
+  names.forEach(n => {
+    const b = el('button', `wz-pill${n === S.op ? ' on' : ''}`, n); b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(n === S.op)); b.disabled = locked;
+    b.append(el('small', '', Object.keys(CONFIG.accounts).filter(ch => rosterFor(ch).list.some(x => x.name === n)).map(ch => ch === 'test' ? '測試' : ch).join('・')));
+    b.addEventListener('click', () => opSet(n)); list.appendChild(b);
+  });
+  const loading = Object.keys(CONFIG.accounts).some(ch => rosterFor(ch).loading);
+  $('wzOpNote').textContent = loading && !names.length ? '讀取名單中…' : (S.op && !opTid(S.acct) && rosterFor(S.acct).loaded ? `「${acctLabel(S.acct)}」的名單裡沒有「${S.op}」。` : '同一個人在不同帳號的 ID 不同，所以用「名字」對應各帳號的名單：兩邊名單的名字要一致。');
+  $('wzOpNote').classList.toggle('bad', !!S.op && !opTid(S.acct) && rosterFor(S.acct).loaded);
+  const al = $('wzAccts'); al.textContent = '';
+  Object.keys(CONFIG.accounts).forEach(ch => {
+    const b = el('button', `wz-pill${ch === S.acct ? ' on' : ''}`, acctLabel(ch)); b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(ch === S.acct));
+    b.disabled = locked || !acctAllowed(ch); if (!acctAllowed(ch)) b.title = '這份內容的種類不符，不能發到這個帳號';
+    b.addEventListener('click', () => acctSet(ch)); al.appendChild(b);
+  });
+}
+function segPlace(seg, active) {
+  if (!active || !seg.offsetWidth) return;
+  const k = seg.querySelector('.wz-seg-knob'), sr = seg.getBoundingClientRect(), r = active.getBoundingClientRect();
+  k.style.width = `${r.width}px`; k.style.transform = `translateX(${r.left - sr.left}px)`; seg.classList.add('has');
+  requestAnimationFrame(() => seg.classList.add('ready'));
+}
+function render() {
+  if (S.step > 3 && !S.prep) S.step = 3;                       // 上傳的資料作廢了：不能停在預覽
+  const cur = S.step, locked = S.go === 'ok', busy = busyNow();
+  $('wzAcctTag').textContent = `推播帳號：${acctLabel(S.acct)}`;
+  $('wzP1').hidden = cur !== 1; $('wzP2').hidden = cur !== 2; $('wzP3').hidden = cur < 3;
+  // ① 內容
+  if (cur === 1) { const i = contentIssue(), n = $('wzContentNote'); n.textContent = i ? `還不能往下：${i}` : '✓ 內容完整，可以按「下一步」。'; n.className = `wz-note ${i ? 'bad' : 'ok'}`; }
+  // ② 設定
+  if (cur === 2) {
+    renderOps();
+    $('wzNow').classList.toggle('active', S.way === 'now'); $('wzSched').classList.toggle('active', S.way === 'sched');
+    segPlace($('wzSeg'), S.way === 'now' ? $('wzNow') : $('wzSched'));
+    $('wzDate').disabled = $('wzTime').disabled = locked || busy;
+    const when = S.way === 'sched' ? whenValue() : null, wm = $('wzWhenMsg'); wm.hidden = !when;
+    if (when) { wm.classList.toggle('bad', !!when.err); wm.textContent = when.err || `將在 ${when.text}（${CONFIG.tz}）由後端自動推播給全部好友。可選範圍：${CONFIG.scheduleLeadMin} 分鐘後 ～ ${CONFIG.scheduleMaxDays} 天內。`; }
+  }
+  // ③～⑤ 共用畫面
+  if (cur >= 3) {
+    const kv = $('wzInfoKv'); kv.textContent = '';
+    [['推播帳號', acctLabel(S.acct)], ['推播方式', wayText()], ['推播通知', content.alt]].forEach(([k, v], i) => kv.append(el('dt', '', k), el('dd', i === 2 ? 'n' : '', v)));
+    const tl = $('wzTitles'); tl.textContent = '';
+    content.cards.forEach((c, i) => { const li = el('li'); li.append(el('b', '', String(i + 1)), el('span', '', c.title)); tl.appendChild(li); });
+    $('wzTitlesCount').textContent = `共 ${content.cards.length} 格`;
+    const rows = quickRows(), ql = $('wzQuick'); ql.textContent = '';
+    if (!rows.length) ql.appendChild(el('div', 'wz-note', '（沒有設定快速回覆）'));
+    rows.forEach(r => { const d = el('div'); d.append(el('span', 'pill', r.label), el('span', `how${r.link ? ' link' : ''}`, r.link ? '連結' : '關鍵字'), el('span', 'val', r.value)); ql.appendChild(d); });
+    $('wzQuickCount').textContent = rows.length ? `共 ${rows.length} 個` : '';
+    $('wzInfoBox').hidden = cur === 3; $('wzTestBox').hidden = cur !== 3; $('wzStatBox').hidden = cur !== 5; $('wzShotRow').hidden = cur !== 4; $('wzSlider').hidden = cur !== 3;
+    if (cur === 3) {
+      $('wzTestWho').textContent = `只傳給操作人：${S.op || '（未選）'}`;
+      const trows = S.test === 'ok' ? [['ok', '資料已上傳、格式檢查通過'], ['ok', '已送出給平台'], ['ok', `已傳給操作人（${S.testNames || S.op}），請到手機的「${acctLabel(S.acct)}」確認內容、連結與快速回覆`]].concat(S.testNote ? [['wait', S.testNote]] : [])
+        : (S.test === 'busy' ? [['busy', S.testMsg || '推播中…']] : (S.test === 'bad' ? [['bad', S.testMsg]] : [['wait', '尚未測試']]));
+      statRows($('wzTestStat'), trows);
+      $('wzTestAgain').hidden = S.test !== 'ok' || locked;
+      const sl = $('wzSlider'), done = S.test === 'ok', stuck = S.test === 'busy' || !!contentIssue() || !opTid(S.acct);
+      if (sl.classList.contains('done') && !done) { sl.classList.remove('done'); sliderReset(); }
+      sl.classList.toggle('done', done); sl.classList.toggle('locked', !done && stuck);
+      if (done) sliderDoneLook(); else if (S.test === 'busy') sl.querySelector('.wz-slabel').style.opacity = '1';
+      $('wzSlabel').textContent = S.test === 'busy' ? '推播中…' : (done ? '測試推播已發送' : '滑動以發送測試推播');
+      $('wzKnob').textContent = done ? '✓' : '›';
+    }
+    if (cur === 5 && S.result) {
+      const r = S.result;
+      statRows($('wzStatList'), r.kind === 'sched'
+        ? [['ok', `已排程，${r.when} 自動推播`], ['wait', '要取消，請到推播列表（送出前都能取消）']]
+        : [['ok', `已送出給平台（${r.at}）`], ['ok', `平台已接受，推播人數 ${Number.isFinite(r.friends) ? r.friends.toLocaleString() : '—'} 位${r.already ? '（平台回報這個發送序號先前已受理，沒有重複發送）' : ''}`], ['busy', '送達與點擊統計：稍後到推播列表查看']]);
+    }
+    if (cur === 4) {
+      const sb = $('wzShotBtn');
+      sb.className = `wz-shot${S.shot === 'copied' || S.shot === 'saved' ? ' ok' : (S.shot === 'bad' ? ' bad' : '')}`; sb.disabled = S.shot === 'busy';
+      $('wzShotTxt').textContent = { busy: '製作圖片中…', copied: '✓ 已複製圖片，可直接貼到聊天室', saved: '✓ 瀏覽器不能直接複製，圖片已下載', bad: '✗ 截圖失敗，請再按一次' }[S.shot] || '📷 截圖此畫面（傳給帶班者／主管複查）';
+    }
+    renderChat();
+  }
+  // 底部步驟列
+  document.querySelectorAll('#wzBar .wz-sb').forEach(b => {
+    const n = Number(b.dataset.n), done = n < 5 && (locked || (n < cur && stepDone(n)));
+    b.classList.toggle('done', done); b.classList.toggle('on', n === cur);
+    b.disabled = locked || busy || n === 5 || !(n < cur || (n === cur + 1 && stepDone(cur)));
+    if (n === cur) b.disabled = false;
+    b.setAttribute('aria-current', n === cur ? 'step' : 'false');
+  });
+  [1, 2, 3, 4].forEach(n => $(`wzSl${n}`).classList.toggle('done', n < cur));
+  const nx = $('wzNext'), okNext = cur >= 4 || stepDone(cur);
+  $('wzPrev').hidden = cur === 1 || cur === 5; $('wzPrev').disabled = locked || busy; $('wzList').hidden = cur !== 5;
+  nx.textContent = cur === 4 ? (S.way === 'sched' ? '排程推播' : '立即推播') : (cur === 5 ? '完成推播' : '下一步');
+  nx.classList.toggle('red', cur === 4); nx.classList.toggle('primary', cur !== 4); nx.disabled = busy;
+  nx.classList.toggle('is-disabled', !okNext); nx.setAttribute('aria-disabled', String(!okNext));
+  nx.dataset.tip = okNext ? '' : `第 ${cur} 步「${CONFIG.stepNames[cur - 1]}」還沒完成：${stepWhy(cur)}`;
+  renderWin();
+  if ($('wzCfm').classList.contains('open')) cfmRender();
+  const st = $('dfState'); if (st) st.textContent = JSON.stringify({ step: S.step, op: S.op, acct: S.acct, way: S.way, test: S.test, go: S.go, prep: !!S.prep, retryKey: S.retryKey, friends: S.friends }, null, 1);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ⑦ 動作：上傳、測試推播、確認、正式推播／排程
+   ══════════════════════════════════════════════════════════════════ */
+async function prepare() {                         // 上傳內容＋請平台檢查格式（不發送）。不另設「傳送資料」按鈕：按「推播測試」時需要才做
+  const errs = validateContent(content); if (errs.length) throw new Error(`還不能傳送：${errs.join('；')}`);
+  const sig = contentSig();
+  const pr = await Api.prepare(content);
+  const vr = await Api.validate({ prepareToken: pr.prepareToken, channel: S.acct });
+  if (!vr.valid) throw new Error(`平台說格式不對，沒有發送任何東西：${vr.message}`);
+  S.prep = { prepareToken: pr.prepareToken, sig, at: Date.now() };
+}
+async function sendOut(channel, extra) {           // 同一次發送用同一把 retryKey（重按不會重複發）；失敗、重測、換帳號才換新的
+  const key = extra && extra.mode === 'test' ? 'test' : 'official';
+  if (!S.retryKey[key]) S.retryKey[key] = uuid();
+  return await Api.send({ prepareToken: S.prep.prepareToken, channel, retryKey: S.retryKey[key], ...(extra || {}) });
+}
+async function testRun() {                         // ③ 測試推播：立即傳送，只傳給操作人本人
+  if (S.test === 'busy' || S.step !== 3 || contentIssue()) return;
+  if (S.prep && S.prep.sig !== contentSig()) { onContentChanged(); return; }
+  const ch = S.acct, tid = opTid(ch);
+  if (!tid) { S.test = 'bad'; S.testMsg = `「${acctLabel(ch)}」的名單裡沒有操作人「${S.op}」，請回上一步換人或換帳號`; render(); return; }
+  const opAt = S.op;
+  if (S.test === 'ok' || S.test === 'bad') S.retryKey.test = '';   // 再推一次是另一次發送，要換一把重試金鑰（否則平台會當成同一筆而不發）
+  const needPrep = !S.prep || Date.now() - S.prep.at > CONFIG.prepFreshMs;
+  S.test = 'busy'; S.testMsg = needPrep ? '傳送資料中…（約數秒）' : '推播中…'; S.testNote = ''; setWin('', ''); render();
+  const tKey = `test:${Date.now()}`, tName = `${clockText(Date.now())} 測試`;
+  try {
+    if (needPrep) { await prepare(); S.testMsg = '推播中…'; render(); }
+    bubble(tKey, tName, 'sending');
+    const r = await sendOut(ch, { mode: 'test', testers: [tid] });
+    bubble(tKey, tName, r.testToken ? 'sent' : 'failed');
+    if (S.op !== opAt || S.acct !== ch || opTid(ch) !== tid) { S.test = ''; S.testMsg = ''; S.testToken = ''; S.retryKey.test = ''; setWin('測試推播的操作人或帳號在傳送途中換了，這次結果不算數，請重新推播測試。', 'bad'); render(); return; }   // 傳送途中被換掉：丟棄結果
+    if (!r.testToken) throw new Error('平台回報這把重試金鑰以前用過，這次沒有真的發出去，不能算測試過。請再按一次推播測試（會換新的金鑰）');
+    S.test = 'ok'; S.testToken = r.testToken; S.testNames = (r.recipients || [S.op]).join('、'); S.testMsg = '';
+  } catch (e) { S.test = 'bad'; S.testMsg = `推播失敗：${String(e.message || e).slice(0, 200)}`; S.retryKey.test = ''; if (bubbles.has(tKey)) bubble(tKey, tName, 'failed'); }   // 失敗後再試一律換新金鑰
+  render();
+}
+function setWin(text, kind) { S.win = { text: text || '', kind: kind || '' }; renderWin(); }
+
+async function fetchFriends() {                    // 向平台查好友數（唯讀），使用者在「確認推播」自己再輸入一次
+  const ch = S.acct; S.friendsBusy = true; S.friendsErr = ''; render();
+  try {
+    const f = (await Api.friends(ch)).followers;
+    if (f === null || f === undefined) throw new Error(`查不到「${acctLabel(ch)}」的好友數，為了安全不能正式推播。`);
+    if (S.acct === ch) S.friends = f;
+  } catch (e) { if (S.acct === ch) { S.friends = null; S.friendsErr = String(e.message || e); } }
+  S.friendsBusy = false; render();
+}
+/* ── ④ 確認推播視窗 ── */
+const cfmOpenNow = () => $('wzCfm').classList.contains('open');
+function cfmOpen() {
+  if (S.step !== 4 || S.test !== 'ok' || S.go === 'busy' || S.go === 'ok') return;
+  S.go = ''; S.goErr = ''; S.confirmVal = ''; $('wzCfmTotal').value = '';
+  if (!Number.isFinite(S.friends) && !S.friendsBusy) fetchFriends();
+  $('wzCfm').classList.add('open'); cfmRender();
+  setTimeout(() => { if (!$('wzCfmTotal').disabled) $('wzCfmTotal').focus(); }, 0);
+}
+function cfmClose(force) { if (!force && S.go === 'busy') return; $('wzCfm').classList.remove('open'); }   // 送出中不能關：結果要看得到
+function cfmRender() {
+  const sched = S.way === 'sched', busy = S.go === 'busy';
+  const kv = $('wzCfmKv'); kv.textContent = ''; [['推播帳號', acctLabel(S.acct)], ['推播方式', wayText()]].forEach(([k, v]) => kv.append(el('dt', '', k), el('dd', '', v)));
+  const lines = sched ? ['排程時間到就會自動推播。', '要取消，請到「推播列表」，在排程送出前取消。'] : ['推播送出後無法收回。'];
+  if (S.acct === 'test') lines.push('測試帳號：只有已加入這個帳號好友的人收得到。');
+  const wn = $('wzCfmWarn'); wn.textContent = ''; lines.forEach(t => wn.appendChild(el('div', '', t)));
+  const known = Number.isFinite(S.friends), raw = $('wzCfmTotal').value.trim(), typedOk = known && !!raw && digits(raw) === S.friends, inp = $('wzCfmTotal');
+  inp.disabled = !known || busy; inp.placeholder = known ? `輸入 ${S.friends.toLocaleString()}` : (S.friendsBusy ? '查詢好友數中…' : '查不到好友數');   // 輸入框不提示答案之外的東西；要使用者自己看著數字打一遍
+  const mk = $('wzCfmMark'); mk.textContent = !raw || !known ? '' : (typedOk ? '✓' : '✗'); mk.className = `wz-mark${!raw || !known ? '' : (typedOk ? ' ok' : ' bad')}`;
+  const when = sched ? whenValue() : null, whenBad = !!(when && when.err);
+  const err = $('wzCfmErr'), msg = S.goErr || (S.friendsErr && !S.friendsBusy ? S.friendsErr : '') || (whenBad ? when.err : '');
+  err.hidden = !msg; err.textContent = msg;
+  const go = $('wzCfmGo'); go.disabled = !typedOk || busy || whenBad; go.textContent = busy ? (sched ? '排程中…' : '推播中…') : '確認推播';
+  $('wzCfmCancel').disabled = busy;
+}
+async function fire() {                            // 按下「確認推播」
+  const sched = S.way === 'sched'; if (S.step !== 4 || S.go === 'busy' || S.go === 'ok') return;
+  S.go = 'busy'; S.goErr = ''; render();
+  let bubbleKey = '', bubbleName = '', called = false;
+  const fireKey = S.retryKey.official || (S.retryKey.official = uuid());   // 這次發送的識別，同時用在重試金鑰與泡泡（重按會更新同一個泡泡）
+  try {
+    if (!S.prep || S.prep.sig !== contentSig()) throw new Error('內容有更動，請回到第 3 步重新推播測試');
+    if (S.test !== 'ok' || !S.testToken) throw new Error('還沒有成功的測試推播');
+    if (Date.now() - S.prep.at > CONFIG.prepExpireMs) throw new Error('上傳的資料已超過 28 分鐘（後端只保留 30 分鐘），請回到第 3 步重新推播測試一次');
+    const typed = digits($('wzCfmTotal').value);
+    let result;
+    if (sched) {
+      const when = whenValue(); if (when.err) throw new Error(when.err);
+      called = true;
+      const r = await Api.scheduleCreate({ prepareToken: S.prep.prepareToken, channel: S.acct, runAt: when.iso, confirmTotal: typed, testToken: S.testToken, retryKey: fireKey });
+      result = { kind: 'sched', when: `${when.text.slice(5, 10).replace('-', '/')} ${when.text.slice(11)}（${CONFIG.tz}）`, id: r.schedule.id };
+      bubbleClose(`sched-fail:${fireKey}`); bubble(`sched:${fireKey}`, `${when.text.slice(5, 10)} 排程`, 'scheduled');
+    } else {
+      bubbleKey = `now:${fireKey}`; bubbleName = `${clockText(Date.now())} 推播`; called = true;
+      bubble(bubbleKey, bubbleName, 'sending');
+      const r = await sendOut(S.acct, { confirmTotal: typed, testToken: S.testToken });
+      bubble(bubbleKey, bubbleName, 'sent');
+      result = { kind: 'now', at: String(r.sentAt || '').slice(11, 19) || '剛剛', friends: Number.isFinite(r.friends) ? r.friends : S.friends, already: !!r.alreadyAccepted };
+    }
+    S.result = result; S.go = 'ok'; S.step = 5;     // 成功之後只做不會出錯的事，避免「已經送出了卻顯示失敗」讓人重按
+    cfmClose(true);
+  } catch (e) {
+    S.go = 'bad';
+    if (called) {                                    // 還沒送到後端就擋下的（內容有更動、沒測試…）不彈泡泡；網路斷掉這種「不知道有沒有成功」的要講清楚
+      const unsure = e && (e instanceof TypeError || e.name === 'AbortError' || /Failed to fetch|NetworkError|Load failed/i.test(String(e.message || '')));
+      bubble(sched ? `sched-fail:${fireKey}` : bubbleKey, bubbleName || '排程', unsure ? 'missed' : 'failed', unsure ? '出現錯誤，請先到推播列表確認，再重新推播流程' : (sched ? '排程失敗' : undefined));
+    }
+    S.goErr = `${sched ? '排程' : '推播'}失敗：${e.message || e}${sched ? '\n\n若不確定有沒有建立，請到「推播列表」確認（同一次排程重按不會重複建立）。' : '\n\n若不確定有沒有發出去，請先到「推播列表」看有沒有這筆紀錄（同一次發送重按不會重複發送）。'}`;
+  }
+  render();
+}
+
+/* ── 右下角狀態泡泡：「訊息名稱｜狀態」 ── */
+const bubbles = new Map();
+const BUBBLE_TEXT = { sending: '推播中', sent: '已發送', failed: '發送失敗', missed: '未知（請確認）', scheduled: '已排程' };
+function bubble(key, name, status, note) {
+  let b = bubbles.get(key);
+  if (!b) { b = el('div', 'wz-bubble'); b.append(el('span', 'nm'), el('span', 'sep', '｜'), el('span', 'st'), (() => { const x = el('button', 'x', '×'); x.type = 'button'; x.setAttribute('aria-label', '關閉'); x.addEventListener('click', () => bubbleClose(key)); return x; })()); $('wzBubbles').appendChild(b); bubbles.set(key, b); requestAnimationFrame(() => b.classList.add('show')); }
+  b.querySelector('.nm').textContent = name; const st = b.querySelector('.st'); st.className = `st ${status}`; st.textContent = note || BUBBLE_TEXT[status] || status;
+  clearTimeout(b._t); if (status === 'sent' || status === 'scheduled') b._t = setTimeout(() => bubbleClose(key), 8000);
+}
+function bubbleClose(key) { const b = bubbles.get(key); if (!b) return; clearTimeout(b._t); b.classList.remove('show'); bubbles.delete(key); setTimeout(() => b.remove(), 320); }
+
+/* ── 滑動開關：白色圓鈕拖到最右側才觸發；中途放開彈回左邊（防誤觸）。鍵盤 ←/→ 也能操作 ── */
+function sliderDoneLook() { const sl = $('wzSlider'), f = sl.querySelector('.wz-fill'); f.style.width = '100%'; f.style.opacity = '.9'; $('wzKnob').style.transform = ''; sl.querySelector('.wz-slabel').style.opacity = '1'; }
+function sliderReset() { const sl = $('wzSlider'); if (!sl) return; if (sl.classList.contains('done')) { sliderDoneLook(); return; } sl.classList.add('back'); slide(0); setTimeout(() => sl.classList.remove('back'), 300); }
+function maxTravel() { const sl = $('wzSlider'), k = $('wzKnob'); const inset = parseFloat(getComputedStyle(sl).paddingLeft) || 5; return Math.max(0, sl.clientWidth - inset * 2 - k.offsetWidth); }
+function slide(x) {
+  const sl = $('wzSlider'), max = maxTravel() || 1, v = Math.max(0, Math.min(max, x)), f = sl.querySelector('.wz-fill');
+  $('wzKnob').style.transform = `translateX(${v}px)`; f.style.width = `${v + $('wzKnob').offsetWidth}px`; f.style.opacity = v ? '.9' : '0';
+  sl.querySelector('.wz-slabel').style.opacity = String(Math.max(0, 1 - v / (max * 0.6)));
+  $('wzKnob').setAttribute('aria-valuenow', String(Math.round(v / max * 100)));
+  return v >= max - 2;
+}
+(function initSlider() {
+  const sl = $('wzSlider'), knob = $('wzKnob'); let drag = null;
+  const stuck = () => S.test === 'busy' || S.test === 'ok' || sl.classList.contains('locked') || S.step !== 3;
+  const knobX = () => parseFloat((knob.style.transform.match(/translateX\(([-\d.]+)px/) || [0, 0])[1]) || 0;
+  const finish = full => { if (!drag) return; drag = null; if (full && !stuck()) { slide(maxTravel()); testRun().then(() => sliderReset()); } else sliderReset(); };
+  knob.addEventListener('pointerdown', e => { if (stuck() || e.button > 0) return; sl.classList.remove('back'); drag = { id: e.pointerId, startX: e.clientX, from: knobX() }; try { knob.setPointerCapture(e.pointerId); } catch (err) { /* ok */ } e.preventDefault(); });
+  knob.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) slide(drag.from + e.clientX - drag.startX); });
+  knob.addEventListener('pointerup', e => { if (drag && e.pointerId === drag.id) finish(slide(drag.from + e.clientX - drag.startX)); });
+  knob.addEventListener('pointercancel', () => finish(false));
+  knob.addEventListener('keydown', e => {
+    if ((e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') || stuck()) return; e.preventDefault();
+    if (slide(knobX() + (e.key === 'ArrowRight' ? 1 : -1) * maxTravel() / 5)) { drag = { id: -1 }; finish(true); }
+  });
+})();
+
+/* ── 「截圖此畫面」：把第 4 步要複查的內容畫成一張圖，預設複製到剪貼簿，可直接貼到聊天室；瀏覽器不支援就下載 PNG ── */
+async function shotBlob() {
+  const W = 760, P = 24, SC = 2, font = (px, w) => `${w || 500} ${px}px system-ui,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d'), ops = []; let y = P;
+  const wrap = (t, px, w, maxW) => { ctx.font = font(px, w); const out = []; let line = ''; for (const ch of String(t)) { if (ctx.measureText(line + ch).width > maxW && line) { out.push(line); line = ch; } else line += ch; } out.push(line); return out; };
+  const put = (t, px, w, col, x = P, maxW = W - P * 2) => wrap(t, px, w, maxW).forEach(l => { ops.push({ t: l, px, w, col, x, y }); y += Math.round(px * 1.55); });
+  put('推播複查', 22, 800, '#dc2626'); y += 6;
+  [['推播帳號', acctLabel(S.acct)], ['推播方式', wayText()], ['推播通知', content.alt]].forEach(([k, v]) => { ops.push({ t: k, px: 14, w: 500, col: '#6b7280', x: P, y }); put(v, 15, 700, '#1f2328', P + 84, W - P * 2 - 84); });
+  y += 10; put(`每則訊息標題（共 ${content.cards.length} 格）`, 15, 800, '#1f2328');
+  content.cards.forEach((c, i) => put(`${i + 1}. ${c.title}`, 14, 500, '#1f2328', P + 8));
+  y += 10; put('快速回覆', 15, 800, '#1f2328'); const qs = quickRows(); if (!qs.length) put('（沒有設定）', 14, 500, '#6b7280', P + 8); qs.forEach(r => put(`${r.label}　${r.link ? '連結' : '關鍵字'}　${r.value}`, 14, 500, '#1f2328', P + 8));
+  y += 12; put(`操作人：${S.op}　截圖時間：${new Date().toLocaleString('zh-TW', { hour12: false })}`, 12, 500, '#6b7280');
+  cv.width = W * SC; cv.height = (y + P) * SC; ctx.scale(SC, SC);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, y + P); ctx.textBaseline = 'top';
+  ops.forEach(o => { ctx.font = font(o.px, o.w); ctx.fillStyle = o.col; ctx.fillText(o.t, o.x, o.y); });
+  return await new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('toBlob'))), 'image/png'));
+}
+async function shotRun() {
+  if (S.shot === 'busy') return; S.shot = 'busy'; render();
+  try {
+    const blob = await shotBlob();
+    try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); S.shot = 'copied'; }
+    catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `推播複查-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); S.shot = 'saved'; }
+  } catch (e) { S.shot = 'bad'; }
+  render(); setTimeout(() => { if (S.shot !== 'busy') { S.shot = ''; render(); } }, 6000);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ⑧ 第 1 步編輯器（示範）與事件綁定
+   ══════════════════════════════════════════════════════════════════ */
+function editorBuild() {
+  const mk = (box, arr, ph1, ph2, min) => {
+    box.textContent = '';
+    arr.forEach((it, i) => {
+      const row = el('div', 'wz-field'), a = el('input', 'wz-in'), b = el('input', 'wz-in'), x = el('button', 'wz-x', '✕');
+      a.value = it.title !== undefined ? it.title : it.label; b.value = it.url; a.placeholder = ph1; b.placeholder = ph2; a.autocomplete = b.autocomplete = 'off';
+      a.setAttribute('aria-label', `${ph1}（第 ${i + 1} 筆）`); b.setAttribute('aria-label', `${ph2}（第 ${i + 1} 筆）`); x.type = 'button'; x.setAttribute('aria-label', `刪除第 ${i + 1} 筆`); x.disabled = arr.length <= min;
+      a.addEventListener('input', () => { if ('title' in it) it.title = a.value; else it.label = a.value; onContentChanged(); });
+      b.addEventListener('input', () => { it.url = b.value; onContentChanged(); });
+      x.addEventListener('click', () => { arr.splice(i, 1); editorBuild(); onContentChanged(); });
+      row.append(a, b, x); box.appendChild(row);
+    });
+  };
+  mk($('wzCards'), content.cards, '格子標題', '連結（https://…）', CONFIG.limits.cards[0]);
+  mk($('wzQuicks'), content.quicks, '按鈕顯示文字', '連結（留空＝以文字當關鍵字）', CONFIG.limits.quicks[0]);
+  $('wzAddCard').disabled = content.cards.length >= CONFIG.limits.cards[1]; $('wzAddQuick').disabled = content.quicks.length >= CONFIG.limits.quicks[1];
+  $('wzAlt').value = content.alt;
+}
+$('wzAlt').addEventListener('input', () => { content.alt = $('wzAlt').value; onContentChanged(); });
+$('wzAddCard').addEventListener('click', () => { content.cards.push({ title: '', url: '' }); editorBuild(); onContentChanged(); });
+$('wzAddQuick').addEventListener('click', () => { content.quicks.push({ label: '', url: '' }); editorBuild(); onContentChanged(); });
+
+$('wzNow').addEventListener('click', () => waySet('now'));
+$('wzSched').addEventListener('click', () => waySet('sched'));
+$('wzSched').addEventListener('keydown', e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.currentTarget.click(); } });
+['wzDate', 'wzTime'].forEach(id => {
+  const inp = $(id); inp.addEventListener('input', whenTouched); inp.addEventListener('change', whenTouched);
+  inp.addEventListener('click', () => { try { if (inp.showPicker) inp.showPicker(); } catch (e) { /* 部分瀏覽器不支援，改用輸入框本身 */ } });
+});
+document.querySelectorAll('#wzBar .wz-sb').forEach(b => b.addEventListener('click', () => goTo(Number(b.dataset.n))));   // 能不能去由 goTo 判斷
+$('wzPrev').addEventListener('click', () => goTo(S.step - 1));
+$('wzNext').addEventListener('click', () => {
+  const n = S.step;
+  if (n === 5) { finishFlow(); return; }          // 完成推播：交給外層（示範：重置）
+  if (n === 4) { cfmOpen(); return; }             // 立即推播／排程推播：先跳出「確認推播」
+  if (!stepDone(n)) { const t = $('wzNext'); t.classList.add('tip'); setTimeout(() => t.classList.remove('tip'), 2600); return; }   // 反灰時按一下也會彈出說明
+  goTo(n + 1);
+});
+$('wzList').addEventListener('click', () => alert('示範：這裡接你的「推播列表」畫面（看每一筆的狀態、取消排程）。'));
+$('wzTestAgain').addEventListener('click', () => { if (S.test !== 'ok' || S.go === 'ok' || busyNow()) return; S.test = ''; S.testMsg = ''; S.testNote = ''; S.testToken = ''; S.retryKey.test = ''; render(); });
+$('wzShotBtn').addEventListener('click', shotRun);
+$('wzCfmTotal').addEventListener('input', () => { S.confirmVal = $('wzCfmTotal').value; if (S.go === 'bad') { S.go = ''; S.goErr = ''; } cfmRender(); });
+$('wzCfmCancel').addEventListener('click', () => cfmClose());
+$('wzCfm').addEventListener('mousedown', e => { if (e.target === $('wzCfm')) cfmClose(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && cfmOpenNow()) { e.stopImmediatePropagation(); cfmClose(); } }, true);
+$('wzCfmGo').addEventListener('click', fire);
+$('wzCfmTotal').addEventListener('keydown', e => { if (e.key === 'Enter' && !$('wzCfmGo').disabled) fire(); });
+function finishFlow() { content = defaultContent(); chatSig = ''; Object.assign(S, newState(), { op: S.op, acct: S.acct, way: S.way }); sliderReset(); editorBuild(); render(); }   // 示範：完成後重置，方便再玩一次
+
+/* ── DEMO ONLY：示範控制列 ── */
+const flagBind = (id, key) => $(id).addEventListener('change', () => { Mock.flags[key] = $(id).checked; });
+flagBind('dfFailTest', 'failTest'); flagBind('dfFailOfficial', 'failOfficial'); flagBind('dfNetLost', 'netLost'); flagBind('dfNoFriends', 'noFriends'); flagBind('dfBadFormat', 'badFormat');
+$('dfDropOp').addEventListener('click', () => { if (!S.op) return; Object.keys(Mock.rosters).forEach(ch => { Mock.rosters[ch] = Mock.rosters[ch].filter(x => x.name !== S.op); }); Object.keys(CONFIG.accounts).forEach(ch => rosterLoad(ch)); });
+$('dfReset').addEventListener('click', () => { try { localStorage.removeItem(OP_KEY); } catch (e) { /* ok */ } location.reload(); });
+
+/* ── 啟動 ── */
+whenSet(whenDefault());
+editorBuild(); rosterEnsure(); render();
+window.addEventListener('resize', () => segPlace($('wzSeg'), S.way === 'now' ? $('wzNow') : $('wzSched')));
+</script>
+</body>
+</html>
