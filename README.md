@@ -83,7 +83,6 @@
 | `assets/template-ent.png` | 娛樂版拍立得四格模板（1200×1200，照片框為透明），由設計稿還原；拿到設計原檔後直接以同檔名覆蓋即可 |
 | `assets/stickers/*.png` | 可疊加在照片上、用來遮擋人物的 T 寶表情貼圖（透明背景 PNG） |
 | `assets/icons/*` | 網頁分頁圖示（favicon），喇叭圖案，呼應版型本身的黃色標籤列圖示 |
-| `docs/line-push-wizard/` | **推播精靈（五步驟）設計成品，給其他專案重複使用**：`wizard-template.html`（單檔、零依賴、內建假後端，雙擊可跑）＋ `SPEC.md`（流程、擋關／作廢規則、狀態模型、API 契約、元件規格、搬運步驟）＋ `shots/` 截圖；測試是 `test/e2e/wizard-template.mjs` |
 
 ## 技術說明
 
