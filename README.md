@@ -82,7 +82,7 @@
 | `worker/og-image-proxy.js` | Cloudflare Worker：快速填入抓文章首圖用的小代理（需自行部署，說明見 `worker/README.md`） |
 | `assets/template-ent.png` | 娛樂版拍立得四格模板（1200×1200，照片框為透明），由設計稿還原；拿到設計原檔後直接以同檔名覆蓋即可 |
 | `assets/stickers/*.png` | 可疊加在照片上、用來遮擋人物的 T 寶表情貼圖（透明背景 PNG） |
-| `assets/icons/*` | 網頁分頁圖示（favicon），喇叭圖案，呼應版型本身的黃色標籤列圖示 |
+| `assets/icons/*` | 網頁分頁圖示（favicon）與 App 圖示，「推」字加訊號弧（品牌黃 `#FFE600`）；`icon.svg` 是原始向量檔，其他尺寸由它匯出 |
 
 ## 技術說明
 
