@@ -99,13 +99,15 @@ const txt = id => page.textContent(id);
 const bgOf = async id => { await page.waitForTimeout(380); return page.evaluate(i => getComputedStyle(document.getElementById(i)).backgroundColor, id); };
 const vis = async id => !(await page.locator(id).isHidden());
 
-// ===== 1. 第二步驟底部按鈕：下載本頁｜全部下載｜排入LINE推播（間隔一致）=====
+// ===== 1. 第二步驟底部按鈕：下載本頁｜排入LINE推播｜全部下載（主按鈕在最右，間隔一致）=====
 await page.evaluate(() => { goStep(2); });
+check(await page.evaluate(() => document.getElementById('downloadJpgBtn').hidden), '本頁全空：不顯示「下載本頁」');
+await page.evaluate(() => { pages[activePageIndex].cards[0].line1 = '標題'; render(); });
 const bar = await page.evaluate(() => {
-  const ids = ['downloadJpgBtn', 'downloadAllBtn', 'labPushBtn'], r = ids.map(i => document.getElementById(i).getBoundingClientRect());
+  const ids = ['downloadJpgBtn', 'labPushBtn', 'downloadAllBtn'], r = ids.map(i => document.getElementById(i).getBoundingClientRect());
   return { text: ids.map(i => document.getElementById(i).textContent), hidden: ids.map(i => document.getElementById(i).hidden), gap1: r[1].left - r[0].right, gap2: r[2].left - r[1].right, sameTop: r.every(x => Math.abs(x.top - r[0].top) < 1) };
 });
-check(bar.text.join('｜') === '下載本頁｜全部下載｜排入LINE推播' && bar.hidden.every(h => !h), `第二步驟底部三顆按鈕：${bar.text.join('｜')}`);
+check(bar.text.join('｜') === '下載本頁｜排入LINE推播｜全部下載' && bar.hidden.every(h => !h), `第二步驟底部三顆按鈕：${bar.text.join('｜')}`);
 check(Math.abs(bar.gap1 - 10) < 0.6 && Math.abs(bar.gap2 - 10) < 0.6 && bar.sameTop, `三顆按鈕間隔一致（${bar.gap1.toFixed(1)}px／${bar.gap2.toFixed(1)}px）且同一排`);
 await page.evaluate(() => { setLab(false); });
 check(await page.evaluate(() => document.getElementById('labPushBtn').hidden && !document.getElementById('downloadAllBtn').hidden), '關掉試驗功能：只剩「下載本頁」「全部下載」，「排入LINE推播」消失');
