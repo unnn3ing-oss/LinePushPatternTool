@@ -1,5 +1,5 @@
-// 前端驗證：底部工具列依情境顯示（希克定律）——空白頁只留「下一步」；放了照片才出現 T寶貼圖與「⋯ 更多」
-// （檢查照片邊緣、清除本頁收在選單裡）；沒選格子時貼圖反灰；步驟 2「← 返回編輯」在最左、是幽靈按鈕，
+// 前端驗證：底部工具列依情境顯示（希克定律）——兩頁都空白時「下一步」反灰不能按（進度條 ② 也點不進去）；
+// 沒選格子時貼圖反灰；步驟 2「← 返回編輯」在最左、是幽靈按鈕，
 // 「全部下載」是最右邊唯一的實心主按鈕，本頁全空時不顯示「下載本頁」（Playwright）
 // 執行：
 //   python3 -m http.server 8960 &            # 在專案根目錄
@@ -25,42 +25,39 @@ await page.goto(BASE);
 await page.waitForTimeout(800);
 const hidden = id => page.evaluate(i => document.getElementById(i).hidden, id);
 
-// ===== 1. 空白頁：只留「下一步」=====
-check(await hidden('dockStickers'), '空白頁：不顯示 T寶貼圖');
-check(await hidden('dockMore'), '空白頁：不顯示「⋯ 更多」（檢查照片邊緣、清除本頁）');
-check(!(await hidden('nextStepBtn')), '空白頁：「下一步」照常顯示');
+// ===== 1. 空白頁：工具列照舊，「下一步」反灰不能按 =====
+check(!(await hidden('dockStickers')) && !(await hidden('edgeSwitch')) && !(await hidden('resetAllBtn')), '空白頁：T寶貼圖、檢查照片邊緣、清除本頁照常顯示');
+const nextOff = () => page.evaluate(() => { const b = document.getElementById('nextStepBtn'); return b.classList.contains('is-disabled') && b.getAttribute('aria-disabled') === 'true'; });
+check(await nextOff(), '空白頁：「下一步」反灰');
+check(await page.evaluate(() => document.getElementById('nextStepBtn').dataset.tip) === '請先貼上快速填入或放入照片', '反灰的「下一步」有提示文字');
+await page.click('#nextStepBtn', { force: true });
+check(await page.evaluate(() => step) === 1, '空白頁：按「下一步」不會進步驟 2');
+await page.click('.step-btn[data-step="2"]');
+check(await page.evaluate(() => step) === 1, '空白頁：點進度條 ② 也不會進步驟 2');
+await page.locator('#nextStepBtn').hover();
+await page.waitForTimeout(150);
 await page.locator('#dock').screenshot({ path: path.join(SHOTS, 'dock-1-empty.png') });
+await page.screenshot({ path: path.join(SHOTS, 'dock-1b-empty-tip.png'), clip: { x: 0, y: 700, width: 1440, height: 160 } });
 
-// ===== 2. 只打字、沒照片：可以清除，但貼圖與邊緣檢查仍隱藏 =====
+// ===== 2. 只有第 2 頁有內容：第 1 頁也能進下一步 =====
+await page.evaluate(() => { pages[1].cards[0].line1 = '標題'; syncChrome(); });
+check(!(await nextOff()), '任一頁有內容：「下一步」恢復可按');
+await page.evaluate(() => { pages[1] = makePageState(1); syncChrome(); });
+check(await nextOff(), '內容清掉：「下一步」再度反灰');
+
+// ===== 3. 貼圖：沒選格子時反灰 =====
 await page.evaluate(() => { pages[activePageIndex].cards[0].line1 = '標題'; render(); });
-check(!(await hidden('dockMore')) && !(await hidden('resetAllBtn')) && await hidden('edgeSwitch'), '只有文字：「⋯ 更多」只有「清除本頁」');
-check(await hidden('dockStickers'), '只有文字：仍不顯示貼圖');
-
-// ===== 3. 放了照片：貼圖出現，沒選格子時反灰；選單裡有邊緣檢查 =====
-await page.evaluate(async () => {
-  const c = document.createElement('canvas'); c.width = c.height = 40;
-  c.getContext('2d').fillRect(0, 0, 40, 40);
-  const img = new Image(); img.src = c.toDataURL(); await img.decode();
-  pages[activePageIndex].cards[0].img = img; render();
-});
-check(!(await hidden('dockStickers')), '有照片：顯示 T寶貼圖');
+check(!(await nextOff()), '本頁打了字：「下一步」可按');
 check(await page.evaluate(() => document.getElementById('stickerPalette').classList.contains('need-cell')), '沒選格子：貼圖反灰');
 await page.evaluate(() => { setActiveCard(0, true); syncChrome(); });
 check(!(await page.evaluate(() => document.getElementById('stickerPalette').classList.contains('need-cell'))), '選了格子：貼圖恢復正常');
-check(await hidden('dockMenu'), '選單預設收合');
-await page.click('#dockMoreBtn');
-check(!(await hidden('dockMenu')) && !(await hidden('edgeSwitch')) && !(await hidden('resetAllBtn')), '點「⋯ 更多」：展開「檢查照片邊緣」與「清除本頁」');
-await page.waitForTimeout(200);
-await page.screenshot({ path: path.join(SHOTS, 'dock-2-more-menu.png'), clip: { x: 0, y: 560, width: 1440, height: 300 } });
-await page.keyboard.press('Escape');
-check(await hidden('dockMenu'), 'Esc 收起選單');
+await page.evaluate(() => { cellSelected = false; syncChrome(); });
 
 // 清除本頁：仍要二次確認，取消後內容還在
-await page.click('#dockMoreBtn');
 await page.click('#resetAllBtn');
 check(await page.evaluate(() => document.getElementById('confirmOverlay').classList.contains('open')), '清除本頁：跳出確認視窗');
 await page.click('#confirmCancelBtn');
-check(await page.evaluate(() => !!pages[activePageIndex].cards[0].img), '取消清除：內容保留');
+check(await page.evaluate(() => pages[activePageIndex].cards[0].line1 === '標題'), '取消清除：內容保留');
 
 // ===== 4. 步驟 2：返回編輯在最左（幽靈）、全部下載在最右（唯一實心）=====
 await page.evaluate(() => { goStep(2); });
@@ -72,7 +69,7 @@ const bar = await page.evaluate(() => {
 check(bar.order[0] === 'backStepBtn' && bar.order[bar.order.length - 1] === 'downloadAllBtn', `步驟 2 順序：${bar.order.join(' → ')}`);
 check(bar.back === 'rgba(0, 0, 0, 0)', '「返回編輯」是幽靈按鈕（透明底）');
 check(bar.jpg === 'rgba(0, 0, 0, 0)', '「下載本頁」是外框次要按鈕（透明底）');
-check(await hidden('dockStickers') && await hidden('dockMore'), '步驟 2：不顯示貼圖與「⋯ 更多」');
+check(await hidden('dockStickers') && await hidden('edgeSwitch') && await hidden('resetAllBtn'), '步驟 2：不顯示貼圖、檢查照片邊緣、清除本頁');
 await page.evaluate(() => { document.getElementById('downloadAllBtn').classList.remove('is-disabled'); });   // 只為截圖
 await page.locator('#dock').screenshot({ path: path.join(SHOTS, 'dock-3-step2.png') });
 

@@ -684,23 +684,6 @@
   .dock.checking #downloadRow #downloadJpgBtn:hover,
   .dock.checking #downloadRow #labPushBtn:not(.is-disabled):hover { background: #2d333b; border-color: #9ca3af; }
   .dock.checking #downloadRow #labPushBtn.is-disabled { background: transparent; }
-  /* 「⋯ 更多」: 檢查照片邊緣 and 清除本頁 live in a small menu above the dock. */
-  .dock-more { position: relative; }
-  .dock-more[hidden] { display: none; }
-  .dock-more-btn { background: transparent; border: 1px solid #4b5563; color: #e5e7eb; padding: 9px 14px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
-  .dock-more-btn:hover, .dock-more-btn[aria-expanded="true"] { background: #2d333b; border-color: #6b7280; color: #fff; }
-  .dock-menu {
-    position: absolute; bottom: calc(100% + 16px); left: 50%; transform: translateX(-50%);
-    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
-    min-width: 180px; padding: 8px; border-radius: 16px;
-    background: #1f2328; color: #fff; box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
-  }
-  .dock-menu[hidden] { display: none; }
-  .dock-menu .dock-switch { padding: 8px 10px; border-radius: 10px; }
-  .dock-menu .dock-switch:hover { background: #2d333b; }
-  .dock-menu-danger { background: transparent; border: 0; color: #f87171; text-align: left; padding: 8px 10px; border-radius: 10px; font-weight: 600; }
-  .dock-menu-danger:hover { background: #3b1d1d; color: #fca5a5; }
-  .dock-menu-danger[hidden] { display: none; }
   /* 貼圖 only act on a picked cell: dimmed until one is picked. */
   .dock .sticker-palette.need-cell .sticker-btn { opacity: .4; }
   #downloadRow #downloadAllBtn:not(.is-disabled) { background: #16a34a; border-color: #16a34a; color: #fff; }
@@ -1289,21 +1272,15 @@
     <div class="sticker-palette" id="stickerPalette"></div>
   </div>
   <span class="dock-sep" id="dockSep"></span>
-  <!-- 低頻／破壞性的操作收在「⋯ 更多」，不跟主按鈕並排 -->
-  <div class="dock-more" id="dockMore" hidden>
-    <button type="button" class="dock-more-btn" id="dockMoreBtn" aria-haspopup="true" aria-expanded="false" title="更多選項">⋯ 更多</button>
-    <div class="dock-menu" id="dockMenu" role="menu" hidden>
-      <label class="dock-switch" id="edgeSwitch" title="開啟後，預覽圖會用紅框框出照片「看得到」的範圍，編輯時當參考用；露白檢查與提示在步驟 2 才進行" hidden>
-        <input type="checkbox" id="edgeCheckToggle">
-        <span class="sw-track"><span class="sw-knob"></span></span>
-        <span class="sw-label">檢查照片邊緣</span>
-      </label>
-      <button type="button" class="dock-menu-danger" id="resetAllBtn" role="menuitem">清除本頁</button>
-    </div>
-  </div>
+  <label class="dock-switch" id="edgeSwitch" title="開啟後，預覽圖會用紅框框出照片「看得到」的範圍，編輯時當參考用；露白檢查與提示在步驟 2 才進行" hidden>
+    <input type="checkbox" id="edgeCheckToggle">
+    <span class="sw-track"><span class="sw-knob"></span></span>
+    <span class="sw-label">檢查照片邊緣</span>
+  </label>
   <div id="downloadRow">
     <button type="button" id="backStepBtn" hidden>← 返回編輯</button>
     <span class="dock-chip" id="dockChip" hidden></span>
+    <button type="button" class="ghost" id="resetAllBtn">清除本頁</button>
     <button type="button" class="primary" id="nextStepBtn">下一步：畫面檢查 →</button>
     <button type="button" class="light" id="downloadJpgBtn" hidden>下載本頁</button>
     <button type="button" class="primary" id="labPushBtn" hidden>排入LINE推播</button>
@@ -1477,7 +1454,7 @@
         <li><b>最上方</b>：標題、版型切換（新聞／娛樂／拼圖，白色滑塊會滑動過去，也可以用滑鼠按住滑塊左右拖曳來切換）、進度條「① 編輯畫面 → ② 畫面檢查」（拼圖沒有這一步）。快速填入面板收起後，「拼圖」右側會出現「快速填入」按鈕可再打開（新聞版黃色標籤列被隱藏時另有「頂部標籤」按鈕）。</li>
         <li><b>中間</b>：預覽圖，上方是「第 1 頁／第 2 頁」（同樣有滑動效果，也能按住滑塊拖曳切換），兩頁各自獨立。在預覽圖上<b>單擊</b>格子選取、<b>雙擊</b>開啟選檔。</li>
         <li><b>左側</b>：浮動面板。一開始是「快速填入」；點格子變成那一格的編輯面板，點空白處收起；步驟 2 則是檢查清單。</li>
-        <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「⋯ 更多」（「檢查照片邊緣」開關、「清除本頁」）、「下一步」——頁面還沒有照片時只顯示「下一步」，貼圖與「⋯ 更多」放了照片才出現；步驟 2 由左至右是「← 返回編輯」、提示、「下載本頁」、「全部下載」（綠色，唯一的主按鈕）。</li>
+        <li><b>底部</b>：浮動工具列。步驟 1 有 T寶貼圖、「檢查照片邊緣」開關、「清除本頁」、「下一步」（兩頁都還沒有內容時反灰不能按）；步驟 2 由左至右是「← 返回編輯」、提示、「下載本頁」、「全部下載」（綠色，唯一的主按鈕）。</li>
         <li><b>右下角</b>「!」：操作提示，有兩個分頁——「更多工具」（我做的其他網頁版工具連結與簡述）與「操作提示」。剛開啟網頁時先顯示「更多工具」4 秒，再自動滑到「操作提示」，共約 8 秒後自動收起；可左右滑動（拖曳、觸控、觸控板橫向捲動、左右鍵）或按下方圓點切換；游標移到彈窗上就會一直顯示，移出彈窗外 1 秒後漸漸收起；按「!」可再打開（直接顯示操作提示）。</li>
       </ul>
 
@@ -1493,8 +1470,8 @@
           <br><span class="help-note">照片可以留一點空白邊，方便放大靠邊的人物，但輸出前不要讓成品露出空白或透明。</span></li>
         <li><b>小標籤</b>：新聞每格有兩段標籤，第一段預設在標題上方左側，第二段（「標籤文字 2」）預設在格子右上角，兩段都能在預覽圖上拖曳，靠近格子邊緣會自動吸附貼齊，「標籤位置還原」可放回預設位置。娛樂每格一個藍色膠帶標籤，會依字數拉長。</li>
         <li><b>T寶貼圖（選用）</b>：先點格子，再點底部工具列的表情，用來蓋住人物；拖曳移動、滾輪縮放，點右上角「✕」移除。</li>
-        <li><b>檢查照片邊緣（選用）</b>：點底部「⋯ 更多」打開開關，預覽圖會用<b>紅色框線</b>框出每格照片「看得到」的範圍（新聞：扣掉黃色標籤列陰影與上下的黑色字條帶；娛樂：沿相框洞的邊緣），新聞版選取格子的藍框上下緣與它一致。這只是編輯時的參考，不會檢查或標示任何東西，也不會輸出到成品。</li>
-        <li><b>下一步</b>：編輯完按底部「下一步：畫面檢查」（或點上方進度條的 ②）。「清除本頁」在底部「⋯ 更多」裡，只會清空目前這一頁。</li>
+        <li><b>檢查照片邊緣（選用）</b>：打開底部開關，預覽圖會用<b>紅色框線</b>框出每格照片「看得到」的範圍（新聞：扣掉黃色標籤列陰影與上下的黑色字條帶；娛樂：沿相框洞的邊緣），新聞版選取格子的藍框上下緣與它一致。這只是編輯時的參考，不會檢查或標示任何東西，也不會輸出到成品。</li>
+        <li><b>下一步</b>：編輯完按底部「下一步：畫面檢查」（或點上方進度條的 ②）。兩頁都還沒有內容時「下一步」反灰不能按。「清除本頁」只會清空目前這一頁。</li>
       </ol>
 
       <h3>新聞／娛樂：步驟 2 畫面檢查</h3>
@@ -4660,7 +4637,6 @@ function askConfirm(opts = {}) {
 }
 
 document.getElementById('resetAllBtn').addEventListener('click', async () => {
-  closeDockMenu();
   if (!(await askConfirm())) return;
   pages[activePageIndex] = makePageState(activePageIndex);
   if (mode === 'collage') {
@@ -5115,8 +5091,8 @@ function goStep(n) {
   syncChrome();
   render();
 }
-document.querySelectorAll('.step-btn').forEach(b => b.addEventListener('click', () => goStep(Number(b.dataset.step))));
-document.getElementById('nextStepBtn').addEventListener('click', () => goStep(2));
+document.querySelectorAll('.step-btn').forEach(b => b.addEventListener('click', () => { const n = Number(b.dataset.step); if (n === 2 && step === 1 && !canLeaveStep1()) return; goStep(n); }));
+document.getElementById('nextStepBtn').addEventListener('click', () => { if (canLeaveStep1()) goStep(2); });
 document.getElementById('backStepBtn').addEventListener('click', () => goStep(1));
 
 // Clicking empty space (not a panel, the preview or a button) un-picks the cell.
@@ -5350,8 +5326,8 @@ canvas.addEventListener('mousemove', evt => {
 canvas.addEventListener('mouseleave', () => { if (gapTipCell >= 0) hideGapTip(false); });
 
 // One place that decides what is visible for the current mode / step / selection.
-// Dock items that only make sense once the page has something on it (希克定律: an empty page shows
-// just 「下一步」). 貼圖 and 檢查照片邊緣 need a photo; 清除本頁 and 下載本頁 need any content.
+// Dock items that depend on what is on the pages: 「下一步」 stays greyed out until either page has
+// something on it, 貼圖 are dimmed until a cell is picked, 下載本頁 needs this page to have content.
 function pageIsEdited(pg) {
   return pg.cards.some(c => c.img || (c.line1 || '').trim() || (c.line2 || '').trim() || (c.tag || '').trim() || (c.tag2 || '').trim() || c.stickers.length);
 }
@@ -5361,31 +5337,25 @@ function syncDockContext() {
   const isCollage = mode === 'collage';
   const editing = !isCollage && step === 1;
   const checking = !isCollage && step === 2;
-  const pg = activePage();
-  const hasImg = pg.cards.some(c => c.img);
-  const hasContent = hasImg || pageIsEdited(pg);
-  const showStickers = !checking && hasImg;
-  $('dockStickers').hidden = !showStickers;
-  $('dockSep').hidden = !showStickers;
+  $('dockStickers').hidden = checking;
+  $('dockSep').hidden = checking;
   $('stickerPalette').classList.toggle('need-cell', !cellSelected);
-  $('edgeSwitch').hidden = !(editing && hasImg);
-  $('resetAllBtn').hidden = checking || !hasContent;
-  const moreHidden = $('edgeSwitch').hidden && $('resetAllBtn').hidden;
-  if (moreHidden) closeDockMenu();
-  $('dockMore').hidden = moreHidden;
-  $('downloadJpgBtn').hidden = !(isCollage || (checking && hasContent));
+  $('edgeSwitch').hidden = !editing;
+  $('resetAllBtn').hidden = checking;
+  const blank = editing && !pages.some(pageIsEdited);
+  const next = $('nextStepBtn');
+  next.classList.toggle('is-disabled', blank);
+  next.setAttribute('aria-disabled', blank ? 'true' : 'false');
+  if (blank) next.dataset.tip = NEXT_BLANK_TIP; else delete next.dataset.tip;
+  $('downloadJpgBtn').hidden = !(isCollage || (checking && pageIsEdited(activePage())));
 }
-function closeDockMenu() {
-  document.getElementById('dockMenu').hidden = true;
-  document.getElementById('dockMoreBtn').setAttribute('aria-expanded', 'false');
+const NEXT_BLANK_TIP = '請先貼上快速填入或放入照片';
+// 步驟 2 is closed while both pages are blank (the 下一步 button and the stepper's ②).
+function canLeaveStep1() {
+  if (pages.some(pageIsEdited)) return true;
+  statusEl.show(NEXT_BLANK_TIP);
+  return false;
 }
-document.getElementById('dockMoreBtn').addEventListener('click', () => {
-  const menu = document.getElementById('dockMenu');
-  menu.hidden = !menu.hidden;
-  document.getElementById('dockMoreBtn').setAttribute('aria-expanded', String(!menu.hidden));
-});
-document.addEventListener('pointerdown', e => { if (!e.target.closest('#dockMore')) closeDockMenu(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDockMenu(); });
 
 function syncChrome() {
   if (!chromeReady) return;
