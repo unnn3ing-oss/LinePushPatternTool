@@ -14,7 +14,7 @@
     const card = el('div', 'sn-card');
     card.setAttribute('role', 'alertdialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-labelledby', 'sunsetTitle');
     const top = el('div', 'sn-top');
-    const title = el('h2', null, '本工具已於 11/26 停止服務'); title.id = 'sunsetTitle';
+    const title = el('h2', null, '本工具已停止服務'); title.id = 'sunsetTitle';
     top.append(el('span', 'sn-tag', '停止服務通知'), title);
     const body = el('div', 'sn-body');
     const go = el('a', 'sn-go', '前往小編工具箱 →');
