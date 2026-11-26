@@ -1,0 +1,17 @@
+/* 停止服務通知（sunset.js）。class 都加 sn- 前綴，避免和頁面既有樣式（.card、.top…）互相影響。 */
+#sunset{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;overflow:auto;padding:16px;box-sizing:border-box;background:rgba(15,18,28,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;text-align:left;line-height:1.5}
+#sunset *{box-sizing:border-box}
+#sunset .sn-card{width:min(460px,100%);margin:0;padding:0;background:#fff;color:#1d2330;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.25);overflow:hidden}
+#sunset .sn-top{background:linear-gradient(135deg,#ff7a45,#f5495a);color:#fff;padding:22px 24px 20px}
+#sunset .sn-tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;background:rgba(255,255,255,.22);padding:3px 10px;border-radius:99px}
+#sunset h2{text-wrap:balance;margin:10px 0 0;font-size:21px;line-height:1.35;font-weight:700;color:#fff}
+#sunset .sn-body{padding:20px 24px 22px}
+#sunset p{margin:0 0 14px;font-size:14.5px;line-height:1.7;color:#3a4152}
+#sunset .sn-go{display:flex;justify-content:center;align-items:center;background:#1d2330;color:#fff;text-decoration:none;font-weight:700;font-size:15.5px;padding:13px;border-radius:12px}
+#sunset .sn-go:hover{background:#2c3446}
+#sunset .sn-note{margin-top:16px;background:#fff7e6;border:1px solid #ffd591;border-radius:12px;padding:13px 15px}
+#sunset h3{margin:0 0 10px;font-size:14px;line-height:1.5;font-weight:700;color:#ad4e00}
+#sunset h3 span{display:inline-block}
+#sunset .sn-chips{display:flex;flex-wrap:wrap;gap:6px}
+#sunset .sn-chips i{font-style:normal;font-size:12.5px;background:#fff;border:1px solid #ffd591;color:#874d00;padding:3px 9px;border-radius:99px}
+html.sunset-locked,html.sunset-locked body{overflow:hidden}
